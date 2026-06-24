@@ -1,14 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+  <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <PublishDir>..\..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>ModSim_ico.ico</ApplicationIcon>
-    <UseWindowsForms>true</UseWindowsForms>
-    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EmbeddedResourceUseDependentUponConvention>true</EmbeddedResourceUseDependentUponConvention>
     <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+    <!-- [XPLAT] per-OS self-contained publish targets for the tri-OS CI matrix (Windows/Linux/macOS) -->
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
@@ -16,17 +17,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Memory" Version="4.6.0" />
+    <!-- [XPLAT] Avalonia cross-platform UI stack (replaces WinForms); all packages share one version -->
+    <PackageReference Include="Avalonia" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.18" />
+    <!-- [XPLAT] developer diagnostics overlay; Debug builds only -->
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.18" Condition="'$(Configuration)' == 'Debug'" />
+    <!-- [XPLAT] cross-platform backing for retained ApplicationSettingsBase (in-box on net48, package on net8.0) -->
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.0" />
+    <!-- preserialized .resx resources (gStr.resx, Properties/Resources.resx) retained -->
     <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="Forms\Controls.Designer.cs">
-      <DependentUpon>FormSim.cs</DependentUpon>
-    </Compile>
-    <Compile Update="Forms\UDP.Designer.cs">
-      <DependentUpon>FormSim.cs</DependentUpon>
-    </Compile>
     <Compile Update="gStr.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>
