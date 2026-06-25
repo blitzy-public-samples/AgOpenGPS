@@ -1,0 +1,816 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] Avalonia 1:1 parity reimplementation of the WinForms AutoSteer configuration dialog
+    (Forms/Settings/FormSteer.cs + FormSteer.Designer.cs). This is the most parity-sensitive view
+    in the migration: at runtime the code-behind encodes/decodes PGN frames that MUST remain
+    byte-identical (AAP §0.2.2, §0.6), so this XAML strictly reproduces the original control tree,
+    names, geometry and imagery without altering behaviour.
+
+    LAYOUT half of a code-behind-driven pair (FormSteerView.axaml.cs). Mirroring the original
+    WinForms Form which used direct field/member access — NOT data binding — this view declares
+    no compiled-binding type (no x:DataType), no bound data source and no markup bindings; the
+    code-behind resolves every control by x:Name. All ~80 static labels are given a unique x:Name
+    so the code-behind can assign their gStr translations (the literal English defaults below match
+    the WinForms designer text so the view is faithful even before localization runs).
+
+    Faithful to FormSteer.Designer.cs: ClientSize is 898x628 when expanded; the WinForms ctor opens
+    the form compact at 388x490 and a windowSizeState toggle expands it to 898x628. The Window below
+    therefore opens at 388x490 (code-behind expands it) and a top-level Canvas of the full 898x628
+    expanded size positions every control at its exact WinForms Location/Size — the same absolute
+    strategy as the sibling Forms->Views ports (e.g. ConfigVehicleControl.axaml / FormNumericView).
+    In compact mode the 898-wide canvas is clipped by the narrow window, hiding the right-hand
+    tabSteerSettings panel exactly as the WinForms windowSizeState did.
+
+    Element map (WinForms -> Avalonia):
+      Form                                   -> Window (Background AogFrameBrush, per AAP)
+      TabControl (TabAppearance.Buttons)     -> TabControl; TabItem.Header = ImageList icon Image
+      TabPage (BackgroundImage, BackColor)   -> Grid{ background Image (Stretch=Uniform) + Canvas }
+      Panel                                  -> Border + inner Canvas
+      GroupBox                               -> Border + header TextBlock + inner Canvas
+      HScrollBar hsbar*                      -> Slider (Horizontal) with Min/Max/Value/Small/Large
+      ProgressBar pbar*                      -> ProgressBar
+      NudlessNumericUpDown nud*              -> flat "numeric" Button (opens FormNumeric; value=content)
+      CheckBox  (Appearance.Button + image)  -> CheckBox  Classes="imageToggle" + image content
+      RadioButton (Appearance.Button + image)-> RadioButton Classes="imageToggle" + image content
+      ComboBox  (DropDownList)               -> ComboBox + ComboBoxItem children
+      Button    (FlatStyle.Flat + image)     -> flat transparent Button + image content
+      RepeatButton                           -> RepeatButton (repeats Click while held)
+      Label                                  -> TextBlock
+      PictureBox (BackgroundImage)           -> Image
+
+    WinForms point font sizes are converted to Avalonia device-independent pixels (x96/72): e.g.
+    8.25->11, 9.75->13, 11.25->15, 12->16, 14.25->19, 15.75->21, 18->24, 24->32, 27.75->37.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gStr="clr-namespace:AgOpenGPS.Core.Translations;assembly=AgOpenGPS.Core"
+        x:Class="AgOpenGPS.Views.Settings.FormSteerView"
+        Title="Auto Steer Configuration"
+        Width="388" Height="490"
+        MinWidth="387" MinHeight="478"
+        MaxWidth="918" MaxHeight="673"
+        WindowStartupLocation="Manual"
+        ShowInTaskbar="False"
+        CanResize="True"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Styles reproduce the WinForms "Appearance.Button" look (the radio/checkbox glyph is removed
+        and the control renders as a flat image button whose Background turns MediumAquamarine when
+        :checked, matching FlatAppearance.CheckedBackColor = MediumAquamarine), plus the flat
+        image-only push buttons and the bordered numeric-entry buttons.
+    -->
+    <Window.Styles>
+
+        <!-- Default label colour: WinForms labels are Black / ActiveCaptionText. -->
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+
+        <!-- Image-toggle CheckBoxes (Appearance.Button): chk* and the cbox*-checkboxes. -->
+        <Style Selector="CheckBox.imageToggle">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Black" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Stretch" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="CheckBox.imageToggle:checked">
+            <Setter Property="Background" Value="MediumAquamarine" />
+        </Style>
+
+        <!-- Image-toggle RadioButtons (Appearance.Button): rbtnLightBar / rbtnSteerBar. -->
+        <Style Selector="RadioButton.imageToggle">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Black" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Stretch" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.imageToggle:checked">
+            <Setter Property="Background" Value="MediumAquamarine" />
+        </Style>
+
+        <!-- Flat, image-only push buttons (FlatStyle.Flat). Applies to Button and RepeatButton. -->
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+        <Style Selector="RepeatButton.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+
+        <!-- Numeric-entry buttons (the WinForms NudlessNumericUpDown look): bordered value display. -->
+        <Style Selector="Button.numeric">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Section / page heading labels reuse SteelBlue accents in a couple of places. -->
+        <Style Selector="TextBlock.heading">
+            <Setter Property="Foreground" Value="SteelBlue" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+
+    </Window.Styles>
+
+    <!-- WinForms FormSteer expanded ClientSize: 898 x 628, absolute positioning. -->
+    <Canvas Width="898" Height="628">
+        <!-- ============================================================================
+             MAIN tab control (WinForms tabControl1 @ (2,5) 373x402, TabAppearance.Buttons,
+             ImageList icons). Pages added in designer order: tabPP, tabStan, tabSteer, tabPPAdv,
+             tabGain. At runtime the code-behind removes {tabPP,tabPPAdv} OR {tabStan} per
+             mf.isStanleyUsed (FormSteer_Load) — all five are declared here.
+             ============================================================================ -->
+        <TabControl x:Name="tabControl1"
+                    Canvas.Left="2" Canvas.Top="5" Width="373" Height="402"
+                    FontSize="16">
+
+            <!-- ===================== tabPP (Pure Pursuit) ===================== -->
+            <TabItem x:Name="tabPP">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Steer/Sf_PP.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Steer/Sf_PP.png" />
+                    <Canvas Width="365" Height="346" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <TextBlock x:Name="label26" Classes="heading" Canvas.Left="8" Canvas.Top="3"
+                                   Width="351" FontSize="21" TextAlignment="Center" Text="Pure Pursuit" />
+                        <TextBlock x:Name="labelSteerResponse" Canvas.Left="81" Canvas.Top="60"
+                                   Width="196" FontSize="19" TextAlignment="Center" Text="Steer Response" />
+                        <TextBlock x:Name="labelFast" Canvas.Left="10" Canvas.Top="64"
+                                   Width="72" FontSize="16" TextAlignment="Right" Text="Fast" />
+                        <TextBlock x:Name="labelSlow" Canvas.Left="279" Canvas.Top="64"
+                                   Width="84" FontSize="16" TextAlignment="Left" Text="Slow" />
+                        <TextBlock x:Name="lblHoldLookAhead" Canvas.Left="3" Canvas.Top="83"
+                                   Width="47" FontSize="24" TextAlignment="Right" Text="5.2" />
+                        <Slider x:Name="hsbarHoldLookAhead" Orientation="Horizontal"
+                                Canvas.Left="53" Canvas.Top="86" Width="264" Height="30"
+                                Minimum="10" Maximum="70" Value="25" SmallChange="1" LargeChange="1" />
+                        <TextBlock x:Name="labelIntegralPP" Canvas.Left="53" Canvas.Top="213"
+                                   Width="264" FontSize="19" TextAlignment="Center" Text="Integral" />
+                        <TextBlock x:Name="lblPureIntegral" Canvas.Left="5" Canvas.Top="236"
+                                   Width="50" FontSize="24" TextAlignment="Right" Text="20" />
+                        <Slider x:Name="hsbarIntegralPurePursuit" Orientation="Horizontal"
+                                Canvas.Left="53" Canvas.Top="239" Width="264" Height="30"
+                                Minimum="0" Maximum="100" Value="5" SmallChange="1" LargeChange="1" />
+                        <TextBlock x:Name="labelIntegralInfo" Canvas.Left="6" Canvas.Top="290"
+                                   Width="288" Height="46" FontSize="13" TextAlignment="Center" TextWrapping="Wrap"
+                                   Text="It will slowly increase steer angle to reduce cross track error" />
+                        <TextBlock x:Name="labelAcquire" Canvas.Left="85" Canvas.Top="159"
+                                   Width="111" FontSize="19" TextAlignment="Right" Text="Acquire:" IsVisible="False" />
+                        <TextBlock x:Name="lblAcquirePP" Canvas.Left="192" Canvas.Top="163"
+                                   Width="34" FontSize="16" FontWeight="Bold" TextAlignment="Right" Text="2.6" IsVisible="False" />
+                        <TextBlock x:Name="label18" Canvas.Left="561" Canvas.Top="13"
+                                   Width="204" FontSize="16" TextAlignment="Center" Text="Look Ahead" />
+                        <TextBlock x:Name="label20" Canvas.Left="579" Canvas.Top="228"
+                                   Width="204" FontSize="16" TextAlignment="Center" Text="Look Ahead Min" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== tabStan (Stanley Gains) ===================== -->
+            <TabItem x:Name="tabStan">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Steer/ST_StanleyTab.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Steer/Sf_Stanley.png" />
+                    <Canvas Width="365" Height="346" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <TextBlock x:Name="label25" Classes="heading" Canvas.Left="70" Canvas.Top="3"
+                                   Width="201" FontSize="21" TextAlignment="Center" Text="Stanley Gains" />
+                        <TextBlock x:Name="labelDistance" Canvas.Left="63" Canvas.Top="51"
+                                   Width="204" FontSize="19" TextAlignment="Center" Text="Distance" />
+                        <TextBlock x:Name="lblStanleyGain" Canvas.Left="9" Canvas.Top="78"
+                                   Width="54" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarStanleyGain" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="80" Width="200" Height="30"
+                                Minimum="1" Maximum="40" Value="10" SmallChange="1" LargeChange="1" />
+                        <TextBlock x:Name="labelHeading" Canvas.Left="62" Canvas.Top="140"
+                                   Width="204" FontSize="19" TextAlignment="Center" Text="Heading" />
+                        <TextBlock x:Name="lblHeadingErrorGain" Canvas.Left="9" Canvas.Top="166"
+                                   Width="54" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarHeadingErrorGain" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="170" Width="200" Height="30"
+                                Minimum="1" Maximum="15" Value="10" SmallChange="1" LargeChange="1" />
+                        <TextBlock x:Name="labelIntergralStanley" Canvas.Left="63" Canvas.Top="232"
+                                   Width="204" FontSize="19" TextAlignment="Center" Text="Integral" />
+                        <TextBlock x:Name="lblIntegralPercent" Canvas.Left="3" Canvas.Top="259"
+                                   Width="60" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarIntegral" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="261" Width="202" Height="30"
+                                Minimum="0" Maximum="100" Value="5" SmallChange="1" LargeChange="1" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== tabSteer (WAS / CPD / Ackermann / Max angle) ===================== -->
+            <TabItem x:Name="tabSteer">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Steer/ST_SteerTab.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Steer/Sf_SteerTab.png" />
+                    <Canvas Width="365" Height="346" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <!-- L/R steer activity bars across the very top (pbarLeft fills right-to-left). -->
+                        <ProgressBar x:Name="pbarLeft" Canvas.Left="11" Canvas.Top="2" Width="159" Height="10"
+                                     Minimum="0" Maximum="50" FlowDirection="RightToLeft" />
+                        <ProgressBar x:Name="pbarRight" Canvas.Left="171" Canvas.Top="2" Width="159" Height="10"
+                                     Minimum="0" Maximum="50" />
+                        <!-- WAS Zero row -->
+                        <TextBlock x:Name="labelWasZero" Canvas.Left="77" Canvas.Top="62"
+                                   Width="190" FontSize="19" TextAlignment="Center" Text="WAS Zero" />
+                        <TextBlock x:Name="lblSteerAngleSensorZero" Canvas.Left="1" Canvas.Top="83"
+                                   Width="70" FontSize="21" TextAlignment="Right" Text="-55.88" />
+                        <Slider x:Name="hsbarWasOffset" Orientation="Horizontal"
+                                Canvas.Left="72" Canvas.Top="85" Width="194" Height="30"
+                                Minimum="-4000" Maximum="4000" Value="0" SmallChange="2" LargeChange="20" />
+                        <Button x:Name="btnZeroWAS" Classes="flatImage" Canvas.Left="134" Canvas.Top="21"
+                                Width="70" Height="30">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/SteerZero.png" />
+                        </Button>
+                        <!-- Counts per Degree row -->
+                        <TextBlock x:Name="labelCountsPerDegree" Canvas.Left="77" Canvas.Top="133"
+                                   Width="190" FontSize="19" TextAlignment="Center" Text="Counts per Degree" />
+                        <TextBlock x:Name="lblCountsPerDegree" Canvas.Left="16" Canvas.Top="155"
+                                   Width="55" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarCountsPerDegree" Orientation="Horizontal"
+                                Canvas.Left="72" Canvas.Top="157" Width="200" Height="30"
+                                Minimum="1" Maximum="255" Value="20" SmallChange="1" LargeChange="1" />
+                        <!-- Ackermann row -->
+                        <TextBlock x:Name="labelAckermann" Canvas.Left="77" Canvas.Top="205"
+                                   Width="190" FontSize="19" TextAlignment="Center" Text="Ackermann" />
+                        <TextBlock x:Name="lblAckerman" Canvas.Left="16" Canvas.Top="228"
+                                   Width="55" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarAckerman" Orientation="Horizontal"
+                                Canvas.Left="72" Canvas.Top="230" Width="200" Height="30"
+                                Minimum="1" Maximum="200" Value="100" SmallChange="1" LargeChange="1" />
+                        <!-- Max Steer Angle row -->
+                        <TextBlock x:Name="labelMaxSteerAngle" Canvas.Left="77" Canvas.Top="276"
+                                   Width="190" FontSize="19" TextAlignment="Center" Text="Max Steer Angle" />
+                        <TextBlock x:Name="lblMaxSteerAngle" Canvas.Left="19" Canvas.Top="297"
+                                   Width="52" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarMaxSteerAngle" Orientation="Horizontal"
+                                Canvas.Left="72" Canvas.Top="299" Width="200" Height="30"
+                                Minimum="10" Maximum="80" Value="10" SmallChange="1" LargeChange="1" />
+                        <!-- Parked / off-view angular-velocity telemetry (negative X in the designer). -->
+                        <TextBlock x:Name="label38" Canvas.Left="-373" Canvas.Top="20"
+                                   Width="51" FontSize="13" TextAlignment="Right" Text="AV Set:" />
+                        <TextBlock x:Name="lblAV_Set" Canvas.Left="-328" Canvas.Top="18"
+                                   Width="51" FontSize="16" FontWeight="Bold" TextAlignment="Right" Text="-55.8" />
+                        <TextBlock x:Name="label36" Canvas.Left="-372" Canvas.Top="44"
+                                   Width="50" FontSize="13" TextAlignment="Right" Text="AV Act:" />
+                        <TextBlock x:Name="lblAV_Act" Canvas.Left="-328" Canvas.Top="42"
+                                   Width="54" FontSize="16" FontWeight="Bold" TextAlignment="Right" Text="66.89" />
+                        <TextBlock x:Name="lblActualSteerAngleUpper" Canvas.Left="-567" Canvas.Top="16"
+                                   Width="39" FontSize="16" FontWeight="Bold" TextAlignment="Right" Text="255" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== tabPPAdv (Pure Pursuit Advanced / Dead Zone) ===================== -->
+            <TabItem x:Name="tabPPAdv">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Steer/ST_NerdAdv.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Canvas Width="365" Height="346" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <!-- Dead Zone group -->
+                        <TextBlock x:Name="labelDeadzone" Canvas.Left="62" Canvas.Top="9"
+                                   Width="250" FontSize="19" TextAlignment="Center" Text=" ------ Dead Zone ----- " />
+                        <TextBlock x:Name="labelHeadingDegree" Canvas.Left="5" Canvas.Top="72"
+                                   Width="179" FontSize="16" TextAlignment="Center" Text="Heading (Degree)" />
+                        <TextBlock x:Name="labelOnDelay" Canvas.Left="190" Canvas.Top="72"
+                                   Width="172" FontSize="16" TextAlignment="Center" Text="On Delay (sec)" />
+                        <Button x:Name="nudDeadZoneHeading" Classes="numeric" Canvas.Left="41" Canvas.Top="38"
+                                Width="107" Height="36" FontSize="24" FontWeight="Bold" Content="0" />
+                        <Button x:Name="nudDeadZoneDelay" Classes="numeric" Canvas.Left="223" Canvas.Top="37"
+                                Width="107" Height="36" FontSize="24" FontWeight="Bold" Content="0" />
+                        <!-- Speed Factor -->
+                        <TextBlock x:Name="labelSpeedFactor" Canvas.Left="85" Canvas.Top="116"
+                                   Width="250" FontSize="19" TextAlignment="Center" Text="Speed Factor" />
+                        <TextBlock x:Name="lblLookAheadMult" Canvas.Left="8" Canvas.Top="142"
+                                   Width="60" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarLookAheadMult" Orientation="Horizontal"
+                                Canvas.Left="73" Canvas.Top="143" Width="276" Height="30"
+                                Minimum="5" Maximum="60" Value="6" SmallChange="1" LargeChange="1" />
+                        <!-- Acquire Factor -->
+                        <TextBlock x:Name="labelAcquireFactor" Canvas.Left="85" Canvas.Top="208"
+                                   Width="250" FontSize="19" TextAlignment="Center" Text="Acquire Factor" />
+                        <TextBlock x:Name="lblAcquireFactor" Canvas.Left="8" Canvas.Top="232"
+                                   Width="60" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarAcquireFactor" Orientation="Horizontal"
+                                Canvas.Left="73" Canvas.Top="235" Width="276" Height="30"
+                                Minimum="20" Maximum="300" Value="75" SmallChange="1" LargeChange="1" />
+                        <TextBlock x:Name="labelAcquireDescription" Canvas.Left="103" Canvas.Top="269"
+                                   Width="246" FontSize="15" TextAlignment="Center" Text="Acquire = Factor * Hold" />
+                        <!-- Distance / Acquire / Hold readout row -->
+                        <TextBlock x:Name="labelDist" Canvas.Left="3" Canvas.Top="311"
+                                   Width="88" FontSize="19" TextAlignment="Center" Text="Distance:" />
+                        <TextBlock x:Name="lblDistanceAdv" Canvas.Left="91" Canvas.Top="312"
+                                   Width="46" FontSize="19" FontWeight="Bold" TextAlignment="Right" Text="888" />
+                        <TextBlock x:Name="labelAcquire2" Canvas.Left="139" Canvas.Top="312"
+                                   Width="80" FontSize="19" TextAlignment="Center" Text="Acquire:" />
+                        <TextBlock x:Name="lblAcqAdv" Canvas.Left="216" Canvas.Top="312"
+                                   Width="46" FontSize="19" FontWeight="Bold" TextAlignment="Right" Text="888" />
+                        <TextBlock x:Name="labelHold" Canvas.Left="265" Canvas.Top="311"
+                                   Width="55" FontSize="19" TextAlignment="Center" Text="Hold:" />
+                        <TextBlock x:Name="lblHoldAdv" Canvas.Left="315" Canvas.Top="312"
+                                   Width="46" FontSize="19" FontWeight="Bold" TextAlignment="Right" Text="888" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== tabGain (PWM gains) ===================== -->
+            <TabItem x:Name="tabGain">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Steer/ST_GainTab.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Steer/Sf_GainTab.png" />
+                    <Canvas Width="365" Height="346" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <TextBlock x:Name="label6" Classes="heading" Canvas.Left="3" Canvas.Top="16"
+                                   Width="360" FontSize="21" TextAlignment="Center" Text="Gain" />
+                        <TextBlock x:Name="labelProportionalGain" Canvas.Left="44" Canvas.Top="64"
+                                   Width="250" FontSize="19" TextAlignment="Center" Text="Proportional Gain" />
+                        <TextBlock x:Name="lblProportionalGain" Canvas.Left="8" Canvas.Top="87"
+                                   Width="61" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarProportionalGain" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="89" Width="202" Height="30"
+                                Minimum="1" Maximum="200" Value="4" SmallChange="1" LargeChange="1" />
+                        <TextBlock x:Name="labelMaxLimit" Canvas.Left="44" Canvas.Top="154"
+                                   Width="250" FontSize="19" TextAlignment="Center" Text="Maximum Limit" />
+                        <TextBlock x:Name="lblHighSteerPWM" Canvas.Left="8" Canvas.Top="176"
+                                   Width="61" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarHighSteerPWM" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="179" Width="202" Height="30"
+                                Minimum="0" Maximum="256" Value="50" SmallChange="1" LargeChange="2" />
+                        <TextBlock x:Name="labelMinToMove" Canvas.Left="44" Canvas.Top="244"
+                                   Width="250" FontSize="19" TextAlignment="Center" Text="Minimum to Move" />
+                        <TextBlock x:Name="lblMinPWM" Canvas.Left="8" Canvas.Top="266"
+                                   Width="61" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarMinPWM" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="269" Width="202" Height="30"
+                                Minimum="0" Maximum="200" Value="10" SmallChange="1" LargeChange="1" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+
+        </TabControl>
+
+        <!-- ============================================================================
+             panel2 — top telemetry strip (WinForms Panel @ (4,403) 365x43): live Set / Act / Err
+             steer-angle readouts plus the expand/collapse RepeatButton.
+             ============================================================================ -->
+        <Border x:Name="panel2" Canvas.Left="4" Canvas.Top="403" Width="365" Height="43"
+                Background="Transparent">
+            <Canvas ClipToBounds="True">
+                <TextBlock x:Name="label12" Canvas.Left="4" Canvas.Top="11"
+                           Width="31" FontSize="13" TextAlignment="Right" Text="Set:" />
+                <TextBlock x:Name="lblSteerAngle" Canvas.Left="32" Canvas.Top="8"
+                           Width="71" FontSize="19" FontWeight="Bold" TextAlignment="Left" Text="-55.5" />
+                <TextBlock x:Name="label11" Canvas.Left="101" Canvas.Top="11"
+                           Width="30" FontSize="13" TextAlignment="Right" Text="Act:" />
+                <TextBlock x:Name="lblSteerAngleActual" Canvas.Left="131" Canvas.Top="8"
+                           Width="71" FontSize="19" FontWeight="Bold" TextAlignment="Left" Text="-55.5" />
+                <TextBlock x:Name="label13" Canvas.Left="198" Canvas.Top="11"
+                           Width="29" FontSize="13" TextAlignment="Right" Text="Err:" />
+                <TextBlock x:Name="lblError" Canvas.Left="225" Canvas.Top="8"
+                           Width="71" FontSize="19" FontWeight="Bold" TextAlignment="Left" Text="-30.0" />
+                <RepeatButton x:Name="btnExpand" Classes="flatImage" Canvas.Left="299" Canvas.Top="3"
+                              Width="62" Height="37">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ArrowRight.png" />
+                </RepeatButton>
+            </Canvas>
+        </Border>
+
+        <!-- ============================================================================
+             panel1 — manual free-drive / steer-angle test panel (WinForms Panel @ (5,446) 364x176):
+             free-drive toggles, angle nudge RepeatButtons, PWM + calculated angle/diameter readouts.
+             ============================================================================ -->
+        <Border x:Name="panel1" Canvas.Left="5" Canvas.Top="446" Width="364" Height="176"
+                Background="Transparent">
+            <Canvas ClipToBounds="True">
+                <Button x:Name="btnFreeDrive" Classes="flatImage" Canvas.Left="4" Canvas.Top="17"
+                        Width="73" Height="56">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/SteerDriveOff.png" />
+                </Button>
+                <RepeatButton x:Name="btnSteerAngleDown" Classes="flatImage" Canvas.Left="95" Canvas.Top="17"
+                              Width="73" Height="56">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ArrowLeft.png" />
+                </RepeatButton>
+                <RepeatButton x:Name="btnSteerAngleUp" Classes="flatImage" Canvas.Left="186" Canvas.Top="17"
+                              Width="73" Height="56">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ArrowRight.png" />
+                </RepeatButton>
+                <Button x:Name="btnFreeDriveZero" Classes="flatImage" Canvas.Left="277" Canvas.Top="17"
+                        Width="73" Height="56">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/SteerZero.png" />
+                </Button>
+                <Button x:Name="btnStartSA" Classes="flatImage" Canvas.Left="15" Canvas.Top="104"
+                        Width="71" Height="67">
+                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/BoundaryRecord.png" />
+                </Button>
+                <TextBlock x:Name="label9" Canvas.Left="17" Canvas.Top="76"
+                           Width="64" FontSize="19" TextAlignment="Right" Text="PWM:" />
+                <TextBlock x:Name="lblPWMDisplay" Canvas.Left="78" Canvas.Top="76"
+                           Width="64" FontSize="19" FontWeight="Bold" TextAlignment="Left" Text="255" />
+                <TextBlock x:Name="label14" Canvas.Left="289" Canvas.Top="77"
+                           Width="45" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Or +5" />
+                <TextBlock x:Name="labelSteerAngle" Canvas.Left="113" Canvas.Top="113"
+                           Width="114" FontSize="19" TextAlignment="Right" Text="Steer Angle:" />
+                <TextBlock x:Name="lblCalcSteerAngleInner" Canvas.Left="294" Canvas.Top="113"
+                           Width="40" FontSize="19" FontWeight="Bold" TextAlignment="Left" Text="0.0" />
+                <TextBlock x:Name="labelDiameter" Canvas.Left="115" Canvas.Top="148"
+                           Width="93" FontSize="19" TextAlignment="Right" Text="Diameter:" />
+                <TextBlock x:Name="lblDiameter" Canvas.Left="294" Canvas.Top="148"
+                           Width="64" FontSize="19" FontWeight="Bold" TextAlignment="Left" Text="0.0 m" />
+            </Canvas>
+        </Border>
+
+        <!-- ============================================================================
+             tabSteerSettings — right-hand pop-out tab control (WinForms @ (373,5) 520x525,
+             ImageList icons). Pages: tabSensors, tabConfig, tabSettings, tabAlarm, tabOnTheLine.
+             Hidden in compact mode (clipped by the narrow window); revealed when expanded.
+             ============================================================================ -->
+        <TabControl x:Name="tabSteerSettings"
+                    Canvas.Left="373" Canvas.Top="5" Width="520" Height="525"
+                    FontSize="27">
+
+            <!-- ===================== tabSensors ===================== -->
+            <TabItem x:Name="tabSensors">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Steer/Sensors.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Canvas Width="512" Height="469" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <!-- Count / Encoder sensor -->
+                        <TextBlock x:Name="labelEncoder" Canvas.Left="5" Canvas.Top="6"
+                                   Width="200" FontSize="19" TextAlignment="Center" Text="Count Sensor" />
+                        <CheckBox x:Name="cboxEncoder" Classes="imageToggle" Canvas.Left="48" Canvas.Top="32"
+                                  Width="114" Height="78">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_TurnSensor.png" />
+                        </CheckBox>
+                        <!-- Pressure sensor -->
+                        <TextBlock x:Name="labelPressureTurnSensor" Canvas.Left="5" Canvas.Top="134"
+                                   Width="200" FontSize="19" TextAlignment="Center" Text="Pressure Sensor" />
+                        <CheckBox x:Name="cboxPressureSensor" Classes="imageToggle" Canvas.Left="48" Canvas.Top="159"
+                                  Width="114" Height="78">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_TurnSensorPressure.png" />
+                        </CheckBox>
+                        <!-- Current sensor -->
+                        <TextBlock x:Name="labelCurrentTurnSensor" Canvas.Left="5" Canvas.Top="269"
+                                   Width="200" FontSize="19" TextAlignment="Center" Text="Current Sensor" />
+                        <CheckBox x:Name="cboxCurrentSensor" Classes="imageToggle" Canvas.Left="48" Canvas.Top="295"
+                                  Width="114" Height="78">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_TurnSensorCurrent.png" />
+                        </CheckBox>
+                        <!-- Turn-sensor max counts + live sensor bar + threshold slider -->
+                        <TextBlock x:Name="labelTurnSensor" Canvas.Left="220" Canvas.Top="20"
+                                   Width="200" FontSize="19" TextAlignment="Center" Text="Turn Sensor" />
+                        <Button x:Name="nudMaxCounts" Classes="numeric" Canvas.Left="267" Canvas.Top="45"
+                                Width="107" Height="52" FontSize="37" Content="250" />
+                        <ProgressBar x:Name="pbarSensor" Canvas.Left="187" Canvas.Top="205" Width="257" Height="53"
+                                     Minimum="0" Maximum="255" />
+                        <TextBlock x:Name="lblPercentFS" Canvas.Left="450" Canvas.Top="216"
+                                   Width="57" FontSize="24" FontWeight="Bold" TextAlignment="Center" Text="0%" />
+                        <Slider x:Name="hsbarSensor" Orientation="Horizontal"
+                                Canvas.Left="187" Canvas.Top="320" Width="257" Height="53"
+                                Minimum="0" Maximum="255" Value="0" SmallChange="1" LargeChange="1" />
+                        <TextBlock x:Name="lblhsbarSensor" Canvas.Left="450" Canvas.Top="329"
+                                   Width="57" FontSize="24" FontWeight="Bold" TextAlignment="Center" Text="0%" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== tabConfig (motor / sensors / inverts) ===================== -->
+            <TabItem x:Name="tabConfig">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Config/ConS_Pins.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Canvas Width="512" Height="469" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <!-- Right column: combo selectors -->
+                        <TextBlock x:Name="labelMotorDriver" Canvas.Left="326" Canvas.Top="20"
+                                   Width="181" FontSize="19" TextAlignment="Center" Text="Motor Driver" />
+                        <ComboBox x:Name="cboxMotorDrive" Canvas.Left="329" Canvas.Top="46"
+                                  Width="175" Height="37" FontSize="24" FontWeight="Bold">
+                            <ComboBoxItem>Cytron</ComboBoxItem>
+                            <ComboBoxItem>IBT2</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock x:Name="labelADConverter" Canvas.Left="326" Canvas.Top="118"
+                                   Width="181" FontSize="19" TextAlignment="Center" Text="A2D Convertor" />
+                        <ComboBox x:Name="cboxConv" Canvas.Left="329" Canvas.Top="144"
+                                  Width="175" Height="37" FontSize="24" FontWeight="Bold">
+                            <ComboBoxItem>Single</ComboBoxItem>
+                            <ComboBoxItem>Differential</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock x:Name="labelIMUAxis" Canvas.Left="326" Canvas.Top="216"
+                                   Width="181" FontSize="19" TextAlignment="Center" Text="IMU X or Y Axis" />
+                        <ComboBox x:Name="cboxXY" Canvas.Left="329" Canvas.Top="242"
+                                  Width="175" Height="37" FontSize="24" FontWeight="Bold">
+                            <ComboBoxItem>X</ComboBoxItem>
+                            <ComboBoxItem>Y</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock x:Name="labelSteerEnable" Canvas.Left="326" Canvas.Top="314"
+                                   Width="181" FontSize="19" TextAlignment="Center" Text="Steer Enable" />
+                        <ComboBox x:Name="cboxSteerEnable" Canvas.Left="329" Canvas.Top="340"
+                                  Width="175" Height="37" FontSize="24" FontWeight="Bold">
+                            <ComboBoxItem>None</ComboBoxItem>
+                            <ComboBoxItem>Switch</ComboBoxItem>
+                            <ComboBoxItem>Button</ComboBoxItem>
+                        </ComboBox>
+                        <TextBlock x:Name="labelSteerDescription" Canvas.Left="317" Canvas.Top="383"
+                                   Width="193" Height="32" FontSize="13" TextWrapping="Wrap"
+                                   Text="Button - Push On. Push Off&#x0A;Switch - Pushed On, Release Off" />
+                        <!-- Left column: Danfoss + invert toggles -->
+                        <TextBlock x:Name="label55" Canvas.Left="1" Canvas.Top="32"
+                                   Width="130" FontSize="19" TextAlignment="Center" Text="Danfoss" />
+                        <CheckBox x:Name="cboxDanfoss" Classes="imageToggle" Canvas.Left="9" Canvas.Top="57"
+                                  Width="114" Height="78">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConST_Danfoss.png" />
+                        </CheckBox>
+                        <TextBlock x:Name="labelInvertWas" Canvas.Left="129" Canvas.Top="30"
+                                   Width="181" FontSize="19" TextAlignment="Center" Text="Invert WAS" />
+                        <CheckBox x:Name="chkInvertWAS" Classes="imageToggle" Canvas.Left="165" Canvas.Top="57"
+                                  Width="109" Height="78" IsChecked="True">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_InvertWAS.png" />
+                        </CheckBox>
+                        <TextBlock x:Name="labelInvertMotor" Canvas.Left="129" Canvas.Top="167"
+                                   Width="181" FontSize="19" TextAlignment="Center" Text="Invert Motor Dir" />
+                        <CheckBox x:Name="chkInvertSteer" Classes="imageToggle" Canvas.Left="165" Canvas.Top="192"
+                                  Width="109" Height="78">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_InvertDirection.png" />
+                        </CheckBox>
+                        <TextBlock x:Name="labelInvertRelays" Canvas.Left="129" Canvas.Top="299"
+                                   Width="181" FontSize="19" TextAlignment="Center" Text="Invert Relays" />
+                        <CheckBox x:Name="chkSteerInvertRelays" Classes="imageToggle" Canvas.Left="165" Canvas.Top="324"
+                                  Width="109" Height="78">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_InvertRelay.png" />
+                        </CheckBox>
+                    </Canvas>
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== tabSettings (U-turn / sidehill / Smart-WAS / mode) ===================== -->
+            <TabItem x:Name="tabSettings">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Config/ConS_ModulesSteer.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Canvas Width="512" Height="469" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <!-- U-Turn compensation -->
+                        <TextBlock x:Name="labelUturnCompensation" Canvas.Left="109" Canvas.Top="20"
+                                   Width="339" FontSize="19" TextAlignment="Center" Text="UTurn Compensation" />
+                        <TextBlock x:Name="lblUTurnCompensation" Canvas.Left="18" Canvas.Top="56"
+                                   Width="88" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarUTurnCompensation" Orientation="Horizontal"
+                                Canvas.Left="109" Canvas.Top="46" Width="339" Height="53"
+                                Minimum="2" Maximum="20" Value="5" SmallChange="1" LargeChange="1" />
+                        <TextBlock x:Name="label39" Canvas.Left="112" Canvas.Top="103"
+                                   Width="27" FontSize="13" TextAlignment="Center" Text="Out" />
+                        <TextBlock x:Name="label41" Canvas.Left="426" Canvas.Top="103"
+                                   Width="18" FontSize="13" TextAlignment="Center" Text="In" />
+                        <!-- Sidehill compensation -->
+                        <TextBlock x:Name="labelSideHill" Canvas.Left="109" Canvas.Top="124"
+                                   Width="339" FontSize="19" TextAlignment="Center" Text="Sidehill Deg Turn per Deg of Roll" />
+                        <TextBlock x:Name="lblSideHillComp" Canvas.Left="18" Canvas.Top="161"
+                                   Width="88" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarSideHillComp" Orientation="Horizontal"
+                                Canvas.Left="109" Canvas.Top="150" Width="339" Height="53"
+                                Minimum="0" Maximum="100" Value="5" SmallChange="1" LargeChange="1" />
+                        <!-- Stanley/Pure mode toggle -->
+                        <TextBlock x:Name="label34" Canvas.Left="283" Canvas.Top="213"
+                                   Width="201" FontSize="19" TextAlignment="Center" Text="Stanley/ Pure" />
+                        <Button x:Name="btnStanleyPure" Classes="flatImage" Canvas.Left="340" Canvas.Top="240"
+                                Width="86" Height="90">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ModePurePursuit.png" />
+                        </Button>
+                        <!-- Steer-in-reverse toggle -->
+                        <TextBlock x:Name="labelSteerInReverse" Canvas.Left="283" Canvas.Top="347"
+                                   Width="201" FontSize="19" TextAlignment="Center" Text="Steer In Reverse?" />
+                        <CheckBox x:Name="cboxSteerInReverse" Classes="imageToggle" Canvas.Left="340" Canvas.Top="374"
+                                  Width="86" Height="90">
+                            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConV_RevSteer.png" />
+                        </CheckBox>
+                        <!-- Smart-WAS auto-calibration group -->
+                        <Border x:Name="grpSmartWAS" Canvas.Left="23" Canvas.Top="251" Width="220" Height="200"
+                                BorderBrush="Gray" BorderThickness="1" CornerRadius="3" Background="Transparent">
+                            <Canvas>
+                                <TextBlock Canvas.Left="8" Canvas.Top="-2" FontSize="16" FontWeight="Bold"
+                                           Background="Gainsboro" Padding="3,0" Text="Smart WAS" />
+                                <Button x:Name="btnSmartZeroWAS" Classes="flatImage" Canvas.Left="46" Canvas.Top="38"
+                                        Width="128" Height="60" FontSize="15" FontWeight="Bold">
+                                    <Panel>
+                                        <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Steer/ST_SmartWAS.png" />
+                                        <TextBlock Text="0.0°" Foreground="Black" FontSize="15" FontWeight="Bold"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Panel>
+                                </Button>
+                                <TextBlock x:Name="lblSmartCalStatus" Canvas.Left="10" Canvas.Top="150"
+                                           Width="43" FontSize="11" FontWeight="Bold" Text="Ready" />
+                                <TextBlock x:Name="lblSmartCalSamples" Canvas.Left="10" Canvas.Top="170"
+                                           Width="59" FontSize="11" Text="Samples: 0" />
+                                <TextBlock x:Name="lblSmartCalConfidence" Canvas.Left="110" Canvas.Top="170"
+                                           Width="100" FontSize="11" Text="Confidence: 0%" />
+                            </Canvas>
+                        </Border>
+                    </Canvas>
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== tabAlarm (speed limits) ===================== -->
+            <TabItem x:Name="tabAlarm">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Con_SourcesRTKAlarm.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Canvas Width="512" Height="469" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <!-- Manual-turn / guidance speed limit -->
+                        <TextBlock x:Name="labelManualTurns" Canvas.Left="284" Canvas.Top="45"
+                                   Width="223" FontSize="19" TextAlignment="Center" Text="Manual Turns" />
+                        <Image x:Name="pictureBox10" Canvas.Left="335" Canvas.Top="74" Width="118" Height="74"
+                               Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/con_VehicleFunctionSpeedLimit.png" />
+                        <Button x:Name="nudGuidanceSpeedLimit" Classes="numeric" Canvas.Left="339" Canvas.Top="154"
+                                Width="110" Height="52" FontSize="37" FontWeight="Bold" Content="20" />
+                        <TextBlock x:Name="label160" Canvas.Left="339" Canvas.Top="209"
+                                   Width="110" FontSize="15" TextAlignment="Center" Text="Kmh" />
+                        <!-- Min / Max steer speed -->
+                        <TextBlock x:Name="labelMinSpeed" Canvas.Left="6" Canvas.Top="249"
+                                   Width="223" FontSize="19" TextAlignment="Center" Text="Min Speed" />
+                        <TextBlock x:Name="labelMaxSpeed" Canvas.Left="284" Canvas.Top="251"
+                                   Width="223" FontSize="19" TextAlignment="Center" Text="Max Speed" />
+                        <Image x:Name="pictureBox17" Canvas.Left="58" Canvas.Top="276" Width="118" Height="75"
+                               Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConV_MinAutoSteer.png" />
+                        <Image x:Name="pictureBox16" Canvas.Left="336" Canvas.Top="276" Width="118" Height="75"
+                               Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConV_MaxAutoSteer.png" />
+                        <Button x:Name="nudMinSteerSpeed" Classes="numeric" Canvas.Left="62" Canvas.Top="357"
+                                Width="110" Height="52" FontSize="37" FontWeight="Bold" Content="0.0" />
+                        <Button x:Name="nudMaxSteerSpeed" Classes="numeric" Canvas.Left="340" Canvas.Top="357"
+                                Width="110" Height="52" FontSize="37" FontWeight="Bold" Content="12.0" />
+                        <TextBlock x:Name="label166" Canvas.Left="62" Canvas.Top="412"
+                                   Width="110" FontSize="15" TextAlignment="Center" Text="kmh" />
+                        <TextBlock x:Name="label163" Canvas.Left="340" Canvas.Top="412"
+                                   Width="110" FontSize="15" TextAlignment="Center" Text="kmh" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== tabOnTheLine (display / guidance-bar) ===================== -->
+            <TabItem x:Name="tabOnTheLine">
+                <TabItem.Header>
+                    <Image Width="40" Height="40" Stretch="Uniform"
+                           Source="avares://AgOpenGPS/btnImages/Config/ConS_VehicleConfig.png" />
+                </TabItem.Header>
+                <Grid Background="Gainsboro">
+                    <Canvas Width="512" Height="469" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <!-- Line width -->
+                        <TextBlock x:Name="labelLineWidth" Canvas.Left="20" Canvas.Top="19"
+                                   Width="205" FontSize="19" TextAlignment="Center" Text="Line Width" />
+                        <Image x:Name="pictureBox5" Canvas.Left="17" Canvas.Top="44" Width="118" Height="75"
+                               Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConV_LineWith.png" />
+                        <Button x:Name="nudLineWidth" Classes="numeric" Canvas.Left="153" Canvas.Top="47"
+                                Width="78" Height="46" FontSize="32" FontWeight="Bold" Content="160" />
+                        <TextBlock x:Name="label44" Canvas.Left="171" Canvas.Top="95"
+                                   Width="43" FontSize="15" TextAlignment="Right" Text="pixels" />
+                        <!-- Nudge distance -->
+                        <TextBlock x:Name="labelNudgeDistance" Canvas.Left="288" Canvas.Top="19"
+                                   Width="205" FontSize="19" TextAlignment="Center" Text="Nudge Distance" />
+                        <Image x:Name="pictureBox2" Canvas.Left="285" Canvas.Top="44" Width="118" Height="75"
+                               Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConV_SnapDistance.png" />
+                        <Button x:Name="nudSnapDistance" Classes="numeric" Canvas.Left="412" Canvas.Top="47"
+                                Width="78" Height="46" FontSize="32" FontWeight="Bold" Content="20" />
+                        <TextBlock x:Name="label43" Canvas.Left="437" Canvas.Top="95"
+                                   Width="28" FontSize="15" TextAlignment="Right" Text="cm" />
+                        <!-- Next guidance line search time -->
+                        <TextBlock x:Name="labelNextGuidanceLine" Canvas.Left="20" Canvas.Top="164"
+                                   Width="205" FontSize="19" TextAlignment="Center" Text="Next Guidance Line Search Time" />
+                        <Image x:Name="pictureBox12" Canvas.Left="17" Canvas.Top="190" Width="118" Height="75"
+                               Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConV_GuidanceLookAhead.png" />
+                        <Button x:Name="nudGuidanceLookAhead" Classes="numeric" Canvas.Left="142" Canvas.Top="196"
+                                Width="100" Height="46" FontSize="32" FontWeight="Bold" Content="2.0" />
+                        <TextBlock x:Name="label107" Canvas.Left="160" Canvas.Top="245"
+                                   Width="62" FontSize="15" TextAlignment="Right" Text="Seconds" />
+                        <!-- cm per pixel -->
+                        <TextBlock x:Name="labelCmPix" Canvas.Left="289" Canvas.Top="164"
+                                   Width="205" FontSize="19" TextAlignment="Center" Text="cm Per Pixel" />
+                        <Image x:Name="pictureBox1" Canvas.Left="285" Canvas.Top="190" Width="118" Height="75"
+                               Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConV_CmPixel.png" />
+                        <Button x:Name="nudcmPerPixel" Classes="numeric" Canvas.Left="412" Canvas.Top="193"
+                                Width="78" Height="46" FontSize="32" FontWeight="Bold" Content="8" />
+                        <TextBlock x:Name="label46" Canvas.Left="436" Canvas.Top="242"
+                                   Width="30" FontSize="16" TextAlignment="Right" Text="cm" />
+                        <!-- Guidance-bar style group -->
+                        <Border x:Name="groupboxlabelGuidanceBar" Canvas.Left="17" Canvas.Top="311" Width="473" Height="139"
+                                BorderBrush="Gray" BorderThickness="1" CornerRadius="3" Background="Transparent">
+                            <Canvas>
+                                <TextBlock Canvas.Left="8" Canvas.Top="-2" FontSize="19" FontWeight="Bold"
+                                           Background="Gainsboro" Padding="3,0" Text="Guidance Bar" />
+                                <RadioButton x:Name="rbtnLightBar" Classes="imageToggle" GroupName="GuidanceBar"
+                                             Canvas.Left="11" Canvas.Top="35" Width="121" Height="74">
+                                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConD_LightBar.png" />
+                                </RadioButton>
+                                <TextBlock x:Name="labelLightbar" Canvas.Left="5" Canvas.Top="112"
+                                           Width="132" FontSize="16" TextAlignment="Center" Text="Lightbar" />
+                                <RadioButton x:Name="rbtnSteerBar" Classes="imageToggle" GroupName="GuidanceBar"
+                                             Canvas.Left="185" Canvas.Top="35" Width="121" Height="74" IsChecked="True">
+                                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConD_SteerBarBar.png" />
+                                </RadioButton>
+                                <TextBlock x:Name="labelSteerBar" Canvas.Left="179" Canvas.Top="112"
+                                           Width="132" FontSize="16" TextAlignment="Center" Text="Steer Bar" />
+                                <CheckBox x:Name="chkDisplayLightbar" Classes="imageToggle"
+                                          Canvas.Left="359" Canvas.Top="35" Width="100" Height="74">
+                                    <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/SwitchOn.png" />
+                                </CheckBox>
+                                <TextBlock x:Name="labelOnOff" Canvas.Left="343" Canvas.Top="112"
+                                           Width="132" FontSize="16" TextAlignment="Center" Text="On/Off" />
+                            </Canvas>
+                        </Border>
+                    </Canvas>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- ============================================================================
+             Form-level command strip along the bottom of the expanded window:
+             Wizard, Reset-to-defaults, Send+Save (with pending-change indicator), Close.
+             ============================================================================ -->
+        <TextBlock x:Name="labelWizard" Canvas.Left="381" Canvas.Top="530"
+                   Width="100" FontSize="15" TextAlignment="Center" Text="Wizard" />
+        <Button x:Name="btnSteerWizard" Classes="flatImage" Canvas.Left="393" Canvas.Top="553"
+                Width="75" Height="69">
+            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/WizardWand.png" />
+        </Button>
+
+        <TextBlock x:Name="labelReset" Canvas.Left="485" Canvas.Top="530"
+                   Width="150" FontSize="15" TextAlignment="Center" Text="Reset All To Defaults" />
+        <Button x:Name="button2" Classes="flatImage" Canvas.Left="523" Canvas.Top="554"
+                Width="75" Height="69">
+            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Reset_Default.png" />
+        </Button>
+
+        <TextBlock x:Name="labelSendAndSave" Canvas.Left="641" Canvas.Top="530"
+                   Width="175" FontSize="17" FontWeight="Bold" VerticalAlignment="Center" Text="Send + Save" />
+        <Button x:Name="btnSendSteerConfigPGN" Classes="flatImage" Canvas.Left="643" Canvas.Top="560"
+                Width="103" Height="62">
+            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ToolAcceptChange.png" />
+        </Button>
+        <!-- pending-change indicator: shown by code-behind while a steer-config change is unsent -->
+        <Image x:Name="pboxSendSteer" Canvas.Left="753" Canvas.Top="560" Width="61" Height="62"
+               IsVisible="False" Stretch="Uniform"
+               Source="avares://AgOpenGPS/btnImages/Config/ConSt_Mandatory.png" />
+
+        <Button x:Name="btnClose" Classes="flatImage" Canvas.Left="824" Canvas.Top="558"
+                Width="64" Height="64">
+            <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/OK64.png" />
+        </Button>
+    </Canvas>
+</Window>

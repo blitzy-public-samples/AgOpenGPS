@@ -1,0 +1,159 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — camera pan pad (Avalonia view).
+
+    1:1 visual PARITY reimplementation of the WinForms Forms/FormPan (FormPan.cs +
+    FormPan.Designer.cs), per AAP §0.3.3 — never a redesign (no new colours, no relayout, no UX
+    change). FormPan is a small, borderless, floating 8-direction camera-pan pad: a 3x3
+    arrangement of directional arrow buttons surrounding a central red cancel button, drawn over a
+    single transparent arrow-pad background image. It is shown as a NON-MODAL overlay above the
+    main FormGPS window (toggled by FormGPS.isPanFormVisible).
+
+    WIRING CONTRACT (the partner code-behind FormPanView.axaml.cs owns behaviour, NOT this markup):
+      * This view is IMPERATIVE, not MVVM — there is intentionally NO x:DataType, no DataContext
+        and no {Binding}. The nine buttons are addressed by the x:Name values below, which MUST
+        stay exactly as written so the code-behind can wire each Click handler by name. The original
+        click math lives in the code-behind: FormPan.cs adjusted mf.camera.PanX / PanY by
+        AdjustFactor (0.04) * camera.camSetDistance per direction, and btnPanCancel reset PanX/PanY
+        to 0, set isPanFormVisible = false and closed the window.
+      * No Click= attributes are declared here on purpose: the handler method names are owned by the
+        code-behind, which subscribes via e.g. btnPanUp.Click += ... using the named fields below.
+
+    WINDOW SHELL — mirrors FormPan.Designer.cs exactly:
+      ClientSize 180 x 180          ->  Width / Height (SystemDecorations="None" => client == window)
+      FormBorderStyle.None          ->  SystemDecorations="None"
+      ControlBox/Maximize/Minimize = false, fixed  ->  CanResize="False"
+      ShowInTaskbar = false         ->  ShowInTaskbar="False"
+      StartPosition.CenterParent    ->  WindowStartupLocation="CenterOwner" (shown over FormGPS)
+      Font Tahoma 11.25 Bold        ->  FontFamily="Tahoma" (buttons carry no text; set for fidelity)
+      BackColor = Black + TransparencyKey = Black
+                                    ->  Background="Transparent" + TransparencyLevelHint="Transparent".
+            The WinForms colour-key turned every black pixel see-through, yielding a floating
+            arrow-pad shape. The PanBackground.png asset is itself 180x180 RGBA with a fully
+            transparent field (verified ~89% transparent pixels, all four corners alpha 0), so its
+            own alpha channel reproduces the exact floating shape over the transparent window.
+      BackgroundImage = Resources.PanBackground (ImageLayout.Zoom)
+                                    ->  <Image .../PanBackground.png Stretch="Fill">. The asset is
+            exactly 180x180 (== client), so Fill maps 1:1 with the WinForms Zoom of a 180x180 image
+            into a 180x180 client — no scaling.
+
+    BUTTONS — all nine reproduce the WinForms designer buttons, which are TRANSPARENT, flat,
+    border-less click-regions carrying NO image/text of their own; every arrow and the central red
+    cancel glyph is painted by the single PanBackground.png beneath them. Designer Sizes are
+    preserved exactly: 48 x 48 for the eight directional buttons, 40 x 40 for the central cancel.
+    Background is set to Transparent (not null) so the full button bounds stay hit-testable, exactly
+    like the original WinForms regions. AutomationProperties.Name supplies an accessible label for
+    each image-less button (invisible accessibility — no visual impact, parity preserved).
+
+    Designer x:Name -> view x:Name (agent-prompt naming contract; the four diagonals gain a "Pan"
+    prefix): btnUpLeft -> btnPanUpLeft, btnUpRight -> btnPanUpRight, btnDownLeft -> btnPanDownLeft,
+    btnDownRight -> btnPanDownRight; btnPanUp / btnPanDn / btnPanLeft / btnPanRight / btnPanCancel
+    are unchanged.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormPanView"
+        Width="180"
+        Height="180"
+        SystemDecorations="None"
+        CanResize="False"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        FontFamily="Tahoma">
+
+    <!--
+        Shared style for the pan buttons (Classes="pan"): flat, border-less, fully transparent face
+        in every interaction state, reproducing the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor.Transparent buttons. The default size is the
+        designer's 48 x 48 (btnPanCancel overrides to 40 x 40 locally). The template
+        ContentPresenter overrides stop the Fluent theme from painting a hover/pressed fill over the
+        arrow image beneath — the same technique used by Keypad/NumKeypad.axaml and FormYesView.axaml.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.pan">
+            <Setter Property="Width" Value="48" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.pan /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.pan:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.pan:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Overlay root. The PanBackground image is declared first (bottom of the z-order) and the
+        3x3 button Grid second (on top), so the transparent click-regions sit over the arrows
+        exactly as the WinForms controls sat over the form's BackgroundImage.
+    -->
+    <Grid>
+
+        <!-- WinForms FormPan.BackgroundImage = Resources.PanBackground, ImageLayout.Zoom. The asset
+             is 180x180 (== client), so Stretch="Fill" maps 1:1 with no scaling. Its own alpha
+             channel (the eight blue arrows + the central red cancel glyph on a transparent field)
+             defines the floating pad shape; the surrounding transparent window completes the WinForms
+             TransparencyKey = Black effect. IsHitTestVisible="False" keeps the image inert so all
+             input is handled by the buttons above it. -->
+        <Image Source="avares://AgOpenGPS/btnImages/PanBackground.png"
+               Stretch="Fill"
+               IsHitTestVisible="False" />
+
+        <!-- 3x3 pan grid. Uniform thirds (60 px each across the 180 px client) centre each
+             designer-sized button over its arrow; verified <= 3 px from the WinForms absolute button
+             Locations (3/65/127 x 4/65/126), an offset that is imperceptible because the buttons are
+             invisible and the arrows are supplied by the background image. -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Row 0 — up-left / up / up-right  (WinForms btnUpLeft / btnPanUp / btnUpRight) -->
+            <Button x:Name="btnPanUpLeft" Classes="pan" Grid.Row="0" Grid.Column="0"
+                    AutomationProperties.Name="Pan up and left" />
+            <Button x:Name="btnPanUp" Classes="pan" Grid.Row="0" Grid.Column="1"
+                    AutomationProperties.Name="Pan up" />
+            <Button x:Name="btnPanUpRight" Classes="pan" Grid.Row="0" Grid.Column="2"
+                    AutomationProperties.Name="Pan up and right" />
+
+            <!-- Row 1 — left / cancel (40 x 40) / right  (WinForms btnPanLeft / btnPanCancel / btnPanRight) -->
+            <Button x:Name="btnPanLeft" Classes="pan" Grid.Row="1" Grid.Column="0"
+                    AutomationProperties.Name="Pan left" />
+            <Button x:Name="btnPanCancel" Classes="pan" Grid.Row="1" Grid.Column="1"
+                    Width="40" Height="40"
+                    AutomationProperties.Name="Cancel pan" />
+            <Button x:Name="btnPanRight" Classes="pan" Grid.Row="1" Grid.Column="2"
+                    AutomationProperties.Name="Pan right" />
+
+            <!-- Row 2 — down-left / down / down-right  (WinForms btnDownLeft / btnPanDn / btnDownRight) -->
+            <Button x:Name="btnPanDownLeft" Classes="pan" Grid.Row="2" Grid.Column="0"
+                    AutomationProperties.Name="Pan down and left" />
+            <Button x:Name="btnPanDn" Classes="pan" Grid.Row="2" Grid.Column="1"
+                    AutomationProperties.Name="Pan down" />
+            <Button x:Name="btnPanDownRight" Classes="pan" Grid.Row="2" Grid.Column="2"
+                    AutomationProperties.Name="Pan down and right" />
+        </Grid>
+    </Grid>
+</Window>

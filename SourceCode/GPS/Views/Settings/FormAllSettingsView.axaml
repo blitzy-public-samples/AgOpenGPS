@@ -1,0 +1,502 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "All Settings" read-only diagnostic viewer (Avalonia view).
+
+    1:1 PARITY reimplementation of the WinForms `Forms/Settings/FormAllSettings`
+    (source: FormAllSettings.cs + FormAllSettings.Designer.cs). Faithful re-platform per
+    AAP §0.3.3 — every size/font/colour/literal below is taken verbatim from the WinForms
+    designer & code; no redesign, no relayout, no new colours.
+
+    WHAT IT SHOWS
+      A read-only viewer of every Vehicle / Tool / Environment setting (Profile value vs
+      Default, with changed values highlighted) plus a live System / GPS tab. The ten WinForms
+      DataGridViews are reimplemented as Avalonia ItemsControls with a Grid row-template —
+      DELIBERATELY NOT a DataGrid, so no Avalonia.Controls.DataGrid NuGet package is introduced
+      (per the AAP; flag for coordination if the team later prefers DataGrid).
+
+    SHELL PARITY (FormAllSettings.Designer.cs):
+      Text "All Settings"            -> Title="All Settings"
+      ClientSize 1188 x 671          -> Width="1188" Height="671"
+      StartPosition CenterParent     -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS)
+      (tool window, not in taskbar)  -> ShowInTaskbar="False"
+      FormBorderStyle.FixedToolWindow + ControlBox=false -> CanResize="False".
+          NOTE: the AAP text suggested CanResize="True" but explicitly directed to "confirm vs
+          designer FormBorderStyle and match". The designer is authoritative — FixedToolWindow is
+          a FIXED (non-resizable) window — so CanResize="False" is the parity-correct value and is
+          consistent with the sibling fixed dialogs (FormYesView / FormSavingView).
+      Background                     -> {DynamicResource AogFrameBrush} (App.axaml day/night frame
+          brush) so the window chrome follows the app theme. The grids themselves keep hard-coded
+          light diagnostic colours (WhiteSmoke / LightYellow / SteelBlue) exactly as the WinForms
+          grids did — those are grid colours, not chrome, and are intentionally theme-independent.
+
+    CODE-BEHIND CONTRACT — FormAllSettingsView.axaml.cs
+    (partial class AgOpenGPS.Views.Settings.FormAllSettingsView : Window):
+      This view is IMPERATIVE / code-behind-driven (like FormSavingView): intentionally NO
+      x:DataType, NO DataContext and NO MVVM command binding. The code-behind must:
+        * Declare a parameterless ctor calling InitializeComponent(). (The WinForms ctor took the
+          calling FormGPS; in Avalonia the owner is supplied to ShowDialog and the live GPS
+          readouts are pushed by the code-behind's 1 s timer — parity with WinForms timer1_Tick.)
+        * Populate the ten named ItemsControls by assigning each .ItemsSource to an
+          ObservableCollection<SettingRow>:
+              dgvVehicleL  dgvVehicleM  dgvVehicleR
+              dgvToolL     dgvToolM     dgvToolR
+              dgvEnvironmentL dgvEnvironmentM dgvEnvironmentR    (3-column: Setting | Profile | Default)
+              dgvSystem                                          (2-column: Metric | Value)
+        * Expose on each row item (SettingRow) EXACTLY these public members — the property NAMES
+          are the binding contract (reflection bindings; no compiled binding here):
+              string Setting   -> col 0 ("Setting" / "Metric"); header rows carry the "── Title"
+              string Profile   -> col 1 ("Profile" / "Value");  system rows reuse this slot
+              string Default   -> col 2 ("Default");             empty on the 2-column system grid
+              bool   IsHeader  -> true for the "── Section" band rows
+              bool   IsChanged -> true when the profile value differs from the default (highlight)
+        * Update lblVehicleName / lblToolName / lblEnvironmentName at runtime
+          ("Vehicle: <profile>", "Tool: <profile>", "Environment: <name>").
+        * Attach the four button Click handlers IMPERATIVELY — the buttons expose only x:Name (no
+          Click= attribute) so the markup never hard-codes a handler name the separately-authored
+          code-behind might not define:
+              btnExportCSV  -> export all tabs to AllSettings.csv
+              btnScreenShot -> copy a composite image of the settings tabs to the clipboard
+              btnCreatePNG  -> save a composite PNG, then close
+              btnClose      -> close the dialog
+      No System.Windows.Forms, no DataVisualization, no OpenTK, no gStr — Avalonia 11.3 markup with
+      hard-coded English literals only (the WinForms form also used literal strings, not gStr).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.Settings.FormAllSettingsView"
+        Title="All Settings"
+        Width="1188"
+        Height="671"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Row-templates and shared styles. Defined once and reused across all ten lists so the
+        column geometry and colours stay identical between every grid (DRY parity).
+    -->
+    <Window.Resources>
+
+        <!--
+            3-column row template (Setting | Profile | Default) for the nine Vehicle/Tool/
+            Environment lists. WinForms column widths: colSetting=140, colCurrent("Profile")=70,
+            colDefault("Default")=Fill => ColumnDefinitions "140,70,*". A header row ("── Steer"
+            etc.) shows its full title spanning all three columns (so long titles stay readable);
+            normal rows show the three data cells. Visibility is driven purely by the IsHeader flag
+            via the styles below — no converters, no code.
+        -->
+        <DataTemplate x:Key="ThreeColumnRowTemplate">
+            <Border Classes="settingRow"
+                    Classes.header="{Binding IsHeader}"
+                    Classes.changed="{Binding IsChanged}">
+                <Grid ColumnDefinitions="140,70,*" Margin="6,0">
+                    <!-- Full-width section title; shown only on header rows. -->
+                    <TextBlock Grid.Column="0"
+                               Grid.ColumnSpan="3"
+                               Classes="headerTitle"
+                               Text="{Binding Setting}"
+                               IsVisible="{Binding IsHeader}" />
+                    <!-- Normal data cells; hidden on header rows (style: .header .dataCell). -->
+                    <TextBlock Grid.Column="0" Classes="dataCell" Text="{Binding Setting}" />
+                    <TextBlock Grid.Column="1" Classes="dataCell" Text="{Binding Profile}" />
+                    <TextBlock Grid.Column="2" Classes="dataCell" Text="{Binding Default}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!--
+            2-column row template (Metric | Value) for dgvSystem. WinForms: colSetting("Metric")=280,
+            colValue("Value")=Fill => ColumnDefinitions "280,*". Reuses Setting->Metric and
+            Profile->Value (the WinForms AddSysRow stored the value in the same col-1 slot as the
+            "Profile" column). System rows are header-or-normal only (never "changed").
+        -->
+        <DataTemplate x:Key="SystemRowTemplate">
+            <Border Classes="settingRow"
+                    Classes.header="{Binding IsHeader}">
+                <Grid ColumnDefinitions="280,*" Margin="6,0">
+                    <TextBlock Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               Classes="headerTitle"
+                               Text="{Binding Setting}"
+                               IsVisible="{Binding IsHeader}" />
+                    <TextBlock Grid.Column="0" Classes="dataCell" Text="{Binding Setting}" />
+                    <TextBlock Grid.Column="1" Classes="dataCell" Text="{Binding Profile}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+    </Window.Resources>
+
+    <Window.Styles>
+
+        <!-- Column-header band cells (sit on the SteelBlue band): white, bold, Tahoma 10pt = 13.333px. -->
+        <Style Selector="TextBlock.colHeader">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="FontSize" Value="13.333" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Data-row container. Normal rows: WhiteSmoke. CellBorderStyle.SingleHorizontal in WinForms
+             -> a 1px bottom separator. RowTemplate.Height 22 -> MinHeight 22. -->
+        <Style Selector="Border.settingRow">
+            <Setter Property="Background" Value="WhiteSmoke" />
+            <Setter Property="BorderBrush" Value="#FFDCDCDC" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="MinHeight" Value="22" />
+        </Style>
+        <!-- Changed rows (Profile != Default) -> LightYellow (ColorChanged). -->
+        <Style Selector="Border.settingRow.changed">
+            <Setter Property="Background" Value="LightYellow" />
+        </Style>
+        <!-- Header band rows -> Color.FromArgb(200,220,240) (ColorHeader). Declared after .changed so
+             a header row always wins the background even in the (unused) both-true case. -->
+        <Style Selector="Border.settingRow.header">
+            <Setter Property="Background" Value="#FFC8DCF0" />
+        </Style>
+
+        <!-- Data-row cell text (normal): Tahoma 10pt = 13.333px, dark text on the always-light grid
+             rows, single-line with ellipsis (DataGridView clipped at the fixed column width). -->
+        <Style Selector="Border.settingRow TextBlock">
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="FontSize" Value="13.333" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <!-- Header-row text override: bold, dark blue (Color.DarkBlue). -->
+        <Style Selector="Border.settingRow.header TextBlock">
+            <Setter Property="Foreground" Value="DarkBlue" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <!-- On header rows the three/two normal data cells are hidden; only the spanning title shows. -->
+        <Style Selector="Border.settingRow.header TextBlock.dataCell">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+
+        <!-- Tab headers: Tahoma 12pt = 16px Bold; ItemSize 220 x 44 -> MinWidth/MinHeight; centred. -->
+        <Style Selector="TabItem">
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="MinWidth" Value="220" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Toolbar buttons: FlatStyle.Flat + FlatAppearance.BorderSize=0 + transparent face. Keep the
+             flat/transparent look in every interaction state (override the Fluent hover/pressed fill,
+             same technique as FormYesView). -->
+        <Style Selector="Button.toolButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.toolButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.toolButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+    </Window.Styles>
+
+    <!--
+        Overall layout mirrors FormAllSettings.Designer.cs: a top header band (52px), the tab control
+        filling the middle, and the action buttons across the bottom.
+    -->
+    <Grid RowDefinitions="52,*,78">
+
+        <!-- panelHeader: SteelBlue band carrying the three active-profile labels. WinForms positions
+             the labels at x=6 / x=400 / x=794 (~thirds), Tahoma 12pt Bold White; reproduced with a
+             three-column grid. The code-behind sets the live text (UpdateHeader). -->
+        <Border Grid.Row="0" Background="SteelBlue">
+            <Grid ColumnDefinitions="*,*,*" Margin="6,0">
+                <TextBlock x:Name="lblVehicleName"
+                           Grid.Column="0"
+                           Text="Vehicle: -"
+                           FontFamily="Tahoma"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="lblToolName"
+                           Grid.Column="1"
+                           Text="Tool: -"
+                           FontFamily="Tahoma"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="lblEnvironmentName"
+                           Grid.Column="2"
+                           Text="Environment: -"
+                           FontFamily="Tahoma"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </Border>
+
+        <!-- tabControl: Vehicle / Tool / Environment / System / GPS. -->
+        <TabControl x:Name="tabControl" Grid.Row="1" Padding="0" Margin="0,3,0,0">
+
+            <!-- ── Vehicle tab: L = Steer + Arduino, M = Geometry, R = GPS + IMU + Brand ── -->
+            <TabItem Header="Vehicle">
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6" Margin="3">
+                    <!-- Left list -->
+                    <DockPanel Grid.Column="0">
+                        <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                            <Grid ColumnDefinitions="140,70,*">
+                                <TextBlock Grid.Column="0" Classes="colHeader" Text="Setting" />
+                                <TextBlock Grid.Column="1" Classes="colHeader" Text="Profile" />
+                                <TextBlock Grid.Column="2" Classes="colHeader" Text="Default" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Background="WhiteSmoke"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="dgvVehicleL"
+                                          ItemTemplate="{StaticResource ThreeColumnRowTemplate}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                    <!-- Middle list -->
+                    <DockPanel Grid.Column="1">
+                        <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                            <Grid ColumnDefinitions="140,70,*">
+                                <TextBlock Grid.Column="0" Classes="colHeader" Text="Setting" />
+                                <TextBlock Grid.Column="1" Classes="colHeader" Text="Profile" />
+                                <TextBlock Grid.Column="2" Classes="colHeader" Text="Default" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Background="WhiteSmoke"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="dgvVehicleM"
+                                          ItemTemplate="{StaticResource ThreeColumnRowTemplate}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                    <!-- Right list -->
+                    <DockPanel Grid.Column="2">
+                        <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                            <Grid ColumnDefinitions="140,70,*">
+                                <TextBlock Grid.Column="0" Classes="colHeader" Text="Setting" />
+                                <TextBlock Grid.Column="1" Classes="colHeader" Text="Profile" />
+                                <TextBlock Grid.Column="2" Classes="colHeader" Text="Default" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Background="WhiteSmoke"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="dgvVehicleR"
+                                          ItemTemplate="{StaticResource ThreeColumnRowTemplate}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- ── Tool tab: L = Dimensions + Type, M = Sections + Lookahead + Guidance, R = Work Switch ── -->
+            <TabItem Header="Tool">
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6" Margin="3">
+                    <DockPanel Grid.Column="0">
+                        <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                            <Grid ColumnDefinitions="140,70,*">
+                                <TextBlock Grid.Column="0" Classes="colHeader" Text="Setting" />
+                                <TextBlock Grid.Column="1" Classes="colHeader" Text="Profile" />
+                                <TextBlock Grid.Column="2" Classes="colHeader" Text="Default" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Background="WhiteSmoke"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="dgvToolL"
+                                          ItemTemplate="{StaticResource ThreeColumnRowTemplate}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                    <DockPanel Grid.Column="1">
+                        <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                            <Grid ColumnDefinitions="140,70,*">
+                                <TextBlock Grid.Column="0" Classes="colHeader" Text="Setting" />
+                                <TextBlock Grid.Column="1" Classes="colHeader" Text="Profile" />
+                                <TextBlock Grid.Column="2" Classes="colHeader" Text="Default" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Background="WhiteSmoke"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="dgvToolM"
+                                          ItemTemplate="{StaticResource ThreeColumnRowTemplate}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                    <DockPanel Grid.Column="2">
+                        <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                            <Grid ColumnDefinitions="140,70,*">
+                                <TextBlock Grid.Column="0" Classes="colHeader" Text="Setting" />
+                                <TextBlock Grid.Column="1" Classes="colHeader" Text="Profile" />
+                                <TextBlock Grid.Column="2" Classes="colHeader" Text="Default" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Background="WhiteSmoke"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="dgvToolR"
+                                          ItemTemplate="{StaticResource ThreeColumnRowTemplate}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- ── Environment tab: L = Display/Menu, M = AutoSteer + UTurn + GPS, R = Sound + Global + Work Switch ── -->
+            <TabItem Header="Environment">
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6" Margin="3">
+                    <DockPanel Grid.Column="0">
+                        <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                            <Grid ColumnDefinitions="140,70,*">
+                                <TextBlock Grid.Column="0" Classes="colHeader" Text="Setting" />
+                                <TextBlock Grid.Column="1" Classes="colHeader" Text="Profile" />
+                                <TextBlock Grid.Column="2" Classes="colHeader" Text="Default" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Background="WhiteSmoke"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="dgvEnvironmentL"
+                                          ItemTemplate="{StaticResource ThreeColumnRowTemplate}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                    <DockPanel Grid.Column="1">
+                        <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                            <Grid ColumnDefinitions="140,70,*">
+                                <TextBlock Grid.Column="0" Classes="colHeader" Text="Setting" />
+                                <TextBlock Grid.Column="1" Classes="colHeader" Text="Profile" />
+                                <TextBlock Grid.Column="2" Classes="colHeader" Text="Default" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Background="WhiteSmoke"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="dgvEnvironmentM"
+                                          ItemTemplate="{StaticResource ThreeColumnRowTemplate}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                    <DockPanel Grid.Column="2">
+                        <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                            <Grid ColumnDefinitions="140,70,*">
+                                <TextBlock Grid.Column="0" Classes="colHeader" Text="Setting" />
+                                <TextBlock Grid.Column="1" Classes="colHeader" Text="Profile" />
+                                <TextBlock Grid.Column="2" Classes="colHeader" Text="Default" />
+                            </Grid>
+                        </Border>
+                        <ScrollViewer Background="WhiteSmoke"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="dgvEnvironmentR"
+                                          ItemTemplate="{StaticResource ThreeColumnRowTemplate}" />
+                        </ScrollViewer>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- ── System / GPS tab: single 2-column (Metric | Value) live-data grid. ── -->
+            <TabItem Header="System / GPS">
+                <DockPanel Margin="3">
+                    <Border DockPanel.Dock="Top" Background="SteelBlue" Padding="6,3">
+                        <Grid ColumnDefinitions="280,*">
+                            <TextBlock Grid.Column="0" Classes="colHeader" Text="Metric" />
+                            <TextBlock Grid.Column="1" Classes="colHeader" Text="Value" />
+                        </Grid>
+                    </Border>
+                    <ScrollViewer Background="WhiteSmoke"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="dgvSystem"
+                                      ItemTemplate="{StaticResource SystemRowTemplate}" />
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+
+        </TabControl>
+
+        <!--
+            Bottom action bar. WinForms absolute positions: btnExportCSV at x=6 (far left); the image
+            buttons grouped to the right — btnCreatePNG (x=878), btnScreenShot (x=980), btnClose
+            (x=1112). Reproduced with CSV docked left and the three glyph buttons in a right-aligned
+            row (same left-to-right order). All glyphs are served from the GPS assembly via avares://.
+        -->
+        <Grid Grid.Row="2" Margin="6,4">
+
+            <!-- btnExportCSV: text-only "CSV", DarkSlateGray, Tahoma 10pt Bold, 80 x 65, far left. -->
+            <Button x:Name="btnExportCSV"
+                    Classes="toolButton"
+                    Content="CSV"
+                    Foreground="DarkSlateGray"
+                    FontFamily="Tahoma"
+                    FontSize="13.333"
+                    FontWeight="Bold"
+                    Width="80"
+                    Height="65"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="Export all settings to CSV" />
+
+            <!-- Right-hand glyph group: Create PNG, Screenshot, Close. -->
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Spacing="22">
+
+                <!-- btnCreatePNG: Resources.Screen2PNG, 80 x 65 button. -->
+                <Button x:Name="btnCreatePNG"
+                        Classes="toolButton"
+                        Width="80"
+                        Height="65"
+                        AutomationProperties.Name="Save settings as PNG">
+                    <Image Source="avares://AgOpenGPS/btnImages/Screen2PNG.png"
+                           Width="56"
+                           Height="56"
+                           Stretch="Uniform" />
+                </Button>
+
+                <!-- btnScreenShot: Resources.ScreenShot, 80 x 65 button. -->
+                <Button x:Name="btnScreenShot"
+                        Classes="toolButton"
+                        Width="80"
+                        Height="65"
+                        AutomationProperties.Name="Copy settings screenshot to clipboard">
+                    <Image Source="avares://AgOpenGPS/btnImages/ScreenShot.png"
+                           Width="56"
+                           Height="56"
+                           Stretch="Uniform" />
+                </Button>
+
+                <!-- btnClose: Resources.Cancel64, 64 x 64 button, extra left margin to mirror the
+                     wider WinForms gap before Close. -->
+                <Button x:Name="btnClose"
+                        Classes="toolButton"
+                        Width="64"
+                        Height="64"
+                        Margin="30,0,0,0"
+                        AutomationProperties.Name="Close">
+                    <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                           Width="56"
+                           Height="56"
+                           Stretch="Uniform" />
+                </Button>
+
+            </StackPanel>
+        </Grid>
+
+    </Grid>
+</Window>

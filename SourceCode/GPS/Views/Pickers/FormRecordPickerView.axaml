@@ -1,0 +1,265 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Recorded-Path picker dialog (Avalonia view).
+
+    1:1 visual + behavioural PARITY reimplementation of the deleted WinForms
+    `Forms/Pickers/FormRecordPicker` (FormRecordPicker.cs + FormRecordPicker.Designer.cs).
+    It lists the *.rec recorded driving paths found in the current field directory and lets the
+    operator load one ("Use Selected"), delete one ("Delete Record"), turn the recorded path off
+    ("Path Off"), or cancel. Per AAP §0.3.3 this is a faithful parity reimplementation of the
+    current Windows Forms look — never a redesign: no new colours, no relayout, no UX changes.
+
+    WIRING CONTRACT — this view is a CODE-BEHIND dialog, NOT MVVM (exactly like the sibling
+    FormYesView / FormInputDialogView):
+      * There is intentionally NO x:DataType, NO DataContext and NO {Binding} on the controls
+        themselves. The partner code-behind (FormRecordPickerView.axaml.cs) owns ALL behaviour and
+        addresses every control imperatively BY x:Name — it assigns lvLines.ItemsSource (the list
+        of .rec record names), sets the translated caption text (chName / labelPathOff /
+        labelDeleteRecord / labelCancel / btnOpenText via gStr), and subscribes to the four button
+        Click events. Consequently NO Click handlers are declared in this markup (the handler
+        method names live solely in the code-behind); the named controls below MUST keep these
+        exact x:Names so the code-behind compiles and binds against them:
+        lvLines, chName, btnTurnOffRecPath, labelPathOff, btnDeleteField, labelDeleteRecord,
+        btnDeleteAB, labelCancel, buttonOpenExistingLv, btnOpenText.
+      * Behaviour preserved from FormRecordPicker.cs: buttonOpenExistingLv (WinForms
+        DialogResult.Yes) loads the selected .rec and closes returning true; btnDeleteAB (WinForms
+        DialogResult.Cancel) closes; btnTurnOffRecPath stops/clears the recorded path then closes;
+        btnDeleteField deletes the selected .rec and stays open (re-loads the list).
+
+    WINDOW SHELL — mirrors FormRecordPicker.Designer.cs exactly:
+      ClientSize 972 x 578        -> Width / Height (SystemDecorations="None" => client == window).
+      ControlBox = false          -> covered by the borderless (SystemDecorations="None") shell.
+      (Fixed, not resizable)      -> CanResize="False".
+      ShowInTaskbar = false       -> ShowInTaskbar="False".
+      StartPosition CenterParent  -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS).
+      Font Tahoma 14.25pt         -> FontFamily="Tahoma" FontSize="19" (14.25pt x 96/72 = 19 DIP).
+      NO BackColor was set in the Designer -> NO Background here: the window keeps the FluentTheme
+      default chrome (the WinForms "default control" look), adapting to the app day/night variant.
+      The source did NOT set TopMost, so this dialog is intentionally NOT Topmost.
+
+    Button glyphs are served from the GPS assembly via avares://AgOpenGPS/btnImages/<name>.png
+    (SwitchOff / Trash / Cancel64 / FileOpen — all 64 x 64 on disk), matching the file casing and
+    the avares:// convention already used by the sibling GPS views (FormYesView / SelectFieldMenuView).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.Pickers.FormRecordPickerView"
+        Title="FormRecordPicker"
+        Width="972"
+        Height="578"
+        SystemDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19">
+
+    <!--
+        Shared flat/transparent image-button style. The WinForms buttons were FlatStyle.Flat with
+        FlatAppearance.BorderSize = 0 and an image-only (or image+text) face. This class reproduces
+        that: a transparent, border-less face that stays transparent through hover/pressed (the
+        Fluent Button template otherwise paints a hover/pressed fill). The pointerover/pressed
+        setters target the template content presenter — the same technique used by FormYesView and
+        Keypad/NumKeypad.axaml.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root Canvas reproducing the WinForms absolute layout verbatim (the form is fixed-size, so
+        absolute coordinates are exact and the WinForms Anchors are moot). Every child is placed
+        with Canvas.Left / Canvas.Top equal to its WinForms Designer Location, at its Designer Size.
+    -->
+    <Canvas>
+
+        <!--
+            lvLines — recorded-path list. WinForms ListView (View=Details) at Location (5,12),
+            Size 967 x 459, BackColor InactiveCaption (~#FFBFCDDB, matching the sibling pickers),
+            single "Record Name" column (Width 680), FullRowSelect, GridLines, MultiSelect=false,
+            HideSelection=false, Sorting=Ascending, Font Tahoma 21.75pt.
+
+            Avalonia has no Details-ListView, so the region is a Border at the exact rectangle
+            holding a 2-row Grid: a non-scrolling column-header row (chName) above the scrolling
+            ListBox. The header sits inside the 459px region — exactly as the WinForms Details
+            header is part of the 459px control — for column-header parity.
+        -->
+        <Border Canvas.Left="5"
+                Canvas.Top="12"
+                Width="967"
+                Height="459"
+                Background="#FFBFCDDB"
+                BorderBrush="#FF808080"
+                BorderThickness="1">
+            <Grid RowDefinitions="Auto,*">
+
+                <!-- chName — the single "Record Name" column header (Width 680 like the WinForms
+                     ColumnHeader). Non-scrolling (outside the ListBox), with a 1px divider beneath
+                     it standing in for the Details header separator. Text is the Designer default
+                     and is (re)assigned by the code-behind. -->
+                <Border Grid.Row="0"
+                        BorderBrush="#FFA0A0A0"
+                        BorderThickness="0,0,0,1">
+                    <TextBlock x:Name="chName"
+                               Text="Record Name"
+                               Width="680"
+                               HorizontalAlignment="Left"
+                               FontFamily="Tahoma"
+                               FontSize="16"
+                               Padding="8,4" />
+                </Border>
+
+                <!-- lvLines — the record rows. ItemsSource (a list of record-name strings) is
+                     assigned by the code-behind; SelectionMode="Single" mirrors MultiSelect=false.
+                     HorizontalContentAlignment=Stretch on the item container reproduces
+                     FullRowSelect (the selection highlight spans the whole row). Font 29 DIP =
+                     21.75pt. Background matches the region so the list reads as one InactiveCaption
+                     panel. -->
+                <ListBox x:Name="lvLines"
+                         Grid.Row="1"
+                         Background="#FFBFCDDB"
+                         BorderThickness="0"
+                         FontFamily="Tahoma"
+                         FontSize="29"
+                         SelectionMode="Single">
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="8,2" />
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <!-- Each item is a plain record-name string; {Binding} (no path) binds
+                                 to the string itself (reflection binding — no x:DataType needed). -->
+                            <TextBlock Text="{Binding}"
+                                       FontFamily="Tahoma"
+                                       FontSize="29"
+                                       VerticalAlignment="Center" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+            </Grid>
+        </Border>
+
+        <!--
+            btnDeleteField — deletes the selected .rec then stays open (re-loads the list). WinForms
+            Location (47,503), Size 71 x 63, image-only (Resources.Trash, 64 x 64). Caption label
+            labelDeleteRecord sits just above it at (41,489), Tahoma 9.75pt (= 13 DIP). The label
+            Text is the Designer default and is (re)assigned by the code-behind (gStr.gsDelete).
+        -->
+        <TextBlock x:Name="labelDeleteRecord"
+                   Canvas.Left="41"
+                   Canvas.Top="489"
+                   Text="Delete Record"
+                   FontFamily="Tahoma"
+                   FontSize="13" />
+        <Button x:Name="btnDeleteField"
+                Classes="flatImage"
+                Canvas.Left="47"
+                Canvas.Top="503"
+                Width="71"
+                Height="63"
+                AutomationProperties.Name="Delete Record">
+            <Image Source="avares://AgOpenGPS/btnImages/Trash.png"
+                   Width="63"
+                   Height="63"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!--
+            btnTurnOffRecPath — stops + clears the recorded path then closes. WinForms Location
+            (223,502), Size 71 x 63, image-only (Resources.SwitchOff). Caption label labelPathOff
+            at (230,489); Text reassigned by the code-behind (gStr.gsTurnOffRecordedPath).
+        -->
+        <TextBlock x:Name="labelPathOff"
+                   Canvas.Left="230"
+                   Canvas.Top="489"
+                   Text="Path Off"
+                   FontFamily="Tahoma"
+                   FontSize="13" />
+        <Button x:Name="btnTurnOffRecPath"
+                Classes="flatImage"
+                Canvas.Left="223"
+                Canvas.Top="502"
+                Width="71"
+                Height="63"
+                AutomationProperties.Name="Turn Off Recorded Path">
+            <Image Source="avares://AgOpenGPS/btnImages/SwitchOff.png"
+                   Width="63"
+                   Height="63"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!--
+            btnDeleteAB — the Cancel button (WinForms DialogResult.Cancel). Location (565,503),
+            Size 71 x 63, image-only (Resources.Cancel64). Caption label labelCancel at (576,489);
+            Text reassigned by the code-behind (gStr.gsCancel).
+        -->
+        <TextBlock x:Name="labelCancel"
+                   Canvas.Left="576"
+                   Canvas.Top="489"
+                   Text="Cancel"
+                   FontFamily="Tahoma"
+                   FontSize="13" />
+        <Button x:Name="btnDeleteAB"
+                Classes="flatImage"
+                Canvas.Left="565"
+                Canvas.Top="503"
+                Width="71"
+                Height="63"
+                AutomationProperties.Name="Cancel">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                   Width="63"
+                   Height="63"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!--
+            buttonOpenExistingLv — "Use Selected" (WinForms DialogResult.Yes): loads the selected
+            .rec and closes returning true. Location (702,502), Size 261 x 63, BackColor Transparent,
+            Tahoma 18pt (= 24 DIP), image (Resources.FileOpen) ImageAlign MiddleLeft + Text
+            MiddleRight + TextImageRelation ImageBeforeText -> a horizontal StackPanel of the FileOpen
+            glyph followed by the btnOpenText caption. btnOpenText.Text is reassigned by the
+            code-behind (gStr.gsUseSelected).
+        -->
+        <Button x:Name="buttonOpenExistingLv"
+                Classes="flatImage"
+                Canvas.Left="702"
+                Canvas.Top="502"
+                Width="261"
+                Height="63"
+                FontFamily="Tahoma"
+                FontSize="24"
+                AutomationProperties.Name="Use Selected">
+            <StackPanel Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                <Image Source="avares://AgOpenGPS/btnImages/FileOpen.png"
+                       Width="48"
+                       Height="48"
+                       Stretch="Uniform"
+                       VerticalAlignment="Center" />
+                <TextBlock x:Name="btnOpenText"
+                           Text="Use Selected"
+                           FontFamily="Tahoma"
+                           FontSize="24"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
+            </StackPanel>
+        </Button>
+
+    </Canvas>
+</Window>

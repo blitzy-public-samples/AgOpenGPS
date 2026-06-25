@@ -1,0 +1,337 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Section-color preset assignment dialog (Avalonia view).
+
+    1:1 PARITY reimplementation of the WinForms `Forms/Settings/FormColorSection`
+    (FormColorSection.cs + FormColorSection.Designer.cs). Per AAP §0.3.3 this is visual +
+    behavioral FIDELITY to the currently rendered Windows Forms UI, never a redesign: the same
+    883 x 566 borderless dialog, the same 16 numbered section swatches over a 16-square custom
+    preset palette, the same Edit-Color lock toggle, the Multi-Color toggle and the OK button.
+
+    The WinForms MechanikaDesign-based `FormColorPicker` is REMOVED (AAP §0.5: that Windows-only
+    package is dropped). The actual color-pick interaction is a CODE-BEHIND concern that now uses
+    the built-in Avalonia.Controls.ColorPicker — so there is intentionally NO MechanikaDesign /
+    System.Windows.Forms / DataVisualization / OpenTK reference and no picker element in this markup.
+
+    CODE-BEHIND CONTRACT — FormColorSectionView.axaml.cs (partial class
+    AgOpenGPS.Views.Settings.FormColorSectionView : Window). This view is CODE-BEHIND DRIVEN:
+    there is deliberately NO x:DataType, NO DataContext and NO {Binding} — the x:Name'd controls
+    below are the entire integration surface, mirroring the original which used direct member access.
+      * Section swatches cb01..cb16 — CheckBoxes that behave as a RADIO group. The shared
+        Click handler `cb_Click` unchecks all then checks the sender (parity with WinForms
+        cb01_Click). Load sets each control's Background to the section color; bntOK reads each
+        Background back. The :checked pseudo-class paints the dark selection fill (#0F0F0C),
+        reproducing the WinForms FlatAppearance.CheckedBackColor (15,15,12).
+      * Preset palette buttons btnC01..btnC16 — shared Click handler `btnC_Click`; the index is
+        parsed from the (zero-padded) Name. Load sets each Background from customSectionColorsList.
+      * cboxIsMulti — Multi-Color toggle; `cboxIsMulti_Click` calls SetGui(...) to enable/disable
+        the palette + swatch controls (IsEnabled), reproducing SetGui(bool).
+      * chkUse — lock/unlock Edit-Color toggle; `chkUse_CheckedChanged` (wired via IsCheckedChanged)
+        flips the inner image `imgChkUse` between ColorLocked.png (locked) and ColorUnlocked.png
+        (unlocked) and retitles groupBoxSelectPreset.Text between "Select Preset Color" and
+        "Select Square Below And Pick New Color".
+      * groupBoxSelectPreset — the header TextBlock whose Text the code-behind toggles (parity with
+        the WinForms groupBoxSelectPreset.Text assignments).
+      * labelSectionColor — caption; code-behind composes "{gsSections}: {gsColors}".
+      * bntOK — commit + Close; Click handler `btnOK_Click`.
+
+    Captions come from AgOpenGPS.Core translations (gStr); the simple single-token captions are
+    bound declaratively via {x:Static gStr:...} so they are correct at load, and the code-behind
+    may still override them (e.g. the dynamic group header). Image glyphs are served from the GPS
+    assembly ("AgOpenGPS") via avares:// URIs — the same btnImages/ assets the sibling GPS Avalonia
+    views consume. Window chrome + frame text use the App.axaml day/night theme brushes via
+    {DynamicResource} so the live Light<->Dark switch is observed; swatch numbers and preset letters
+    stay Black on their colored fills, matching the WinForms rendering.
+
+    WINDOW SHELL — mirrors FormColorSection.Designer.cs:
+      Text gStr.gsSectionColorsSet -> Title
+      ClientSize 883 x 566         -> Width / Height (SystemDecorations="None" => client == window)
+      FormBorderStyle (ControlBox=false, fixed) -> SystemDecorations="None" + CanResize="False"
+      ShowInTaskbar = false        -> ShowInTaskbar="False"
+      StartPosition CenterParent   -> WindowStartupLocation="CenterOwner"
+      Font Tahoma                  -> FontFamily="Tahoma"
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gStr="clr-namespace:AgOpenGPS.Core.Translations;assembly=AgOpenGPS.Core"
+        x:Class="AgOpenGPS.Views.Settings.FormColorSectionView"
+        Title="{x:Static gStr:gStr.gsSectionColorsSet}"
+        Width="883"
+        Height="566"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Styles reproduce the WinForms "Appearance.Button" toggles and flat image buttons. Each
+        custom-templated control renders as a single ContentPresenter (named PART_ContentPresenter)
+        whose Background = {TemplateBinding Background}, so the code-behind-assigned swatch/preset
+        color shows in every interaction state (no Fluent hover/press fill boxes the glyph), and a
+        :checked rule recolors that same presenter to mirror the WinForms CheckedBackColor.
+    -->
+    <Window.Styles>
+
+        <!-- cb01..cb16 — numbered section swatches (WinForms CheckBox, Appearance.Button, 101x73).
+             Background (the section color) is assigned by the code-behind; :checked paints the dark
+             selection fill #0F0F0C (WinForms FlatAppearance.CheckedBackColor = 15,15,12). -->
+        <Style Selector="CheckBox.sectionSwatch">
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="FontSize" Value="29" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="BorderBrush" Value="#FF0F0F0C" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      FontFamily="{TemplateBinding FontFamily}"
+                                      FontSize="{TemplateBinding FontSize}"
+                                      FontWeight="{TemplateBinding FontWeight}"
+                                      HorizontalContentAlignment="Center"
+                                      VerticalContentAlignment="Center" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="CheckBox.sectionSwatch:checked /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FF0F0F0C" />
+            <Setter Property="BorderThickness" Value="3" />
+        </Style>
+        <Style Selector="CheckBox.sectionSwatch:disabled">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+
+        <!-- btnC01..btnC16 — custom preset palette buttons (WinForms Button, 79x73, letters A..P).
+             Background (the preset color) is assigned by the code-behind. -->
+        <Style Selector="Button.presetSwatch">
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="FontSize" Value="32" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      FontFamily="{TemplateBinding FontFamily}"
+                                      FontSize="{TemplateBinding FontSize}"
+                                      FontWeight="{TemplateBinding FontWeight}"
+                                      HorizontalContentAlignment="Center"
+                                      VerticalContentAlignment="Center" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.presetSwatch:disabled">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+
+        <!-- cboxIsMulti — Multi-Color toggle (WinForms CheckBox Appearance.Button, BackColor
+             AliceBlue, CheckedBackColor Teal). -->
+        <Style Selector="CheckBox.multiToggle">
+            <Setter Property="Background" Value="AliceBlue" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="FontSize" Value="21" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      FontFamily="{TemplateBinding FontFamily}"
+                                      FontSize="{TemplateBinding FontSize}"
+                                      FontWeight="{TemplateBinding FontWeight}"
+                                      HorizontalContentAlignment="Center"
+                                      VerticalContentAlignment="Center" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="CheckBox.multiToggle:checked /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Teal" />
+        </Style>
+
+        <!-- chkUse — Edit-Color lock toggle (WinForms CheckBox Appearance.Button, BackColor White,
+             CheckedBackColor PaleGreen). Hosts a stacked caption + lock image. -->
+        <Style Selector="CheckBox.lockToggle">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="FontSize" Value="19" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      FontFamily="{TemplateBinding FontFamily}"
+                                      FontSize="{TemplateBinding FontSize}"
+                                      FontWeight="{TemplateBinding FontWeight}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Center"
+                                      VerticalContentAlignment="Center" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="CheckBox.lockToggle:checked /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="PaleGreen" />
+        </Style>
+        <Style Selector="CheckBox.lockToggle:disabled">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+
+        <!-- bntOK — flat, chrome-less image button (WinForms FlatStyle.Flat + BorderSize 0): just
+             the 64x64 OK glyph with no button surface in any state. Uses the DEFAULT Button template
+             and suppresses the Fluent hover/press fill on PART_ContentPresenter. -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+    </Window.Styles>
+
+    <!--
+        Root absolute-layout canvas (883 x 566). FormColorSection.Designer.cs positioned every
+        control with explicit Location/Size and no reflowing anchors on this fixed-size dialog, so a
+        Canvas reproduces every coordinate pixel-faithfully — the same strategy as the sibling
+        Forms->Views ports (e.g. ConfigVehicleControl / Keyboard).
+    -->
+    <Canvas Width="883" Height="566">
+
+        <!-- labelSectionColor: WinForms Label @ (373,19), Tahoma 15.75pt Bold. Code-behind composes
+             the caption "{gsSections}: {gsColors}"; left empty here (set at runtime), matching the
+             sibling code-behind-driven label convention. Themed foreground for day/night legibility. -->
+        <TextBlock x:Name="labelSectionColor"
+                   Canvas.Left="373" Canvas.Top="19"
+                   FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}" />
+
+        <!-- ============================ Section swatches cb01..cb16 ============================
+             WinForms CheckBoxes (Appearance.Button), 101 x 73. Two rows of eight. Content is the
+             1-based section number. Background (section color) + radio selection handled in code-behind. -->
+        <!-- Row 1 (Top = 54) -->
+        <CheckBox x:Name="cb01" Classes="sectionSwatch" Canvas.Left="12"  Canvas.Top="54" Width="101" Height="73" Content="1"  Click="cb_Click" />
+        <CheckBox x:Name="cb02" Classes="sectionSwatch" Canvas.Left="119" Canvas.Top="54" Width="101" Height="73" Content="2"  Click="cb_Click" />
+        <CheckBox x:Name="cb03" Classes="sectionSwatch" Canvas.Left="226" Canvas.Top="54" Width="101" Height="73" Content="3"  Click="cb_Click" />
+        <CheckBox x:Name="cb04" Classes="sectionSwatch" Canvas.Left="333" Canvas.Top="54" Width="101" Height="73" Content="4"  Click="cb_Click" />
+        <CheckBox x:Name="cb05" Classes="sectionSwatch" Canvas.Left="451" Canvas.Top="54" Width="101" Height="73" Content="5"  Click="cb_Click" />
+        <CheckBox x:Name="cb06" Classes="sectionSwatch" Canvas.Left="558" Canvas.Top="54" Width="101" Height="73" Content="6"  Click="cb_Click" />
+        <CheckBox x:Name="cb07" Classes="sectionSwatch" Canvas.Left="665" Canvas.Top="54" Width="101" Height="73" Content="7"  Click="cb_Click" />
+        <CheckBox x:Name="cb08" Classes="sectionSwatch" Canvas.Left="773" Canvas.Top="54" Width="101" Height="73" Content="8"  Click="cb_Click" />
+        <!-- Row 2 (Top = 157) -->
+        <CheckBox x:Name="cb09" Classes="sectionSwatch" Canvas.Left="12"  Canvas.Top="157" Width="101" Height="73" Content="9"  Click="cb_Click" />
+        <CheckBox x:Name="cb10" Classes="sectionSwatch" Canvas.Left="119" Canvas.Top="157" Width="101" Height="73" Content="10" Click="cb_Click" />
+        <CheckBox x:Name="cb11" Classes="sectionSwatch" Canvas.Left="226" Canvas.Top="157" Width="101" Height="73" Content="11" Click="cb_Click" />
+        <CheckBox x:Name="cb12" Classes="sectionSwatch" Canvas.Left="333" Canvas.Top="157" Width="101" Height="73" Content="12" Click="cb_Click" />
+        <CheckBox x:Name="cb13" Classes="sectionSwatch" Canvas.Left="451" Canvas.Top="157" Width="101" Height="73" Content="13" Click="cb_Click" />
+        <CheckBox x:Name="cb14" Classes="sectionSwatch" Canvas.Left="558" Canvas.Top="157" Width="101" Height="73" Content="14" Click="cb_Click" />
+        <CheckBox x:Name="cb15" Classes="sectionSwatch" Canvas.Left="665" Canvas.Top="157" Width="101" Height="73" Content="15" Click="cb_Click" />
+        <CheckBox x:Name="cb16" Classes="sectionSwatch" Canvas.Left="773" Canvas.Top="157" Width="101" Height="73" Content="16" Click="cb_Click" />
+
+        <!-- ===================== groupBoxSelectPreset — custom preset palette =====================
+             WinForms GroupBox @ (12,254) 859 x 220. Reproduced as a Border (frame) + inner Canvas
+             (children at their groupbox-relative coordinates) + a header TextBlock named
+             groupBoxSelectPreset whose Text the code-behind toggles. Same Border+Canvas+header
+             pattern as the sibling ConfigVehicleControl GroupBox port. -->
+        <Border Canvas.Left="12" Canvas.Top="254" Width="859" Height="220"
+                BorderBrush="Gray" BorderThickness="1" CornerRadius="3" Background="Transparent">
+            <Canvas>
+                <!-- Header caption (WinForms groupBoxSelectPreset.Text). Initial = gStr.gsSelectPreset;
+                     code-behind retitles it on the Edit-Color toggle. -->
+                <TextBlock x:Name="groupBoxSelectPreset"
+                           Canvas.Left="10" Canvas.Top="3"
+                           FontFamily="Tahoma" FontSize="15" FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           Text="{x:Static gStr:gStr.gsSelectPreset}" />
+
+                <!-- Preset buttons — Row 1 (Top = 32), letters A..H -->
+                <Button x:Name="btnC01" Classes="presetSwatch" Canvas.Left="10"  Canvas.Top="32" Width="79" Height="73" Content="A" Click="btnC_Click" />
+                <Button x:Name="btnC02" Classes="presetSwatch" Canvas.Left="103" Canvas.Top="32" Width="79" Height="73" Content="B" Click="btnC_Click" />
+                <Button x:Name="btnC03" Classes="presetSwatch" Canvas.Left="196" Canvas.Top="32" Width="79" Height="73" Content="C" Click="btnC_Click" />
+                <Button x:Name="btnC04" Classes="presetSwatch" Canvas.Left="289" Canvas.Top="32" Width="79" Height="73" Content="D" Click="btnC_Click" />
+                <Button x:Name="btnC05" Classes="presetSwatch" Canvas.Left="382" Canvas.Top="32" Width="79" Height="73" Content="E" Click="btnC_Click" />
+                <Button x:Name="btnC06" Classes="presetSwatch" Canvas.Left="475" Canvas.Top="32" Width="79" Height="73" Content="F" Click="btnC_Click" />
+                <Button x:Name="btnC07" Classes="presetSwatch" Canvas.Left="568" Canvas.Top="32" Width="79" Height="73" Content="G" Click="btnC_Click" />
+                <Button x:Name="btnC08" Classes="presetSwatch" Canvas.Left="661" Canvas.Top="32" Width="79" Height="73" Content="H" Click="btnC_Click" />
+                <!-- Preset buttons — Row 2 (Top = 131), letters I..P -->
+                <Button x:Name="btnC09" Classes="presetSwatch" Canvas.Left="10"  Canvas.Top="131" Width="79" Height="73" Content="I" Click="btnC_Click" />
+                <Button x:Name="btnC10" Classes="presetSwatch" Canvas.Left="103" Canvas.Top="131" Width="79" Height="73" Content="J" Click="btnC_Click" />
+                <Button x:Name="btnC11" Classes="presetSwatch" Canvas.Left="196" Canvas.Top="131" Width="79" Height="73" Content="K" Click="btnC_Click" />
+                <Button x:Name="btnC12" Classes="presetSwatch" Canvas.Left="289" Canvas.Top="131" Width="79" Height="73" Content="L" Click="btnC_Click" />
+                <Button x:Name="btnC13" Classes="presetSwatch" Canvas.Left="382" Canvas.Top="131" Width="79" Height="73" Content="M" Click="btnC_Click" />
+                <Button x:Name="btnC14" Classes="presetSwatch" Canvas.Left="475" Canvas.Top="131" Width="79" Height="73" Content="N" Click="btnC_Click" />
+                <Button x:Name="btnC15" Classes="presetSwatch" Canvas.Left="568" Canvas.Top="131" Width="79" Height="73" Content="O" Click="btnC_Click" />
+                <Button x:Name="btnC16" Classes="presetSwatch" Canvas.Left="661" Canvas.Top="131" Width="79" Height="73" Content="P" Click="btnC_Click" />
+
+                <!-- chkUse — Edit-Color lock toggle @ groupbox-relative (757,47) 96 x 133. Caption on
+                     top, lock glyph below (WinForms TextAlign TopCenter + ImageAlign BottomCenter).
+                     imgChkUse default = ColorLocked.png; code-behind switches it to ColorUnlocked.png. -->
+                <CheckBox x:Name="chkUse" Classes="lockToggle"
+                          Canvas.Left="757" Canvas.Top="47" Width="96" Height="133"
+                          IsCheckedChanged="chkUse_CheckedChanged">
+                    <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="{x:Static gStr:gStr.gsEditColor}"
+                                   HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                        <Image x:Name="imgChkUse"
+                               Source="avares://AgOpenGPS/btnImages/ColorLocked.png"
+                               Width="56" Height="56" Stretch="Uniform" Margin="0,6,0,0" />
+                    </StackPanel>
+                </CheckBox>
+            </Canvas>
+        </Border>
+
+        <!-- cboxIsMulti — Multi-Color toggle: WinForms CheckBox (Appearance.Button) @ (528,500)
+             225 x 54, anchored Bottom|Right. -->
+        <CheckBox x:Name="cboxIsMulti" Classes="multiToggle"
+                  Canvas.Left="528" Canvas.Top="500" Width="225" Height="54"
+                  Content="{x:Static gStr:gStr.gsMultiColorSections}"
+                  Click="cboxIsMulti_Click" />
+
+        <!-- bntOK — OK button @ (808,492) 66 x 65, anchored Bottom|Right; hosts the 64x64 OK glyph.
+             IsDefault routes Enter to OK; AutomationProperties.Name labels the image-only button. -->
+        <Button x:Name="bntOK" Classes="imageButton"
+                Canvas.Left="808" Canvas.Top="492" Width="66" Height="65"
+                IsDefault="True"
+                AutomationProperties.Name="OK"
+                Click="btnOK_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+
+</Window>

@@ -1,0 +1,345 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] Avalonia 1:1 PARITY reimplementation of the WinForms `Forms/Settings/FormColor`
+    (source: FormColor.cs + FormColor.Designer.cs) — the day/night "Colors" dialog that
+    customizes the frame, field and text colours for both day and night modes plus the
+    camera-smoothing behaviour. This is a faithful re-platform, never a redesign: every
+    position, size, font and colour below is taken verbatim from FormColor.Designer.cs
+    (AAP §0.3.3 — visual parity to the currently rendered Windows Forms UI).
+
+    SPECIAL (AAP §0.5.1 / §0.6.3): the WinForms form opened a `FormColorPicker` backed by the
+    `MechanikaDesign.WinForms.UI.ColorPicker` package for each colour. That package is REMOVED;
+    the replacement is the built-in Avalonia `ColorPicker` (Avalonia.Controls.ColorPicker, in
+    Avalonia 11.3 core — no extra package). The picker is opened by the partner code-behind
+    (FormColorView.axaml.cs) when a colour button is clicked — exactly as the WinForms source
+    did `new FormColorPicker(...).ShowDialog(this)` — so THIS markup only declares the colour
+    buttons + their live preview swatches; it does not host a ColorPicker element itself.
+
+    WIRING CONTRACT (the partner code-behind FormColorView.axaml.cs owns ALL behaviour):
+      * IMPERATIVE view — intentionally NO x:DataType, NO DataContext, NO {Binding}. The
+        code-behind addresses the x:Name'd controls directly, mirroring FormColor.cs which set
+        control state in its constructor / Load handler.
+      * Localised text is assigned by the code-behind (matching FormColor.cs:
+        this.Text = gStr.gsColors; labelCameraBehavior.Text = gStr.gsCameraBehavior;
+        labelReset.Text = gStr.gsReset; labelSmooth.Text = gStr.gsSmooth;
+        labelDirect.Text = gStr.gsDirect;). The literal strings below are design-time
+        placeholders (the Designer.cs defaults), replaced at runtime. The gStr xmlns is
+        declared per the file spec so the code-behind/designer can resolve the same namespace.
+      * Each colour button carries a named swatch Border (swatchFrameDay … swatchNightText) whose
+        Background the code-behind updates to the live colour; clicking the button opens the
+        Avalonia ColorPicker and writes the chosen colour back to Settings (FormColor.cs handlers
+        btnFrameDay_Click … btnNightText_Click). btnSwap toggles the day/night preview
+        (mf.SwapDayNightMode), btnReset restores the documented defaults, btnOK commits the camera
+        smoothing value and closes.
+      * hsbarSmooth replaces the WinForms HScrollBar; ValueChanged -> hsbarSmooth_ValueChanged
+        updates lblSmoothCam live ("<value>%"), and btnOK maps the value to mf.camSmoothFactor.
+
+    WINDOW SHELL — mirrors FormColor.Designer.cs exactly:
+      Text "Color Set"            -> Title (design-time; code-behind sets gStr.gsColors)
+      ClientSize 665 x 396        -> Width / Height (SystemDecorations="None" => client == window)
+      FormBorderStyle (fixed) +
+        ControlBox=false          -> SystemDecorations="None", CanResize="False"
+      ShowInTaskbar = false       -> ShowInTaskbar="False"
+      StartPosition.CenterParent  -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS)
+      Font Tahoma 9.75pt          -> FontFamily="Tahoma" FontSize="13" (9.75pt * 96/72)
+      BackColor LightGray +
+        BackgroundImage=ColorBackGnd (ImageLayout.None) -> Background="{DynamicResource AogFrameBrush}"
+        (theme frame colour) with the ColorBackGnd illustration drawn at its native 336x383 in the
+        left region (the right region — camera/OK/reset — was plain in WinForms).
+      timer1 (Interval 500, Enabled) had NO Tick handler in FormColor.cs => a no-op; intentionally
+        omitted (no behaviour lost).
+
+    Font conversion: WinForms points -> Avalonia device-independent pixels = pt * 96 / 72.
+      9.75pt = 13px (window default) · 14.25pt = 19px · 15.75pt = 21px.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gStr="clr-namespace:AgOpenGPS.Core.Translations;assembly=AgOpenGPS.Core"
+        x:Class="AgOpenGPS.Views.Settings.FormColorView"
+        Title="Color Set"
+        Width="665"
+        Height="396"
+        CanResize="False"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogFrameBrush}"
+        FontFamily="Tahoma"
+        FontSize="13">
+
+    <!--
+        Flat, transparent button face for every image / colour-pick button (parity with the
+        WinForms FlatStyle.Flat + FlatAppearance.BorderSize=0 + transparent BackColor). The
+        pointerover / pressed selectors target the Fluent template's content presenter so the
+        theme's hover / press fill never paints over the swatch or glyph — the same technique
+        used by the sibling FormYesView / Keypad views.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flat:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <!-- Each colour swatch is a 1px-outlined rounded rectangle filling its button (it shows
+             the current colour; the code-behind rewrites Background on pick / swap / reset). -->
+        <Style Selector="Border.swatch">
+            <Setter Property="BorderBrush" Value="#80000000" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="2" />
+        </Style>
+        <!-- The ColourPick glyph sits centred over each swatch with an inset so the swatch colour
+             reads as a frame around it (parity cue that the button picks a colour). -->
+        <Style Selector="Image.pickGlyph">
+            <Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="Margin" Value="8" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Absolute layout (Canvas) reproduces the fixed-size WinForms designer coordinates exactly:
+         WinForms Location -> Canvas.Left/Top, Size -> Width/Height. The Window cannot resize, so
+         absolute positioning is the faithful Avalonia equivalent of the WinForms layout. -->
+    <Canvas>
+
+        <!-- ColorBackGnd: the day/night device illustration (native 336x383), drawn top-left in
+             the left region exactly as WinForms BackgroundImage + ImageLayout.None. The colour
+             buttons, swatches and ABC123 previews overlay it at their designer positions. -->
+        <Image Canvas.Left="0"
+               Canvas.Top="0"
+               Width="336"
+               Height="383"
+               Stretch="Fill"
+               Source="avares://AgOpenGPS/btnImages/ColorBackGnd.png" />
+
+        <!-- ============================ DAY column ============================ -->
+
+        <!-- label2 — DAY "ABC123" text preview. WinForms: BackColor White, ForeColor (dark),
+             Bold 14.25pt, at (17,17). Covers the day mock-up's baked caption with a live sample. -->
+        <TextBlock x:Name="label2"
+                   Canvas.Left="17"
+                   Canvas.Top="17"
+                   Text="ABC123"
+                   Background="White"
+                   Foreground="Black"
+                   FontWeight="Bold"
+                   FontSize="19"
+                   Padding="3,1" />
+
+        <!-- btnDayText — pick the DAY text colour. WinForms (12,38) 59x57, image ColourPick. -->
+        <Button x:Name="btnDayText"
+                Classes="flat"
+                Canvas.Left="12"
+                Canvas.Top="38"
+                Width="59"
+                Height="57"
+                Click="btnDayText_Click"
+                AutomationProperties.Name="Day text colour">
+            <Grid>
+                <Border x:Name="swatchDayText" Classes="swatch" Background="#FF0A0A14" />
+                <Image Classes="pickGlyph" Source="avares://AgOpenGPS/btnImages/ColourPick.png" />
+            </Grid>
+        </Button>
+
+        <!-- btnFieldDay — pick the DAY field colour. WinForms (164,94) 59x57. -->
+        <Button x:Name="btnFieldDay"
+                Classes="flat"
+                Canvas.Left="164"
+                Canvas.Top="94"
+                Width="59"
+                Height="57"
+                Click="btnFieldDay_Click"
+                AutomationProperties.Name="Day field colour">
+            <Grid>
+                <Border x:Name="swatchFieldDay" Classes="swatch" Background="#FF64647D" />
+                <Image Classes="pickGlyph" Source="avares://AgOpenGPS/btnImages/ColourPick.png" />
+            </Grid>
+        </Button>
+
+        <!-- btnFrameDay — pick the DAY frame colour. WinForms (247,12) 59x57. -->
+        <Button x:Name="btnFrameDay"
+                Classes="flat"
+                Canvas.Left="247"
+                Canvas.Top="12"
+                Width="59"
+                Height="57"
+                Click="btnFrameDay_Click"
+                AutomationProperties.Name="Day frame colour">
+            <Grid>
+                <Border x:Name="swatchFrameDay" Classes="swatch" Background="#FFD2D2E6" />
+                <Image Classes="pickGlyph" Source="avares://AgOpenGPS/btnImages/ColourPick.png" />
+            </Grid>
+        </Button>
+
+        <!-- =========================== NIGHT column =========================== -->
+
+        <!-- label1 — NIGHT "ABC123" text preview. WinForms: BackColor (60,60,80)=#FF3C3C50,
+             ForeColor (light), Bold 14.25pt, at (17,204). -->
+        <TextBlock x:Name="label1"
+                   Canvas.Left="17"
+                   Canvas.Top="204"
+                   Text="ABC123"
+                   Background="#FF3C3C50"
+                   Foreground="White"
+                   FontWeight="Bold"
+                   FontSize="19"
+                   Padding="3,1" />
+
+        <!-- btnNightText — pick the NIGHT text colour. WinForms (12,224) 59x57. -->
+        <Button x:Name="btnNightText"
+                Classes="flat"
+                Canvas.Left="12"
+                Canvas.Top="224"
+                Width="59"
+                Height="57"
+                Click="btnNightText_Click"
+                AutomationProperties.Name="Night text colour">
+            <Grid>
+                <Border x:Name="swatchNightText" Classes="swatch" Background="#FFE6E6E6" />
+                <Image Classes="pickGlyph" Source="avares://AgOpenGPS/btnImages/ColourPick.png" />
+            </Grid>
+        </Button>
+
+        <!-- btnFrameNight — pick the NIGHT frame colour. WinForms (247,181) 59x57. -->
+        <Button x:Name="btnFrameNight"
+                Classes="flat"
+                Canvas.Left="247"
+                Canvas.Top="181"
+                Width="59"
+                Height="57"
+                Click="btnFrameNight_Click"
+                AutomationProperties.Name="Night frame colour">
+            <Grid>
+                <Border x:Name="swatchFrameNight" Classes="swatch" Background="#FF323241" />
+                <Image Classes="pickGlyph" Source="avares://AgOpenGPS/btnImages/ColourPick.png" />
+            </Grid>
+        </Button>
+
+        <!-- btnFieldNight — pick the NIGHT field colour. WinForms (164,280) 59x57. -->
+        <Button x:Name="btnFieldNight"
+                Classes="flat"
+                Canvas.Left="164"
+                Canvas.Top="280"
+                Width="59"
+                Height="57"
+                Click="btnFieldNight_Click"
+                AutomationProperties.Name="Night field colour">
+            <Grid>
+                <Border x:Name="swatchFieldNight" Classes="swatch" Background="#FF3C3C3C" />
+                <Image Classes="pickGlyph" Source="avares://AgOpenGPS/btnImages/ColourPick.png" />
+            </Grid>
+        </Button>
+
+        <!-- ======================= Camera behaviour group ===================== -->
+
+        <!-- labelCameraBehavior — WinForms Bold 15.75pt, (400,38). Text from gStr.gsCameraBehavior
+             (code-behind). Themed Foreground so it stays legible in both day and night. -->
+        <TextBlock x:Name="labelCameraBehavior"
+                   Canvas.Left="400"
+                   Canvas.Top="38"
+                   Text="Camera Behaviour"
+                   FontWeight="Bold"
+                   FontSize="21"
+                   Foreground="{DynamicResource AogTextBrush}" />
+
+        <!-- labelSmooth — WinForms (368,89), default font. Text from gStr.gsSmooth (code-behind). -->
+        <TextBlock x:Name="labelSmooth"
+                   Canvas.Left="368"
+                   Canvas.Top="89"
+                   Text="Smooth"
+                   Foreground="{DynamicResource AogTextBrush}" />
+
+        <!-- lblSmoothCam — WinForms Bold 15.75pt, (468,80). Live "<value>%" set by code-behind. -->
+        <TextBlock x:Name="lblSmoothCam"
+                   Canvas.Left="468"
+                   Canvas.Top="80"
+                   Text="50%"
+                   FontWeight="Bold"
+                   FontSize="21"
+                   Foreground="{DynamicResource AogTextBrush}" />
+
+        <!-- hsbarSmooth — replaces the WinForms HScrollBar. (366,108) 262 wide; Min 0 / Max 100,
+             integer (snap to whole-number ticks, no tick marks shown). ValueChanged updates
+             lblSmoothCam live in the code-behind. -->
+        <Slider x:Name="hsbarSmooth"
+                Canvas.Left="366"
+                Canvas.Top="108"
+                Width="262"
+                Orientation="Horizontal"
+                Minimum="0"
+                Maximum="100"
+                Value="50"
+                SmallChange="1"
+                LargeChange="1"
+                TickFrequency="1"
+                IsSnapToTickEnabled="True"
+                ValueChanged="hsbarSmooth_ValueChanged" />
+
+        <!-- labelDirect — WinForms (585,89), default font. Text from gStr.gsDirect (code-behind). -->
+        <TextBlock x:Name="labelDirect"
+                   Canvas.Left="585"
+                   Canvas.Top="89"
+                   Text="Direct"
+                   Foreground="{DynamicResource AogTextBrush}" />
+
+        <!-- ===================== Swap / Reset / OK actions ===================== -->
+
+        <!-- btnSwap — toggles the day/night preview. WinForms (396,181) 121x65, image
+             ConD_AutoDayNight (in the btnImages/Config asset folder). -->
+        <Button x:Name="btnSwap"
+                Classes="flat"
+                Canvas.Left="396"
+                Canvas.Top="181"
+                Width="121"
+                Height="65"
+                Click="btnSwap_Click"
+                AutomationProperties.Name="Swap day / night">
+            <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_AutoDayNight.png"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- btnReset — restores the documented default palette. WinForms (396,272) 121x65,
+             image ResetColors. -->
+        <Button x:Name="btnReset"
+                Classes="flat"
+                Canvas.Left="396"
+                Canvas.Top="272"
+                Width="121"
+                Height="65"
+                Click="btnReset_Click"
+                AutomationProperties.Name="Reset to default">
+            <Image Source="avares://AgOpenGPS/btnImages/ResetColors.png"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- labelReset — WinForms (411,340), default font. Text from gStr.gsReset (code-behind). -->
+        <TextBlock x:Name="labelReset"
+                   Canvas.Left="411"
+                   Canvas.Top="340"
+                   Text="Reset to Default"
+                   Foreground="{DynamicResource AogTextBrush}" />
+
+        <!-- bntOK — commits the camera-smoothing value and closes (the source has no separate
+             Cancel). WinForms (587,319) 66x65, image OK64. (Name kept as 'bntOK' to match the
+             generated x:Name field the code-behind references; handler is btnOK_Click.) -->
+        <Button x:Name="bntOK"
+                Classes="flat"
+                Canvas.Left="587"
+                Canvas.Top="319"
+                Width="66"
+                Height="65"
+                IsDefault="True"
+                Click="btnOK_Click"
+                AutomationProperties.Name="OK">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

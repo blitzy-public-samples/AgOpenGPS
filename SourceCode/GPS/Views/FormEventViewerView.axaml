@@ -1,0 +1,150 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Event Log Viewer (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/FormEventViewer`
+    (FormEventViewer.cs + FormEventViewer.Designer.cs): a scrolling, read-only log/event
+    viewer with a manual Refresh and an Exit button. Per AAP §0.3.3 this is a faithful
+    re-platform of the currently rendered Windows Forms UI, never a redesign — every size,
+    font and colour below is taken verbatim from FormEventViewer.Designer.cs.
+
+    Window shell mirrors FormEventViewer.Designer.cs exactly:
+      Text "Event Log Viewer"        -> Title.
+      ClientSize 681 x 365           -> Width / Height (the WinForms client area; siblings with
+                                        SystemDecorations="Full" likewise map ClientSize -> Width/Height).
+      BackColor Gainsboro            -> Background="Gainsboro" (WinForms Color.Gainsboro == #FFDCDCDC).
+                                        Like the sibling utility dialogs (FormYesView / FormSavingView /
+                                        FormInputDialogView) this colour is hard-coded for parity and is
+                                        intentionally theme-independent, so App.axaml's day/night brushes
+                                        are NOT used here. App.axaml's FluentTheme still supplies the
+                                        default TextBox / Button control templates.
+      FormBorderStyle.SizableToolWindow -> CanResize="True" (resizable, as the original) with
+                                        SystemDecorations="Full" so the "Event Log Viewer" title shows.
+                                        WinForms ControlBox=false hid the system buttons; Avalonia cannot
+                                        hide only the close button while keeping a titled, resizable frame,
+                                        so the standard frame is kept and the dialog's own Exit button is
+                                        the primary close affordance (a minor, documented deviation).
+      ShowInTaskbar = false          -> ShowInTaskbar="False".
+      StartPosition.CenterParent     -> WindowStartupLocation="CenterOwner" (shown owned over FormGPS).
+
+    This is an IMPERATIVE dialog (parity with the WinForms code-behind), so there is intentionally
+    NO x:DataType, no DataContext and no {Binding} — the partner code-behind addresses the named
+    controls directly. The named controls below MUST stay rtbLogViewer / btnRefresh / btnExit to
+    match the generated x:Name fields that FormEventViewerView.axaml.cs references.
+
+    Code-behind contract — FormEventViewerView.axaml.cs (partial class AgOpenGPS.Views.FormEventViewerView : Window):
+      * Parameterless / (string filename) constructor that calls InitializeComponent().
+      * Owns the three named controls below: rtbLogViewer, btnRefresh, btnExit.
+      * Click handlers (wired in this markup, following the established sibling convention where the
+        code-behind defines the handler and relies on the XAML wiring):
+            OnRefreshClick(object sender, RoutedEventArgs e)  -> full reload   (WinForms btnRefresh_Click -> LoadLog()).
+            OnExitClick(object sender, RoutedEventArgs e)      -> Close()       (WinForms btnExit_Click -> Close()).
+      * The WinForms File.ReadAllText / incremental tail-read + 1 s refresh Timer and the
+        Log.sbEvents session append live in the code-behind, which writes them into rtbLogViewer.Text
+        and scrolls to the bottom (WinForms AppendText / SelectionStart / ScrollToCaret).
+
+    No WinForms, no OpenTK, no Win32 types are referenced — Avalonia 11.3 markup only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormEventViewerView"
+        Title="Event Log Viewer"
+        Width="681"
+        Height="365"
+        Background="Gainsboro"
+        CanResize="True"
+        SystemDecorations="Full"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <!--
+        Layout grid. Margin "12,12,12,4" reproduces the WinForms insets: the log starts at the
+        designer's (12,12) origin with a 12px right margin, and the bottom command row sits 4px
+        above the window bottom (buttons ended at y=361 in the 365-tall client). RowDefinitions
+        "*,Auto" gives the log all remaining height and sizes the button row to its content (28px),
+        matching the Top|Bottom|Left|Right anchored RichTextBox over the Bottom|Right anchored buttons.
+    -->
+    <Grid Margin="12,12,12,4"
+          RowDefinitions="*,Auto">
+
+        <!--
+            rtbLogViewer — WinForms RichTextBox: Anchor Top|Bottom|Left|Right, Location (12,12),
+            Size 657 x 315, ReadOnly=true, WordWrap=false, Courier New 14.25pt Bold. The 6px bottom
+            margin is the designer's gap between the log's bottom edge (y=327) and the button row
+            top (y=333). A read-only, multiline TextBox is the closest Avalonia parity to the WinForms
+            RichTextBox log surface.
+              * IsReadOnly="True"                 -> RichTextBox.ReadOnly = true.
+              * AcceptsReturn="True"              -> multiline log (newlines preserved).
+              * TextWrapping="NoWrap"             -> RichTextBox.WordWrap = false.
+              * ScrollViewer.*ScrollBarVisibility="Auto" -> RichTextBox default ScrollBars=Both
+                                                     (a horizontal and a vertical bar shown when needed).
+              * FontFamily "Courier New", FontSize 19 (14.25pt x 96/72), FontWeight Bold.
+              * Background White / Foreground Black reproduce the WinForms RichTextBox defaults
+                (SystemColors.Window / WindowText) so the log stays a legible black-on-white surface
+                regardless of the app's day/night theme variant (parity with the theme-independent
+                Gainsboro shell).
+              * AutomationProperties.Name labels the otherwise-unlabelled log region for screen readers
+                (invisible accessibility — no visual impact).
+        -->
+        <TextBox x:Name="rtbLogViewer"
+                 Grid.Row="0"
+                 Margin="0,0,0,6"
+                 IsReadOnly="True"
+                 AcceptsReturn="True"
+                 TextWrapping="NoWrap"
+                 FontFamily="Courier New"
+                 FontSize="19"
+                 FontWeight="Bold"
+                 Background="White"
+                 Foreground="Black"
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 AutomationProperties.Name="Event log" />
+
+        <!--
+            Bottom command bar. Both WinForms buttons are anchored Bottom|Right; reproduced with a
+            right-aligned horizontal StackPanel. Declaration order Refresh-then-Exit and Spacing="50"
+            reproduce the designer's exact X positions over the 657px content width:
+              btnRefresh : Location (261,333) -> right edge 440.
+              btnExit    : Location (490,333) -> right edge 669 (12px from the window's right edge).
+              gap btnRefresh.right(440) -> btnExit.left(490) == 50px.
+            Both buttons are 179 x 28, Tahoma 12pt Bold (FontSize 16 == 12pt x 96/72). Standard Fluent
+            text buttons reproduce the WinForms UseVisualStyleBackColor system-button look; the button
+            text supplies each control's accessible name.
+        -->
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Spacing="50">
+
+            <!-- btnRefresh — WinForms btnRefresh_Click -> LoadLog() (full reload). -->
+            <Button x:Name="btnRefresh"
+                    Content="Refresh"
+                    Width="179"
+                    Height="28"
+                    Padding="0"
+                    FontFamily="Tahoma"
+                    FontSize="16"
+                    FontWeight="Bold"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Click="OnRefreshClick" />
+
+            <!-- btnExit — WinForms btnExit_Click -> Close(). -->
+            <Button x:Name="btnExit"
+                    Content="Exit"
+                    Width="179"
+                    Height="28"
+                    Padding="0"
+                    FontFamily="Tahoma"
+                    FontSize="16"
+                    FontWeight="Bold"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Click="OnExitClick" />
+        </StackPanel>
+    </Grid>
+</Window>

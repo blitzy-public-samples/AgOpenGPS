@@ -1,0 +1,290 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Exit / Cancel / Shutdown countdown dialog (Avalonia view).
+
+    1:1 visual + behavioral PARITY reimplementation of the WinForms `Forms/Field/FormSaveOrNot`
+    (source: FormSaveOrNot.cs + FormSaveOrNot.Designer.cs + FormSaveOrNot.resx). Per AAP §0.3.3
+    this is a faithful re-platform of the currently rendered Windows Forms surface — never a
+    redesign: every size, position and font below is taken verbatim from FormSaveOrNot.Designer.cs.
+
+    The dialog is shown when the operator requests application exit. It offers three mutually
+    related choices and shows a live one-second countdown that auto-confirms the active choice:
+      * Exit  (btnOk)       — return to Windows / close AgOpenGPS.
+      * Cancel (btnReturn)  — abandon the exit and return to AgOpenGPS.
+      * Shutdown (btnShutDown) — power off the computer.
+
+    CODE-BEHIND CONTRACT — FormSaveOrNotView.axaml.cs (partial class AgOpenGPS.Views.FormSaveOrNotView : Window):
+      * This view is IMPERATIVE, not MVVM: there is intentionally NO x:DataType, no DataContext and
+        no {Binding}. All label text and visibility are assigned in code-behind through the x:Name'd
+        controls below — exactly mirroring the WinForms ctor + FormSaveOrNot_Load. The x:Name values
+        are therefore the integration contract and MUST stay byte-identical to the originals:
+            lblQuestion  label2  panel1
+            labelShutdown  btnShutDown
+            labelCancel    btnReturn
+            labelExit      btnOk
+            labelShutdownIn  lblShutCtr
+            labelExitToWindows  lblExitCtr
+      * Caption text is set at runtime from gStr (gsExit / gsShutdown / gsCancel / gsExitToWindows+":" /
+        gsShutdownIn+":"); the strings below are the Designer placeholders the code-behind overrides.
+      * Visibility: the Exit pair (labelExitToWindows + lblExitCtr) and the Shutdown pair
+        (labelShutdownIn + lblShutCtr) are MUTUALLY EXCLUSIVE. FormSaveOrNot_Load shows exactly one,
+        keyed on Settings.setWindow_isShutdownComputer. The defaults below match that setting's
+        default (false ⇒ Exit pair visible, Shutdown pair collapsed); the code-behind re-sets all four
+        authoritatively when the window loads, so this is only the first-paint state.
+      * The three Click handlers (btnOk_Click / btnReturn_Click / btnShutDown_Click) keep the original
+        method names. In WinForms the event WIRING lived in the Designer (which this .axaml replaces),
+        while the handler bodies live in FormSaveOrNot.cs (which the .axaml.cs replaces) — so wiring the
+        clicks here in markup is the faithful division of responsibility.
+      * The WinForms System.Windows.Forms.Timer (timer1, 1000 ms) is non-visual and has no XAML element;
+        the code-behind reproduces it with a DispatcherTimer (counters start 4 = exit, 5 = shutdown).
+
+    WINDOW SHELL — mirrors FormSaveOrNot.Designer.cs:
+      ClientSize 825 x 279        -> Width / Height (SystemDecorations="None" ⇒ client == window)
+      FormBorderStyle.None        -> SystemDecorations="None"
+      ControlBox = false          -> (no system buttons; implied by SystemDecorations="None")
+      (fixed, no min/max)         -> CanResize="False"
+      ShowInTaskbar = false       -> ShowInTaskbar="False"
+      StartPosition.CenterParent  -> WindowStartupLocation="CenterOwner" (replaces the WinForms
+                                     ScreenHelper.IsOnScreen reposition logic — deliberately NOT ported)
+      Padding(5)                  -> Padding="0": WinForms absolutely-positioned children ignore the
+                                     form Padding, so applying it would shift every coordinate by 5px
+                                     and break pixel parity. The 5px frame had no visual effect here.
+      Font Tahoma 8.25            -> FontFamily="Tahoma" FontSize="11"  (points × 96/72 = device px)
+
+    THEME — unlike the fixed-colour alert dialogs (FormYes / FormSaving / FormDialog), FormSaveOrNot
+    used the neutral LightCyan form / AliceBlue panel chrome, so per the assigned spec it tracks the
+    app day/night palette: Background = AogFrameBrush and text = AogTextBrush, pulled from the
+    App.axaml ThemeDictionaries via {DynamicResource} so the Light<->Dark switch is observed live.
+    No WinForms / System.Drawing colours are hard-coded. The near-identical AliceBlue panel is
+    represented structurally (panel1 is a transparent grouping Border; the themed window frame shows
+    through), preserving the look while remaining theme-aware.
+
+    Font sizes (WinForms points × 96/72 = Avalonia device-independent pixels):
+      Tahoma 8.25  -> 11   (form default)
+      Tahoma 12    -> 16   (caption labels: Shutdown / Cancel / Exit)
+      Tahoma 15.75 -> 21   ("Shutdown In:" / "Exit To Windows In:"; also lblQuestion / label2)
+      Tahoma 36    -> 48   (countdown numbers lblShutCtr / lblExitCtr)
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs,
+    mapped from the Designer's BackgroundImage assignments (BackgroundImageLayout.Zoom ⇒ Stretch="Uniform"):
+      btnShutDown.BackgroundImage = Resources.SwitchOff    -> btnImages/SwitchOff.png
+      btnReturn.BackgroundImage   = Resources.back_button  -> btnImages/back-button.png
+      btnOk.BackgroundImage       = Resources.WindowClose  -> btnImages/WindowClose.png
+
+    No WinForms, no System.Drawing, no OpenTK namespaces are referenced — Avalonia 11.3 markup only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormSaveOrNotView"
+        Title="FormSaveOrNot"
+        Width="825"
+        Height="279"
+        CanResize="False"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Padding="0"
+        Background="{DynamicResource AogFrameBrush}"
+        Foreground="{DynamicResource AogTextBrush}"
+        FontFamily="Tahoma"
+        FontSize="11">
+
+    <!--
+        Flat, chrome-less image buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor = Transparent: just the scaled glyph, with no
+        button surface in any visual state. The :pointerover / :pressed template overrides suppress
+        the Fluent hover/press background that would otherwise box the glyph. Content alignment is
+        stretched so the child Image fills the button rectangle and Stretch="Uniform" then scales the
+        bitmap to fit while preserving aspect — the exact behaviour of BackgroundImageLayout.Zoom.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root Canvas == the WinForms client area (825 x 279). The form's three direct children
+        (lblQuestion, label2 and panel1) are placed at their exact WinForms client coordinates via
+        Canvas.Left / Canvas.Top. Absolute positioning is appropriate because the window is a fixed,
+        non-resizable dialog (CanResize="False"), giving true pixel parity with the original.
+    -->
+    <Canvas>
+
+        <!-- lblQuestion: WinForms Label @ (85,113), Tahoma 15.75 regular, AutoSize. Empty by default
+             (the designer set no text and the code-behind leaves it blank); kept for 1:1 control
+             parity and so the code-behind can address it by name. -->
+        <TextBlock x:Name="lblQuestion"
+                   Canvas.Left="85"
+                   Canvas.Top="113"
+                   FontSize="21"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="" />
+
+        <!-- label2: WinForms Label @ (487,-28), Tahoma 15.75 regular, AutoSize. Vestigial — empty and
+             positioned above the client top in the original, so it has no visual effect. Reproduced
+             at its exact (negative) coordinate for faithful 1:1 control parity. -->
+        <TextBlock x:Name="label2"
+                   Canvas.Left="487"
+                   Canvas.Top="-28"
+                   FontSize="21"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="" />
+
+        <!-- panel1: WinForms Panel @ (25,18) sized 779 x 242 (originally BackColor AliceBlue). Used
+             purely as a grouping container; left transparent so the themed window frame shows through
+             (AliceBlue and the form's LightCyan were all-but-identical light tints). Its children are
+             positioned in the panel's own coordinate space via the nested Canvas, matching the
+             WinForms panel-relative Locations exactly. -->
+        <Border x:Name="panel1"
+                Canvas.Left="25"
+                Canvas.Top="18"
+                Width="779"
+                Height="242"
+                Background="Transparent">
+            <Canvas>
+
+                <!-- ===================== LEFT column — Shutdown ===================== -->
+
+                <!-- labelShutdown: caption above the shutdown button. WinForms @ (63,30), Tahoma 12 Bold.
+                     Text "Shutdown" is the designer placeholder; code-behind sets gStr.gsShutdown. -->
+                <TextBlock x:Name="labelShutdown"
+                           Canvas.Left="63"
+                           Canvas.Top="30"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           Text="Shutdown" />
+
+                <!-- btnShutDown: WinForms Button @ (69,52) 79 x 79, BackgroundImage=Resources.SwitchOff,
+                     Zoom. Powers off the computer (btnShutDown_Click ⇒ DialogResult.Yes). -->
+                <Button x:Name="btnShutDown"
+                        Classes="imageButton"
+                        Canvas.Left="69"
+                        Canvas.Top="52"
+                        Width="79"
+                        Height="79"
+                        AutomationProperties.Name="Shutdown"
+                        Click="btnShutDown_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/SwitchOff.png"
+                           Stretch="Uniform" />
+                </Button>
+
+                <!-- labelShutdownIn: WinForms Label @ (31,145), Tahoma 15.75 Bold. Part of the Shutdown
+                     countdown pair — collapsed by default (shown only when setWindow_isShutdownComputer).
+                     Text set at runtime to gStr.gsShutdownIn + ":". -->
+                <TextBlock x:Name="labelShutdownIn"
+                           Canvas.Left="31"
+                           Canvas.Top="145"
+                           FontSize="21"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           IsVisible="False"
+                           Text="Shutdown In:" />
+
+                <!-- lblShutCtr: WinForms Label @ (65,175), Tahoma 36 Bold — the large shutdown countdown
+                     number. Collapsed by default; code-behind sets the value each tick. -->
+                <TextBlock x:Name="lblShutCtr"
+                           Canvas.Left="65"
+                           Canvas.Top="175"
+                           FontSize="48"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           IsVisible="False"
+                           Text="10" />
+
+                <!-- ===================== CENTER column — Cancel ===================== -->
+
+                <!-- labelCancel: caption above the cancel/return button. WinForms @ (340,30), Tahoma 12
+                     Bold. Text set at runtime to gStr.gsCancel. -->
+                <TextBlock x:Name="labelCancel"
+                           Canvas.Left="340"
+                           Canvas.Top="30"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           Text="Cancel" />
+
+                <!-- btnReturn: WinForms Button @ (321,43) 101 x 96, BackgroundImage=Resources.back_button,
+                     Zoom. Abandons the exit and returns to AgOpenGPS (btnReturn_Click ⇒ DialogResult.Ignore). -->
+                <Button x:Name="btnReturn"
+                        Classes="imageButton"
+                        Canvas.Left="321"
+                        Canvas.Top="43"
+                        Width="101"
+                        Height="96"
+                        AutomationProperties.Name="Cancel"
+                        Click="btnReturn_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/back-button.png"
+                           Stretch="Uniform" />
+                </Button>
+
+                <!-- ====================== RIGHT column — Exit ====================== -->
+
+                <!-- labelExit: caption above the exit button. WinForms @ (620,30), Tahoma 12 Bold,
+                     TextAlign TopCenter (moot under AutoSize). Text set at runtime to gStr.gsExit. -->
+                <TextBlock x:Name="labelExit"
+                           Canvas.Left="620"
+                           Canvas.Top="30"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           Text="Exit" />
+
+                <!-- btnOk: WinForms Button @ (595,52) 90 x 79, BackgroundImage=Resources.WindowClose,
+                     Zoom. Exits to Windows / closes AgOpenGPS (btnOk_Click ⇒ DialogResult.OK). -->
+                <Button x:Name="btnOk"
+                        Classes="imageButton"
+                        Canvas.Left="595"
+                        Canvas.Top="52"
+                        Width="90"
+                        Height="79"
+                        AutomationProperties.Name="Exit to Windows"
+                        Click="btnOk_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/WindowClose.png"
+                           Stretch="Uniform" />
+                </Button>
+
+                <!-- labelExitToWindows: WinForms Label @ (542,145), Tahoma 15.75 Bold, TextAlign TopCenter
+                     (moot under AutoSize). Part of the Exit countdown pair — visible by default. Text set
+                     at runtime to gStr.gsExitToWindows + ":". -->
+                <TextBlock x:Name="labelExitToWindows"
+                           Canvas.Left="542"
+                           Canvas.Top="145"
+                           FontSize="21"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           IsVisible="True"
+                           Text="Exit To Windows In:" />
+
+                <!-- lblExitCtr: WinForms Label @ (612,175), Tahoma 36 Bold — the large exit countdown
+                     number. Visible by default; code-behind sets the value each tick. -->
+                <TextBlock x:Name="lblExitCtr"
+                           Canvas.Left="612"
+                           Canvas.Top="175"
+                           FontSize="48"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           IsVisible="True"
+                           Text="3" />
+
+            </Canvas>
+        </Border>
+
+    </Canvas>
+</Window>

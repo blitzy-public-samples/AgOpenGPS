@@ -1,0 +1,262 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — live cross-track-error (XTE) / heading-error chart
+    (Avalonia view). 1:1 visual PARITY reimplementation of the deleted WinForms
+    Forms/Settings/FormGraphXTE (source: FormGraphXTE.cs + FormGraphXTE.Designer.cs),
+    per AAP §0.3.3 — a faithful re-platform, never a redesign. Every size, colour and font
+    below is taken verbatim from FormGraphXTE.Designer.cs.
+
+    WHY THIS IS NOT A STRAIGHT PORT — the WinForms form hosted a
+    System.Windows.Forms.DataVisualization.Charting.Chart (`unoChart`). DataVisualization is
+    Windows-only and is removed by the migration (AAP §0.5). It is reimplemented here as a
+    lightweight custom Avalonia Control that keeps two rolling point buffers and draws them as
+    polylines in its Render(DrawingContext) override — the SAME custom-Control approach used by
+    the sibling FormGraphSteerView. No new NuGet dependency is introduced. This markup references
+    NO System.Windows.Forms, NO DataVisualization and NO OpenTK types — Avalonia only.
+
+    SHELL PARITY (FormGraphXTE.Designer.cs / FormGraphXTE.cs):
+      this.Text = "XTE Chart"              -> Title="XTE Chart"  (.cs ctor; the designer said "XTE Graph")
+      ClientSize 441 x 216                 -> Width=441 Height=216 (SystemDecorations=None => client == window)
+      ControlBox off, Max/MinimizeBox off  -> SystemDecorations="None" + CanResize="False"
+      ShowInTaskbar = false                -> ShowInTaskbar="False"
+      StartPosition = CenterParent         -> WindowStartupLocation="CenterOwner" (shown owned/modal over FormGPS)
+      this.BackColor = ActiveCaptionText   -> Background="{DynamicResource AogFrameBrush}"
+                                              (AAP-directed override: the dialog chrome follows the
+                                              App.axaml day/night theme like the other migrated dialogs;
+                                              the PLOT surface itself stays black, below.)
+
+    LAYOUT — the WinForms form used absolute Location/Size on a fixed-size form, so a Canvas
+    reproduces every control's pixel coordinates exactly. Children are declared back-to-front
+    (label2 first ... lblPWM last) because Avalonia paints later siblings on top — the reverse of
+    the WinForms Controls collection order (index 0 = front of the z-order). Fonts convert from
+    WinForms points to Avalonia device-independent pixels via *96/72 (14.25pt=19, 18pt=24,
+    15.75pt=21, 20.25pt=27), the same conversion used by the sibling views.
+
+    COLOURS (verbatim from FormGraphXTE.Designer.cs):
+      series "S"   (heading error / legend "HE") -> OrangeRed  (also lblSteerAng foreground)
+      series "PWM" (XTE          / legend "XTE") -> Lime       (also lblPWM / lblMax / lblMin foreground)
+      chart back-colour                          -> Black
+      chart grid lines                           -> DimGray    (chart control axes + the gain-button borders)
+    The "HE"/"XTE" readout labels are white-on-black: the WinForms ForeColor was
+    SystemColors.ButtonHighlight (white) over SystemColors.ActiveCaptionText; a solid black backing
+    is used so the white text stays legible regardless of the day/night window background.
+
+    ============================ CODE-BEHIND CONTRACT ============================
+    FormGraphXTEView.axaml.cs  (partial class AgOpenGPS.Views.Settings.FormGraphXTEView : Window)
+    owns ALL behaviour. This view is IMPERATIVE, not MVVM — it sets no DataContext and uses no
+    {Binding}, hence there is intentionally NO x:DataType. The x:Name values below are the contract:
+
+      * A parameterless constructor calling InitializeComponent(), plus a way to receive the
+        FormGPS reference (the WinForms `mf`) so each tick can read
+        mf.vehicle.modeActualXTE (centimetres = value * 100) and
+        mf.vehicle.modeActualHeadingError (degrees, rounded to 1 dp) — using InvariantCulture
+        exactly as FormGraphXTE.cs.DrawChart() does (AAP cross-cutting culture rule).
+      * A DispatcherTimer (replacing the WinForms System.Windows.Forms.Timer `timer1`) at interval
+        (1 / mf.gpsHz) * 1000 ms. Each tick: push the new (headingError, xte) sample into unoChart,
+        trim each series buffer to <= 120 points (the WinForms scroll window), then set
+        lblSteerAng.Text = heading + "\u00B0" and lblPWM.Text = xteCm + " cm", and invalidate unoChart.
+      * label5.Text = "HE" and label1.Text = "XTE" — hard-coded literals (NOT gStr), matching the
+        FormGraphXTE.cs constructor. They are also pre-set in this markup so the design-time preview
+        is correct; the code-behind re-asserting them is harmless.
+      * The Y-gain buttons route to OnGainUpClick / OnGainAutoClick / OnGainDownClick, reproducing
+        FormGraphXTE.cs btnGainUp/Auto/Down_Click exactly:
+          - Auto  : autoscale; lblMax.Text="Auto", lblMin.Text="".
+          - Fixed : starts at +/-80; "+" doubles up to a +/-5120 cap; "-" halves down to a +/-10 floor.
+                    lblMax/lblMin show the integer bound + " cm".
+      * Named controls owned by the code-behind: unoChart, lblSteerAng, lblPWM, lblMax, lblMin,
+        label5, label1, btnGainUp, btnGainAuto, btnGainDown.
+
+    local:XteChartControl  (defined by the partner code-behind, same AgOpenGPS.Views.Settings
+    namespace; referenced here via xmlns:local) — a Control overriding Render(DrawingContext) that
+    holds two rolling point buffers ("S" heading = OrangeRed, "PWM" XTE = Lime), exposes the Y
+    min/max gain operations the three buttons drive (and that lblMax/lblMin display), and draws the
+    two polylines over DimGray axes on the black background.
+    ==============================================================================
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gStr="clr-namespace:AgOpenGPS.Core.Translations;assembly=AgOpenGPS.Core"
+        xmlns:local="clr-namespace:AgOpenGPS.Views.Settings"
+        x:Class="AgOpenGPS.Views.Settings.FormGraphXTEView"
+        Title="XTE Chart"
+        Width="441"
+        Height="216"
+        Background="{DynamicResource AogFrameBrush}"
+        FontFamily="Tahoma"
+        CanResize="False"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <!--
+        Flat, borderless Y-gain buttons. WinForms: FlatStyle.Flat + FlatAppearance.BorderSize=2,
+        BackColor Transparent, ForeColor White, Microsoft Sans Serif 15.75pt Bold (=> 21 DIP), with
+        the text glyphs "+", "A" and "-" (FormGraphXTE.Designer.cs uses TEXT, not images). The
+        template-targeted pointerover/pressed setters stop the Fluent theme painting a hover/pressed
+        fill, preserving the flat look — the same idiom as FormDialogView's "imageButton" style.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.gain">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#FF808080" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontFamily" Value="Microsoft Sans Serif" />
+            <Setter Property="FontSize" Value="21" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.gain:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#FF808080" />
+        </Style>
+        <Style Selector="Button.gain:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#FF808080" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Absolute-layout canvas == the fixed 441 x 216 WinForms client. The transparent Canvas lets
+        the {DynamicResource AogFrameBrush} window background show in the margins. Children are in
+        back-to-front order to mirror the WinForms z-order (WinForms index 0 == front == declared last).
+    -->
+    <Canvas>
+
+        <!-- label2 "<" — decorative right-edge marker. WinForms (414,75) 37x23 (height widened to
+             33 to fit the 20.25pt glyph), Lime on black, Tahoma 20.25pt Bold (27), MiddleRight.
+             Back of the z-order. -->
+        <Border Canvas.Left="414" Canvas.Top="75" Width="37" Height="33" Background="Black">
+            <TextBlock x:Name="label2"
+                       Text="&lt;"
+                       Foreground="Lime"
+                       FontFamily="Tahoma"
+                       FontSize="27"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- unoChart — the custom plotting surface. WinForms Chart (3,12) 421x178, BackColor Black.
+             The black Border guarantees the black plot background (a Control has no Background of its
+             own); the XteChartControl draws the two polylines (heading = OrangeRed, XTE = Lime) and
+             the DimGray axes on top, and is filled to the Border by default stretch. -->
+        <Border Canvas.Left="3" Canvas.Top="12" Width="421" Height="178" Background="Black">
+            <local:XteChartControl x:Name="unoChart" />
+        </Border>
+
+        <!-- label1 "XTE" — series legend. WinForms (228,190) 71x23, white-on-black,
+             Tahoma 14.25pt (19), MiddleRight. Literal (NOT gStr); also asserted in code-behind. -->
+        <Border Canvas.Left="228" Canvas.Top="190" Width="71" Height="23" Background="Black">
+            <TextBlock x:Name="label1"
+                       Text="XTE"
+                       Foreground="White"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- label5 "HE" — series legend. WinForms (34,190) 92x23, white-on-black,
+             Tahoma 14.25pt (19), MiddleRight. Literal (NOT gStr); also asserted in code-behind. -->
+        <Border Canvas.Left="34" Canvas.Top="190" Width="92" Height="23" Background="Black">
+            <TextBlock x:Name="label5"
+                       Text="HE"
+                       Foreground="White"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- lblSteerAng — heading-error readout (value + "°"). WinForms (121,186) 85x29, OrangeRed
+             on black, Tahoma 18pt Bold (24), MiddleLeft. Text refreshed each tick by the code-behind;
+             "0°" is the design-time placeholder. -->
+        <Border Canvas.Left="121" Canvas.Top="186" Width="85" Height="29" Background="Black">
+            <TextBlock x:Name="lblSteerAng"
+                       Text="0&#xB0;"
+                       Foreground="OrangeRed"
+                       FontFamily="Tahoma"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- btnGainUp "+" — WinForms (3,12) 48x55. Increases the Y scale (FormGraphXTE.cs btnGainUp_Click). -->
+        <Button x:Name="btnGainUp"
+                Classes="gain"
+                Canvas.Left="3"
+                Canvas.Top="12"
+                Width="48"
+                Height="55"
+                Content="+"
+                Click="OnGainUpClick"
+                AutomationProperties.Name="Increase chart scale" />
+
+        <!-- btnGainDown "-" — WinForms (3,122) 48x55. Decreases the Y scale (btnGainDown_Click). -->
+        <Button x:Name="btnGainDown"
+                Classes="gain"
+                Canvas.Left="3"
+                Canvas.Top="122"
+                Width="48"
+                Height="55"
+                Content="-"
+                Click="OnGainDownClick"
+                AutomationProperties.Name="Decrease chart scale" />
+
+        <!-- btnGainAuto "A" — WinForms (3,64) 48x55. Autoscale (btnGainAuto_Click). -->
+        <Button x:Name="btnGainAuto"
+                Classes="gain"
+                Canvas.Left="3"
+                Canvas.Top="64"
+                Width="48"
+                Height="55"
+                Content="A"
+                Click="OnGainAutoClick"
+                AutomationProperties.Name="Auto chart scale" />
+
+        <!-- lblMin — Y-axis minimum readout (+ " cm"). WinForms (332,190) 100x23, Lime on black,
+             Tahoma 14.25pt Bold (19), MiddleRight. Text set by the gain handlers. -->
+        <Border Canvas.Left="332" Canvas.Top="190" Width="100" Height="23" Background="Black">
+            <TextBlock x:Name="lblMin"
+                       Text="10"
+                       Foreground="Lime"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- lblMax — Y-axis maximum readout ("Auto" or bound + " cm"). WinForms (332,1) 100x23,
+             Lime on black, Tahoma 14.25pt Bold (19), MiddleRight. Text set by the gain handlers. -->
+        <Border Canvas.Left="332" Canvas.Top="1" Width="100" Height="23" Background="Black">
+            <TextBlock x:Name="lblMax"
+                       Text="Auto"
+                       Foreground="Lime"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- lblPWM — XTE readout (value + " cm"). WinForms (293,186) 85x29, Lime on black,
+             Tahoma 18pt Bold (24), MiddleLeft. Front of the z-order. Text refreshed each tick by the
+             code-behind; "0 cm" is the design-time placeholder. -->
+        <Border Canvas.Left="293" Canvas.Top="186" Width="85" Height="29" Background="Black">
+            <TextBlock x:Name="lblPWM"
+                       Text="0 cm"
+                       Foreground="Lime"
+                       FontFamily="Tahoma"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Center" />
+        </Border>
+
+    </Canvas>
+</Window>

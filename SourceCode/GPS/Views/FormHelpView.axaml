@@ -1,0 +1,281 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Help dialog (Avalonia view).
+
+    1:1 PARITY reimplementation of the WinForms `Forms/FormHelp` (source: FormHelp.cs +
+    FormHelp.Designer.cs). Per AAP §0.3.3 this is visual + behavioural FIDELITY, never a
+    redesign: the same 739 x 480 fixed dialog showing a row of three QR codes above a row of
+    three external-link buttons, with an OK/close button in the bottom-right corner. Every
+    size / position / font / icon below is taken verbatim from FormHelp.Designer.cs.
+
+    SHELL — mirrors FormHelp.Designer.cs exactly:
+      Text "Help"                    -> Title (overridden at load by the code-behind: gStr.gsHelp).
+      ClientSize 739 x 480           -> a 739 x 480 Canvas + SizeToContent="WidthAndHeight", so the
+                                        CLIENT area equals 739 x 480 even though the window keeps a
+                                        title bar (a borderless Width/Height would shrink the client
+                                        by the caption height).
+      BackColor SystemColors.Control -> Background "#FFF0F0F0" (the classic Windows control grey).
+                                        FIXED palette: FormHelp was never day/night themed, so the
+                                        App.axaml Aog* day/night brushes are deliberately NOT used
+                                        here — a dark theme variant would make the black captions
+                                        unreadable and break parity (same rule as FormDialogView).
+      FormBorderStyle.FixedDialog    -> a DECORATED, fixed-size window: SystemDecorations="Full" +
+                                        CanResize="False". This is intentionally NOT borderless:
+                                        unlike the FormBorderStyle.None siblings (FormYes / FormSaving
+                                        / FormTimedMessage), the original FormHelp keeps its caption
+                                        bar, so the Avalonia window keeps its decorations and shows
+                                        the "Help" title.
+      ControlBox = false /           -> the original hid the caption's system menu / minimise / close
+      MinimizeBox = false               buttons. Avalonia 11 has no cross-platform switch to hide only
+                                        those buttons, so the OS chrome may still show them; this is a
+                                        benign chrome-only variance — the dialog is dismissed through
+                                        buttonClose (WinForms DialogResult.OK) exactly as before.
+      ShowInTaskbar = false          -> ShowInTaskbar="False".
+      StartPosition.CenterParent     -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS).
+      Topmost                        -> Topmost="True" (AAP wiring + the GPS-family dialog convention).
+      Font (form default)            -> FontFamily="Tahoma" (children set their own size / weight).
+
+    CONTENTS — preserved 1:1 (WinForms absolute Location/Size reproduced with a Canvas):
+      pictureBoxQRGitHub    : QR image, BorderStyle.FixedSingle, (20,20)  220x220, SizeMode.Zoom
+      pictureBoxQRDiscourse : QR image, BorderStyle.FixedSingle, (260,20) 220x220, SizeMode.Zoom
+      pictureBoxQRYouTube   : QR image, BorderStyle.FixedSingle, (500,20) 220x220, SizeMode.Zoom
+      buttonGitHub          : link button, (20,260)  220x110, image GitHub    on top, caption on bottom
+      buttonDiscourse       : link button, (260,260) 220x110, image Discourse on top, caption on bottom
+      buttonYouTube         : link button, (500,260) 220x110, image YouTube   on top, caption on bottom
+      buttonClose           : OK/close button, (630,380) 90x90, image OK64 on top, caption on bottom
+      (SizeMode.Zoom == Image Stretch="Uniform"; BorderStyle.FixedSingle == a 1px Border around the QR.)
+
+    Image glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs —
+    the same btnImages/ assets the other GPS Avalonia views consume (OK64.png is shared with
+    FormYes / FormDialog). The link/close icons are native 64 x 64; the QR codes are native 300 x 300,
+    scaled uniformly into their 220 x 220 frames.
+
+    Button captions are Tahoma 12pt Bold in WinForms; Avalonia FontSize is in device-independent
+    pixels, so 12pt x 96/72 = 16 (the same pt->DIP conversion used by FormYesView / FormSavingView).
+
+    CODE-BEHIND CONTRACT — FormHelpView.axaml.cs (partial class AgOpenGPS.Views.FormHelpView : Window).
+    This dialog is CODE-BEHIND DRIVEN: there is intentionally NO x:DataType, NO DataContext and NO
+    {Binding} — the x:Name'd controls below are the entire integration surface (parity with the
+    parameterless WinForms `FormHelp()` ctor + FormHelp_Load). The partner code-behind:
+      * Declares a parameterless constructor calling InitializeComponent(); shown with ShowDialog over FormGPS.
+      * Localises at load (parity with FormHelp_Load) by assigning the window Title and the FOUR caption
+        TextBlocks BY NAME (NOT Button.Content — Content holds the image+caption layout below):
+            Title                     = gStr.gsHelp
+            buttonGitHubLabel.Text    = gStr.gsCheckForUpdates   (note: the GitHub button caption is
+                                        "Check for Updates" in FormHelp.cs — gsCheckForUpdates, not gsHelp)
+            buttonDiscourseLabel.Text = gStr.gsDiscourseForum
+            buttonYouTubeLabel.Text   = gStr.gsYouTubeTutorials
+            buttonCloseLabel.Text     = gStr.gsClose
+      * Subscribes the four button Click events in C# (e.g. buttonGitHub.Click += ...), mirroring the
+        original FormHelp.Designer.cs which wired the handlers in code; this markup deliberately declares
+        ONLY x:Name (no Click="...") so the .axaml and .axaml.cs can be authored independently in parallel:
+            buttonGitHub    -> open https://github.com/AgOpenGPS-Official/AgOpenGPS
+            buttonDiscourse -> open https://discourse.agopengps.com
+            buttonYouTube   -> open https://www.youtube.com/@AgOpenGPS
+            buttonClose     -> close the dialog (WinForms DialogResult.OK); IsDefault="True" below
+                               routes the Enter key to it for keyboard operability.
+        (FormHelp.cs's Process.Start(url) becomes a cross-platform URL launch in the code-behind.)
+
+    No WinForms, no OpenTK, no Win32 types are referenced — Avalonia 11.3 markup only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormHelpView"
+        Title="Help"
+        SystemDecorations="Full"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#FFF0F0F0"
+        FontFamily="Tahoma">
+
+    <!--
+        Flat, chrome-less image buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor = Transparent: just the glyph + caption, with no
+        button surface in any visual state. The :pointerover / :pressed template overrides suppress
+        the Fluent hover / press background that would otherwise box the content (the same technique
+        used by FormDialogView and the Keypad controls). The per-button content (an icon stacked above
+        a caption) reproduces ImageAlign=TopCenter + TextAlign=BottomCenter.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Canvas reproduces the WinForms absolute layout 1:1: every Canvas.Left / Canvas.Top + Width /
+        Height equals the exact WinForms Location / Size from FormHelp.Designer.cs on the 739 x 480
+        client. The Canvas's fixed size combined with the window's SizeToContent yields a client area
+        of exactly 739 x 480.
+    -->
+    <Canvas Width="739" Height="480">
+
+        <!-- ============================ QR-CODE ROW (Top = 20) ============================ -->
+
+        <!-- pictureBoxQRGitHub — WinForms PictureBox (20,20) 220x220, BorderStyle.FixedSingle,
+             SizeMode.Zoom. The 1px Border == FixedSingle; the Image (native 300x300) scales uniformly
+             to fit (Zoom). -->
+        <Border x:Name="pictureBoxQRGitHub"
+                Canvas.Left="20" Canvas.Top="20"
+                Width="220" Height="220"
+                BorderBrush="#FF808080"
+                BorderThickness="1">
+            <Image Source="avares://AgOpenGPS/btnImages/QR/QRGitHub.png"
+                   Stretch="Uniform"
+                   AutomationProperties.Name="GitHub QR code" />
+        </Border>
+
+        <!-- pictureBoxQRDiscourse — WinForms PictureBox (260,20) 220x220, FixedSingle, Zoom. -->
+        <Border x:Name="pictureBoxQRDiscourse"
+                Canvas.Left="260" Canvas.Top="20"
+                Width="220" Height="220"
+                BorderBrush="#FF808080"
+                BorderThickness="1">
+            <Image Source="avares://AgOpenGPS/btnImages/QR/QRDiscourse.png"
+                   Stretch="Uniform"
+                   AutomationProperties.Name="Discourse QR code" />
+        </Border>
+
+        <!-- pictureBoxQRYouTube — WinForms PictureBox (500,20) 220x220, FixedSingle, Zoom. -->
+        <Border x:Name="pictureBoxQRYouTube"
+                Canvas.Left="500" Canvas.Top="20"
+                Width="220" Height="220"
+                BorderBrush="#FF808080"
+                BorderThickness="1">
+            <Image Source="avares://AgOpenGPS/btnImages/QR/QRYouTube.png"
+                   Stretch="Uniform"
+                   AutomationProperties.Name="YouTube QR code" />
+        </Border>
+
+        <!-- ============================ LINK-BUTTON ROW (Top = 260) ============================ -->
+
+        <!-- buttonGitHub — WinForms Button (20,260) 220x110. Image GitHub (64x64) on top, caption on
+             bottom. Default caption "Check for Updates" (code-behind sets gStr.gsCheckForUpdates). -->
+        <Button x:Name="buttonGitHub"
+                Classes="imageButton"
+                Canvas.Left="20" Canvas.Top="260"
+                Width="220" Height="110">
+            <Grid RowDefinitions="*,Auto">
+                <Image Grid.Row="0"
+                       Source="avares://AgOpenGPS/btnImages/GitHub.png"
+                       Width="64" Height="64"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Top"
+                       Margin="0,4,0,0" />
+                <TextBlock x:Name="buttonGitHubLabel"
+                           Grid.Row="1"
+                           Text="Check for Updates"
+                           FontFamily="Tahoma"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           HorizontalAlignment="Center"
+                           Margin="2,0,2,6" />
+            </Grid>
+        </Button>
+
+        <!-- buttonDiscourse — WinForms Button (260,260) 220x110. Image Discourse on top, caption bottom. -->
+        <Button x:Name="buttonDiscourse"
+                Classes="imageButton"
+                Canvas.Left="260" Canvas.Top="260"
+                Width="220" Height="110">
+            <Grid RowDefinitions="*,Auto">
+                <Image Grid.Row="0"
+                       Source="avares://AgOpenGPS/btnImages/Discourse.png"
+                       Width="64" Height="64"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Top"
+                       Margin="0,4,0,0" />
+                <TextBlock x:Name="buttonDiscourseLabel"
+                           Grid.Row="1"
+                           Text="Discourse Forum"
+                           FontFamily="Tahoma"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           HorizontalAlignment="Center"
+                           Margin="2,0,2,6" />
+            </Grid>
+        </Button>
+
+        <!-- buttonYouTube — WinForms Button (500,260) 220x110. Image YouTube on top, caption bottom. -->
+        <Button x:Name="buttonYouTube"
+                Classes="imageButton"
+                Canvas.Left="500" Canvas.Top="260"
+                Width="220" Height="110">
+            <Grid RowDefinitions="*,Auto">
+                <Image Grid.Row="0"
+                       Source="avares://AgOpenGPS/btnImages/YouTube.png"
+                       Width="64" Height="64"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Top"
+                       Margin="0,4,0,0" />
+                <TextBlock x:Name="buttonYouTubeLabel"
+                           Grid.Row="1"
+                           Text="YouTube Tutorials"
+                           FontFamily="Tahoma"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           HorizontalAlignment="Center"
+                           Margin="2,0,2,6" />
+            </Grid>
+        </Button>
+
+        <!-- ============================ CLOSE BUTTON (bottom-right) ============================ -->
+
+        <!-- buttonClose — WinForms Button (630,380) 90x90, DialogResult.OK. Image OK64 on top, "Close"
+             caption on bottom. IsDefault routes the Enter key to it (the dialog's accept action). -->
+        <Button x:Name="buttonClose"
+                Classes="imageButton"
+                Canvas.Left="630" Canvas.Top="380"
+                Width="90" Height="90"
+                IsDefault="True">
+            <Grid RowDefinitions="*,Auto">
+                <Image Grid.Row="0"
+                       Source="avares://AgOpenGPS/btnImages/OK64.png"
+                       Width="64" Height="64"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Top"
+                       Margin="0,2,0,0" />
+                <TextBlock x:Name="buttonCloseLabel"
+                           Grid.Row="1"
+                           Text="Close"
+                           FontFamily="Tahoma"
+                           FontSize="16"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center"
+                           Margin="2,0,2,4" />
+            </Grid>
+        </Button>
+
+    </Canvas>
+</Window>
