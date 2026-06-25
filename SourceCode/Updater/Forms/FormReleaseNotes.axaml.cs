@@ -28,8 +28,8 @@ namespace AgOpenGPS.Updater.Forms
             {
                 Title = title
             };
-            dialog.lblTitle.Text = $"Release Notes - {version}";
-            dialog.txtNotes.Text = !string.IsNullOrEmpty(releaseNotes) ? releaseNotes : "No release notes available.";
+            dialog.LblTitle.Text = $"Release Notes - {version}";
+            dialog.TxtNotes.Text = !string.IsNullOrEmpty(releaseNotes) ? releaseNotes : "No release notes available.";
 
             if (parent != null)
             {

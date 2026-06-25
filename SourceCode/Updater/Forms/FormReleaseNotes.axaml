@@ -11,38 +11,55 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         FontFamily="Segoe UI">
+    <!--
+        Release-notes popup. 1:1 layout port of the WinForms FormReleaseNotes
+        (Forms/FormReleaseNotes.Designer.cs): a teal header title, a lavender body containing a
+        read-only multiline notes box, and a footer with a single teal Close button. The header and
+        Close button reference App.axaml's AccentBrush (#1B97A0) via DynamicResource; every other color
+        is an inline hex literal mirroring the original Color.FromArgb values. No relayout and no new
+        features are introduced (AAP §0.3.3 — parity reimplementation). CanResize="False" reproduces the
+        WinForms FixedDialog / ControlBox=false; WindowStartupLocation="CenterOwner" reproduces
+        StartPosition=CenterParent.
+    -->
     <DockPanel LastChildFill="True">
-        <!-- panelHeader (Dock=Top, 70h, BackColor 27,151,160 teal) -->
-        <Border DockPanel.Dock="Top" Height="70" Background="#1B97A0">
-            <TextBlock x:Name="lblTitle"
+        <!-- panelHeader: Dock=Top, Height 70, BackColor (27,151,160) = AccentBrush. -->
+        <Border DockPanel.Dock="Top" Height="70" Background="{DynamicResource AccentBrush}">
+            <!-- lblTitle: Segoe UI 20 Bold, White, WinForms Location (25,20) -> top-left + Margin 25,20. -->
+            <TextBlock x:Name="LblTitle"
                        Text="Release Notes"
                        Foreground="White"
                        FontSize="20" FontWeight="Bold"
-                       VerticalAlignment="Center"
-                       Margin="25,0,0,0" />
+                       HorizontalAlignment="Left" VerticalAlignment="Top"
+                       Margin="25,20,0,0" />
         </Border>
 
-        <!-- panelButtons (Dock=Bottom, 80h, BackColor 180,180,200, Padding 20) -->
+        <!-- panelButtons: Dock=Bottom, Height 80, BackColor (180,180,200) = #B4B4C8, Padding 20. -->
         <Border DockPanel.Dock="Bottom" Height="80" Background="#B4B4C8" Padding="20">
-            <Button x:Name="btnClose"
+            <!-- btnClose: Segoe UI 16 Bold, White on AccentBrush, 160x50, anchored Bottom|Right ->
+                 right-aligned within the 20px-padded footer reproduces WinForms Location (520,15). -->
+            <Button x:Name="BtnClose"
                     Content="Close"
                     Width="160" Height="50"
                     FontSize="16" FontWeight="Bold"
-                    Foreground="White" Background="#1B97A0"
+                    Foreground="White" Background="{DynamicResource AccentBrush}"
                     HorizontalAlignment="Right" VerticalAlignment="Center"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     Click="BtnClose_Click"
                     AutomationProperties.Name="Close release notes" />
         </Border>
 
-        <!-- panelMain (Fill, BackColor 210,210,230 lavender, Padding 20) -->
+        <!-- panelMain: Dock=Fill (last child), BackColor (210,210,230) = #D2D2E6, Padding 20. -->
         <Border Background="#D2D2E6" Padding="20">
-            <TextBox x:Name="txtNotes"
+            <!-- txtNotes: White, Segoe UI 11, WinForms Multiline+ReadOnly+ScrollBars=Vertical (word-wrap)
+                 -> IsReadOnly + AcceptsReturn + TextWrapping=Wrap + vertical scrollbar Auto / horizontal Disabled. -->
+            <TextBox x:Name="TxtNotes"
                      Text="Release notes will appear here."
+                     Background="White"
+                     FontSize="11"
                      IsReadOnly="True"
                      AcceptsReturn="True"
                      TextWrapping="Wrap"
-                     Background="White"
-                     FontSize="11"
+                     HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      AutomationProperties.Name="Release notes text" />

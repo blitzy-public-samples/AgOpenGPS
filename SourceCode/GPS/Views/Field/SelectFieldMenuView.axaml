@@ -1,0 +1,112 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Select-Field menu dialog (Avalonia view).
+
+    This is a NET-NEW Avalonia MVVM view (discipline A — compiled-binding MVVM); there was no
+    WinForms source form. It is the entry hub of the four Select-Field dialogs and offers the three
+    field-selection workflows plus Cancel, mirroring the Core view-model surface
+    (AgOpenGPS.Core.ViewModels.SelectFieldMenuViewModel).
+
+    Wiring contract (do NOT change here):
+      * The DataContext is assigned EXTERNALLY by AvaloniaSelectFieldPanelPresenter via
+        `new SelectFieldMenuView { DataContext = vm }` and shown with Show/ShowDialog/Close.
+        Therefore this markup sets NO DataContext and NO Design.DataContext — the view-model
+        has only a 4-argument constructor (no parameterless ctor), so a design-time instance
+        cannot be created. `x:DataType` below only declares the type for compile-time binding
+        checking; it never instantiates the view-model.
+      * `x:CompileBindings="True"` makes every {Binding ...} a compiled binding resolved against
+        SelectFieldMenuViewModel at build time, so a misspelled path fails the build (Release
+        treats warnings as errors). Only these members are bound: StartSelectNearFieldCommand,
+        StartCreateFieldFromExistingCommand, StartSelectFieldCommand, CancelCommand and
+        CurrentFieldName. The child view-model accessor properties
+        (SelectNearFieldViewModel / CreateFromExistingFieldViewModel / SelectFieldViewModel) are
+        navigated by the presenter, NOT bound by this view.
+
+    Theme (per AAP §0.3.3 — 1:1 visual parity, never a redesign):
+      All colors come from the day/night theme brushes defined in App.axaml's ThemeDictionaries and
+      are referenced via {DynamicResource ...} so the live Light<->Dark switch is observed. No
+      hardcoded colors. Button glyphs are served from the GPS assembly via avares:// URIs.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgOpenGPS.Core.ViewModels;assembly=AgOpenGPS.Core"
+        x:Class="AgOpenGPS.Views.Field.SelectFieldMenuView"
+        x:DataType="vm:SelectFieldMenuViewModel"
+        x:CompileBindings="True"
+        Title="Field Menu"
+        Width="440" Height="380"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Touch-friendly kiosk menu. DockPanel docks the field readout to the top and the Cancel
+        button to the bottom; the three large action buttons occupy the remaining space (the
+        StackPanel is the LAST child, so DockPanel.LastChildFill centers it in the leftover area).
+    -->
+    <DockPanel Margin="16">
+
+        <!-- Top: active-field readout ("Current Field: <name>"). -->
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal"
+                    Margin="0,0,0,16">
+            <TextBlock Text="Current Field:"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       FontSize="16"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="{Binding CurrentFieldName}"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Margin="8,0,0,0"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <!-- Bottom: Cancel — closes the menu via SelectFieldMenuViewModel.CancelCommand. -->
+        <Button DockPanel.Dock="Bottom"
+                Command="{Binding CancelCommand}"
+                HorizontalAlignment="Right"
+                MinHeight="56"
+                MinWidth="120"
+                Margin="0,16,0,0"
+                Foreground="{DynamicResource AogTextBrush}">
+            <StackPanel Orientation="Horizontal">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                       Width="32"
+                       Height="32" />
+                <TextBlock Text="Cancel"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
+            </StackPanel>
+        </Button>
+
+        <!-- Center: the three field-selection workflows, large stretched touch targets. -->
+        <StackPanel VerticalAlignment="Center"
+                    Spacing="14">
+            <Button Content="Select Near Field"
+                    Command="{Binding StartSelectNearFieldCommand}"
+                    MinHeight="72"
+                    FontSize="20"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    Foreground="{DynamicResource AogTextBrush}" />
+            <Button Content="Create From Existing Field"
+                    Command="{Binding StartCreateFieldFromExistingCommand}"
+                    MinHeight="72"
+                    FontSize="20"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    Foreground="{DynamicResource AogTextBrush}" />
+            <Button Content="Select Field"
+                    Command="{Binding StartSelectFieldCommand}"
+                    MinHeight="72"
+                    FontSize="20"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    Foreground="{DynamicResource AogTextBrush}" />
+        </StackPanel>
+
+    </DockPanel>
+</Window>

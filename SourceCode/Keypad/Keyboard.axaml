@@ -1,14 +1,28 @@
-<!-- [XPLAT] migrated from net48/WinForms Keyboard.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
 <!--
-    [XPLAT] On-screen keyboard reimplemented as an Avalonia UserControl deriving from GenericKeypad
-    (XAML root element is the base type — the standard Avalonia UserControl-inheritance pattern).
-    The 925x525 absolute layout, 64x64 key size, and per-row coordinates are reproduced verbatim
-    from the original WinForms designer. Key glyphs (Content) and per-culture visibility are assigned
-    in code-behind by changeCase()/ApplyCultureLayout(), exactly mirroring the original so emitted
-    characters and the QWERTY/AZERTY/QWERTZ + accent maps are byte-identical after migration.
-    Note: the original set Height=396 when the accent (b) row was hidden; because that value clips the
-    bottom command row (Cancel/Clr/Space/Shift/OK at y~456), the full functional layout is preserved
-    here instead — emitted-token parity is unaffected.
+    [XPLAT] On-screen QWERTY/AZERTY/QWERTZ keyboard reimplemented as an Avalonia UserControl deriving
+    from GenericKeypad (the XAML root element IS the migrated base type — the standard Avalonia
+    UserControl-inheritance pattern). This is a 1:1 parity reimplementation of the former WinForms
+    Keyboard.Designer.cs: the 925x525 control, the 64x64 keys, and every per-key coordinate are
+    reproduced verbatim from the original designer using an absolute Canvas layout (mirroring the
+    WinForms Location/Size model and matching the sibling NumKeypad.axaml).
+
+    The hard contract with the code-behind Keyboard.axaml.cs is preserved exactly:
+      * 60 glyph keys (a1-a11, b1-b12, c1-c12, d1-d12, e1-e12, btnApos) are <Button> controls wired to
+        Click="BtnClick"; their Content (legend) and per-culture visibility are assigned at runtime by
+        changeCase()/ApplyCultureLayout(), so the emitted characters and the QWERTY/AZERTY/QWERTZ + accent
+        maps stay byte-identical after migration. The initial Content set here is the default English
+        un-shifted legend purely so the markup reads correctly; the constructor overwrites it on load.
+      * chk_shift is a <ToggleButton> (WinForms CheckBox Appearance=Button) exposing IsChecked, wired to
+        IsCheckedChanged="Chk_shift_CheckedChanged".
+      * The command keys emit fixed control tokens via their own handlers (Btn_space/clear/cancel/OK/
+        backspace_Click) and are NOT wired to BtnClick.
+    Note: the original shrank Height to 396 when the accent (b) row was hidden; that value is intentionally
+    not reproduced here (it clips the bottom command row) — emitted-token parity is unaffected and the host
+    dialog governs final sizing.
+
+    Do NOT hard-code row visibility here: the code-behind hides the accent (b) row for de/default cultures
+    and additionally hides c12/d12 for the default culture.
 -->
 <keypad:GenericKeypad xmlns="https://github.com/avaloniaui"
                       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -17,113 +31,147 @@
                       Width="925" Height="525">
 
     <keypad:GenericKeypad.Styles>
-        <!-- [XPLAT] "Arial Rounded MT Bold" from the WinForms designer, with cross-platform fallbacks. -->
+        <!-- [XPLAT] Glyph keys: "Arial Rounded MT Bold" 24pt from the WinForms designer, with cross-platform
+             font fallbacks (Arial/Helvetica/sans-serif) for Linux/macOS. SystemColors.Control (#F0F0F0)
+             background, black legends, and square 1px flat borders reproduce the original FlatStyle.Flat keys. -->
         <Style Selector="Button">
             <Setter Property="FontFamily" Value="Arial Rounded MT Bold, Arial, Helvetica, sans-serif" />
             <Setter Property="FontSize" Value="24" />
             <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Background" Value="#FFF0F0F0" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="#FF808080" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="0" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
+        <!-- [XPLAT] Shift toggle: same flat-square box styling as the glyph keys. -->
         <Style Selector="ToggleButton">
+            <Setter Property="Background" Value="#FFF0F0F0" />
+            <Setter Property="BorderBrush" Value="#FF808080" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="0" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
     </keypad:GenericKeypad.Styles>
 
-    <Canvas Width="925" Height="525">
-        <!-- Row a (number/symbol row), y=1 -->
-        <Button x:Name="a1"  Canvas.Left="4"   Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a2"  Canvas.Left="77"  Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a3"  Canvas.Left="150" Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a4"  Canvas.Left="223" Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a5"  Canvas.Left="296" Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a6"  Canvas.Left="369" Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a7"  Canvas.Left="442" Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a8"  Canvas.Left="515" Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a9"  Canvas.Left="588" Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a10" Canvas.Left="661" Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="a11" Canvas.Left="734" Canvas.Top="1" Width="64" Height="64" Click="BtnClick" />
+    <!-- [XPLAT] Absolute layout on a 925x525 canvas; Background = SystemColors.GradientActiveCaption
+         (#B9D1EA) reproduces the original control backdrop, including the band left empty when the
+         accent (b) row is hidden. -->
+    <Canvas Width="925" Height="525" Background="#FFB9D1EA">
 
-        <!-- backspace (top-right), y=1 -->
+        <!-- ===== Row a — number / symbol row (y=1) ===== -->
+        <Button x:Name="a1"  Canvas.Left="4"   Canvas.Top="1" Width="64" Height="64" Content="1" Click="BtnClick" />
+        <Button x:Name="a2"  Canvas.Left="77"  Canvas.Top="1" Width="64" Height="64" Content="2" Click="BtnClick" />
+        <Button x:Name="a3"  Canvas.Left="150" Canvas.Top="1" Width="64" Height="64" Content="3" Click="BtnClick" />
+        <Button x:Name="a4"  Canvas.Left="223" Canvas.Top="1" Width="64" Height="64" Content="4" Click="BtnClick" />
+        <Button x:Name="a5"  Canvas.Left="296" Canvas.Top="1" Width="64" Height="64" Content="5" Click="BtnClick" />
+        <Button x:Name="a6"  Canvas.Left="369" Canvas.Top="1" Width="64" Height="64" Content="6" Click="BtnClick" />
+        <Button x:Name="a7"  Canvas.Left="442" Canvas.Top="1" Width="64" Height="64" Content="7" Click="BtnClick" />
+        <Button x:Name="a8"  Canvas.Left="515" Canvas.Top="1" Width="64" Height="64" Content="8" Click="BtnClick" />
+        <Button x:Name="a9"  Canvas.Left="588" Canvas.Top="1" Width="64" Height="64" Content="9" Click="BtnClick" />
+        <Button x:Name="a10" Canvas.Left="661" Canvas.Top="1" Width="64" Height="64" Content="0" Click="BtnClick" />
+        <Button x:Name="a11" Canvas.Left="734" Canvas.Top="1" Width="64" Height="64" Content="=" Click="BtnClick" />
+
+        <!-- ===== Backspace — top-right (y=1), LightSalmon, backspace glyph ===== -->
         <Button x:Name="btn_backspace" Canvas.Left="829" Canvas.Top="1" Width="93" Height="64"
-                Click="Btn_backspace_Click" ToolTip.Tip="Backspace"
-                AutomationProperties.Name="Backspace">
-            <Image Source="avares://Keypad/Resources/backspace.png" Stretch="Uniform" Width="44" Height="44" />
+                Background="#FFFFA07A" Click="Btn_backspace_Click"
+                ToolTip.Tip="Backspace" AutomationProperties.Name="Backspace">
+            <Image Source="avares://Keypad/Resources/backspace.png" Stretch="Uniform" Width="48" Height="48" />
         </Button>
 
-        <!-- Row b (French accents only), y=82 -->
-        <Button x:Name="b1"  Canvas.Left="15"  Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b2"  Canvas.Left="89"  Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b3"  Canvas.Left="163" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b4"  Canvas.Left="237" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b5"  Canvas.Left="311" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b6"  Canvas.Left="385" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b7"  Canvas.Left="459" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b8"  Canvas.Left="533" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b9"  Canvas.Left="607" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b10" Canvas.Left="681" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b11" Canvas.Left="755" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="b12" Canvas.Left="829" Canvas.Top="82" Width="64" Height="64" Click="BtnClick" />
+        <!-- ===== Row b — French accents only (y=82); hidden by code-behind for de/default ===== -->
+        <Button x:Name="b1"  Canvas.Left="15"  Canvas.Top="82" Width="64" Height="64" Content="&#xE0;" Click="BtnClick" />
+        <Button x:Name="b2"  Canvas.Left="89"  Canvas.Top="82" Width="64" Height="64" Content="&#xE2;" Click="BtnClick" />
+        <Button x:Name="b3"  Canvas.Left="163" Canvas.Top="82" Width="64" Height="64" Content="&#xE6;" Click="BtnClick" />
+        <Button x:Name="b4"  Canvas.Left="237" Canvas.Top="82" Width="64" Height="64" Content="&#xE7;" Click="BtnClick" />
+        <Button x:Name="b5"  Canvas.Left="311" Canvas.Top="82" Width="64" Height="64" Content="&#xE9;" Click="BtnClick" />
+        <Button x:Name="b6"  Canvas.Left="385" Canvas.Top="82" Width="64" Height="64" Content="&#xE8;" Click="BtnClick" />
+        <Button x:Name="b7"  Canvas.Left="459" Canvas.Top="82" Width="64" Height="64" Content="&#xEA;" Click="BtnClick" />
+        <Button x:Name="b8"  Canvas.Left="533" Canvas.Top="82" Width="64" Height="64" Content="&#xEB;" Click="BtnClick" />
+        <Button x:Name="b9"  Canvas.Left="607" Canvas.Top="82" Width="64" Height="64" Content="&#xEF;" Click="BtnClick" />
+        <Button x:Name="b10" Canvas.Left="681" Canvas.Top="82" Width="64" Height="64" Content="&#xEE;" Click="BtnClick" />
+        <Button x:Name="b11" Canvas.Left="755" Canvas.Top="82" Width="64" Height="64" Content="&#xF4;" Click="BtnClick" />
+        <Button x:Name="b12" Canvas.Left="829" Canvas.Top="82" Width="64" Height="64" Content="&#x153;" Click="BtnClick" />
 
-        <!-- Row c, y=212 -->
-        <Button x:Name="c1"  Canvas.Left="28"  Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c2"  Canvas.Left="102" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c3"  Canvas.Left="176" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c4"  Canvas.Left="250" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c5"  Canvas.Left="324" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c6"  Canvas.Left="398" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c7"  Canvas.Left="472" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c8"  Canvas.Left="546" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c9"  Canvas.Left="620" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c10" Canvas.Left="694" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c11" Canvas.Left="766" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="c12" Canvas.Left="839" Canvas.Top="212" Width="64" Height="64" Click="BtnClick" />
+        <!-- ===== Row c — QWERTY top row (y=212) ===== -->
+        <Button x:Name="c1"  Canvas.Left="28"  Canvas.Top="212" Width="64" Height="64" Content="/" Click="BtnClick" />
+        <Button x:Name="c2"  Canvas.Left="102" Canvas.Top="212" Width="64" Height="64" Content="q" Click="BtnClick" />
+        <Button x:Name="c3"  Canvas.Left="176" Canvas.Top="212" Width="64" Height="64" Content="w" Click="BtnClick" />
+        <Button x:Name="c4"  Canvas.Left="250" Canvas.Top="212" Width="64" Height="64" Content="e" Click="BtnClick" />
+        <Button x:Name="c5"  Canvas.Left="324" Canvas.Top="212" Width="64" Height="64" Content="r" Click="BtnClick" />
+        <Button x:Name="c6"  Canvas.Left="398" Canvas.Top="212" Width="64" Height="64" Content="t" Click="BtnClick" />
+        <Button x:Name="c7"  Canvas.Left="472" Canvas.Top="212" Width="64" Height="64" Content="y" Click="BtnClick" />
+        <Button x:Name="c8"  Canvas.Left="546" Canvas.Top="212" Width="64" Height="64" Content="u" Click="BtnClick" />
+        <Button x:Name="c9"  Canvas.Left="620" Canvas.Top="212" Width="64" Height="64" Content="i" Click="BtnClick" />
+        <Button x:Name="c10" Canvas.Left="694" Canvas.Top="212" Width="64" Height="64" Content="o" Click="BtnClick" />
+        <Button x:Name="c11" Canvas.Left="766" Canvas.Top="212" Width="64" Height="64" Content="p" Click="BtnClick" />
+        <Button x:Name="c12" Canvas.Left="839" Canvas.Top="212" Width="64" Height="64" Content="&#xFB;" Click="BtnClick" />
 
-        <!-- Row d, y=293 -->
-        <Button x:Name="d1"  Canvas.Left="45"  Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d2"  Canvas.Left="119" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d3"  Canvas.Left="193" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d4"  Canvas.Left="267" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d5"  Canvas.Left="341" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d6"  Canvas.Left="415" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d7"  Canvas.Left="489" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d8"  Canvas.Left="563" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d9"  Canvas.Left="637" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d10" Canvas.Left="711" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d11" Canvas.Left="785" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="d12" Canvas.Left="859" Canvas.Top="293" Width="64" Height="64" Click="BtnClick" />
+        <!-- ===== Row d — home row (y=293) ===== -->
+        <Button x:Name="d1"  Canvas.Left="45"  Canvas.Top="293" Width="64" Height="64" Content="~" Click="BtnClick" />
+        <Button x:Name="d2"  Canvas.Left="119" Canvas.Top="293" Width="64" Height="64" Content="a" Click="BtnClick" />
+        <Button x:Name="d3"  Canvas.Left="193" Canvas.Top="293" Width="64" Height="64" Content="s" Click="BtnClick" />
+        <Button x:Name="d4"  Canvas.Left="267" Canvas.Top="293" Width="64" Height="64" Content="d" Click="BtnClick" />
+        <Button x:Name="d5"  Canvas.Left="341" Canvas.Top="293" Width="64" Height="64" Content="f" Click="BtnClick" />
+        <Button x:Name="d6"  Canvas.Left="415" Canvas.Top="293" Width="64" Height="64" Content="g" Click="BtnClick" />
+        <Button x:Name="d7"  Canvas.Left="489" Canvas.Top="293" Width="64" Height="64" Content="h" Click="BtnClick" />
+        <Button x:Name="d8"  Canvas.Left="563" Canvas.Top="293" Width="64" Height="64" Content="j" Click="BtnClick" />
+        <Button x:Name="d9"  Canvas.Left="637" Canvas.Top="293" Width="64" Height="64" Content="k" Click="BtnClick" />
+        <Button x:Name="d10" Canvas.Left="711" Canvas.Top="293" Width="64" Height="64" Content="l" Click="BtnClick" />
+        <Button x:Name="d11" Canvas.Left="785" Canvas.Top="293" Width="64" Height="64" Content="_" Click="BtnClick" />
+        <Button x:Name="d12" Canvas.Left="859" Canvas.Top="293" Width="64" Height="64" Content="-" Click="BtnClick" />
 
-        <!-- Row e, y=375 -->
-        <Button x:Name="e1"  Canvas.Left="4"   Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e2"  Canvas.Left="77"  Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e3"  Canvas.Left="150" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e4"  Canvas.Left="223" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e5"  Canvas.Left="296" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e6"  Canvas.Left="369" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e7"  Canvas.Left="442" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e8"  Canvas.Left="515" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e9"  Canvas.Left="588" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e10" Canvas.Left="661" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e11" Canvas.Left="736" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
-        <Button x:Name="e12" Canvas.Left="813" Canvas.Top="375" Width="64" Height="64" Click="BtnClick" />
+        <!-- ===== Row e — bottom letter row (y=375; e11/e12 at y=374) ===== -->
+        <Button x:Name="e1"  Canvas.Left="4"   Canvas.Top="375" Width="64" Height="64" Content="[" Click="BtnClick" />
+        <Button x:Name="e2"  Canvas.Left="77"  Canvas.Top="375" Width="64" Height="64" Content="]" Click="BtnClick" />
+        <Button x:Name="e3"  Canvas.Left="150" Canvas.Top="375" Width="64" Height="64" Content="z" Click="BtnClick" />
+        <Button x:Name="e4"  Canvas.Left="223" Canvas.Top="375" Width="64" Height="64" Content="x" Click="BtnClick" />
+        <Button x:Name="e5"  Canvas.Left="296" Canvas.Top="375" Width="64" Height="64" Content="c" Click="BtnClick" />
+        <Button x:Name="e6"  Canvas.Left="369" Canvas.Top="375" Width="64" Height="64" Content="v" Click="BtnClick" />
+        <Button x:Name="e7"  Canvas.Left="442" Canvas.Top="375" Width="64" Height="64" Content="b" Click="BtnClick" />
+        <Button x:Name="e8"  Canvas.Left="515" Canvas.Top="375" Width="64" Height="64" Content="n" Click="BtnClick" />
+        <Button x:Name="e9"  Canvas.Left="588" Canvas.Top="375" Width="64" Height="64" Content="m" Click="BtnClick" />
+        <Button x:Name="e10" Canvas.Left="661" Canvas.Top="375" Width="64" Height="64" Content="," Click="BtnClick" />
+        <Button x:Name="e11" Canvas.Left="736" Canvas.Top="374" Width="64" Height="64" Content="." Click="BtnClick" />
+        <Button x:Name="e12" Canvas.Left="813" Canvas.Top="374" Width="64" Height="64" Content=";" Click="BtnClick" />
 
-        <!-- Bottom command row, y~456 -->
+        <!-- ===== Bottom command row (y~456/457) ===== -->
+        <!-- Cancel — emits apostrophe token (0x27) via Btn_cancel_Click -->
         <Button x:Name="btn_cancel" Canvas.Left="9" Canvas.Top="457" Width="87" Height="63"
-                Click="Btn_cancel_Click" AutomationProperties.Name="Cancel" ToolTip.Tip="Cancel" />
+                Click="Btn_cancel_Click" ToolTip.Tip="Cancel" AutomationProperties.Name="Cancel">
+            <Image Source="avares://Keypad/Resources/Cancel64.png" Stretch="Uniform" Width="48" Height="48" />
+        </Button>
+
+        <!-- Clear — LightSalmon, "Clr", Tahoma 20pt; emits ENQ token (0x05) via Btn_clear_Click -->
         <Button x:Name="btn_clear" Canvas.Left="109" Canvas.Top="457" Width="85" Height="63" Content="Clr"
-                Click="Btn_clear_Click" AutomationProperties.Name="Clear" ToolTip.Tip="Clear" />
-        <Button x:Name="btnApos" Canvas.Left="218" Canvas.Top="457" Width="64" Height="63" Click="BtnClick" />
+                FontFamily="Tahoma, Arial, sans-serif" FontSize="20" Background="#FFFFA07A"
+                Click="Btn_clear_Click" ToolTip.Tip="Clear" AutomationProperties.Name="Clear" />
+
+        <!-- Apostrophe glyph key — wired to BtnClick like the other glyph keys -->
+        <Button x:Name="btnApos" Canvas.Left="218" Canvas.Top="457" Width="64" Height="63" Content="&#xB4;"
+                Click="BtnClick" AutomationProperties.Name="Apostrophe" />
+
+        <!-- Space — "__", Tahoma 20pt; emits space (0x20) via Btn_space_Click -->
         <Button x:Name="btn_space" Canvas.Left="308" Canvas.Top="456" Width="302" Height="63" Content="__"
-                Click="Btn_space_Click" AutomationProperties.Name="Space" ToolTip.Tip="Space" />
+                FontFamily="Tahoma, Arial, sans-serif" FontSize="20"
+                Click="Btn_space_Click" ToolTip.Tip="Space" AutomationProperties.Name="Space" />
+
+        <!-- Shift — ToggleButton (WinForms CheckBox Appearance=Button) with Shift glyph; repaints legends -->
         <ToggleButton x:Name="chk_shift" Canvas.Left="621" Canvas.Top="456" Width="152" Height="63"
                       IsCheckedChanged="Chk_shift_CheckedChanged"
-                      AutomationProperties.Name="Shift" ToolTip.Tip="Shift">
-            <Image Source="avares://Keypad/Resources/Shift.png" Stretch="Uniform" Height="44" />
+                      ToolTip.Tip="Shift" AutomationProperties.Name="Shift">
+            <Image Source="avares://Keypad/Resources/Shift.png" Stretch="Uniform" Width="48" Height="48" />
         </ToggleButton>
-        <Button x:Name="btn_OK" Canvas.Left="784" Canvas.Top="456" Width="138" Height="63" Content="OK"
-                Click="Btn_OK_Click" AutomationProperties.Name="OK" ToolTip.Tip="OK" />
+
+        <!-- OK — emits EOT token (0x04) via Btn_OK_Click -->
+        <Button x:Name="btn_OK" Canvas.Left="784" Canvas.Top="456" Width="138" Height="63"
+                Click="Btn_OK_Click" ToolTip.Tip="OK" AutomationProperties.Name="OK">
+            <Image Source="avares://Keypad/Resources/OK64.png" Stretch="Uniform" Width="48" Height="48" />
+        </Button>
     </Canvas>
 </keypad:GenericKeypad>

@@ -1,0 +1,231 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] Avalonia 1:1 parity reimplementation of the WinForms embedded vehicle-configuration
+    UserControl (Forms/Config/ConfigVehicleControl.cs + ConfigVehicleControl.Designer.cs).
+
+    This is the LAYOUT (XAML) half of a code-behind-driven pair: ALL data flow and behavior live
+    in ConfigVehicleControl.axaml.cs (Initialize(VehicleConfig), brand-radio population, opacity
+    preview, day/no-image toggle). Mirroring the original WinForms control which used direct
+    field/member access — NOT data binding — this view deliberately declares no compiled-binding
+    type, no bound data source, and no markup bindings of any kind; the code-behind resolves every
+    control by x:Name.
+
+    Faithful to ConfigVehicleControl.Designer.cs: the control is 859x584 and used absolute
+    positioning with no anchoring, so a top-level Canvas reproduces every Location/Size pixel-
+    faithfully (same strategy as the sibling Forms→Views ports, e.g. FormNumericView.axaml).
+
+    Element map (WinForms → Avalonia):
+      GroupBox labelVehicleGroupBox          → Border + inner Canvas + header TextBlock
+      RadioButton (Appearance.Button, image) → RadioButton Classes="vehicleType" + image content
+      Panel panel*Brands                     → StackPanel / WrapPanel (empty; code-behind fills)
+      CheckBox cboxIsImage (Appearance.Button)→ CheckBox Classes="imageToggle" + image content
+      Label                                  → TextBlock
+      PictureBox pboxAlpha + SetAlpha()      → Image previewImage (Source + Opacity set in code-behind)
+      Button (image)                         → flat transparent Button + image content
+
+    The WinForms "Appearance.Button" image toggles with FlatAppearance.CheckedBackColor=LightGreen
+    are reproduced by the styles below (flat, image-only, LightGreen highlight on :checked).
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AgOpenGPS.Views.Config.ConfigVehicleControl"
+             FontFamily="Tahoma"
+             Background="WhiteSmoke">
+
+    <!--
+        Styles reproduce the WinForms "Appearance.Button" look: the radio/checkbox glyph is
+        removed and the control renders as a flat image button whose Background turns LightGreen
+        when :checked (WinForms FlatAppearance.CheckedBackColor = LightGreen).
+    -->
+    <UserControl.Styles>
+
+        <!-- Vehicle-type chooser toggles (Harvester / Tractor / Articulated). -->
+        <Style Selector="RadioButton.vehicleType">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Silver" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Stretch" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.vehicleType:checked">
+            <Setter Property="Background" Value="LightGreen" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <!-- "No Image" toggle (cboxIsImage). -->
+        <Style Selector="CheckBox.imageToggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Silver" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Stretch" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="CheckBox.imageToggle:checked">
+            <Setter Property="Background" Value="LightGreen" />
+        </Style>
+
+        <!-- Individual brand-logo toggles (added programmatically by the code-behind into the
+             brand panels). 64x64 flat image buttons, LightGreen highlight when selected. -->
+        <Style Selector="RadioButton.brand">
+            <Setter Property="Width" Value="64" />
+            <Setter Property="Height" Value="64" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Silver" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Stretch" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.brand:checked">
+            <Setter Property="Background" Value="LightGreen" />
+        </Style>
+
+    </UserControl.Styles>
+
+    <!-- WinForms ConfigVehicleControl client size: 859 x 584, absolute positioning. -->
+    <Canvas Width="859" Height="584">
+
+        <!-- ============================================================================
+             A. Vehicle-type chooser group (WinForms GroupBox labelVehicleGroupBox @ (24,-9)
+                516x122, normalized to top 0 / height 113). Header text is set in code-behind
+                from gStr.gsVehiclegroupbox ("Choose Vehicle Type").
+             ============================================================================ -->
+        <Border Canvas.Left="24" Canvas.Top="0" Width="516" Height="113"
+                BorderBrush="Gray" BorderThickness="1" CornerRadius="3" Background="Transparent">
+            <Canvas>
+                <TextBlock x:Name="labelVehicleGroupBox"
+                           Canvas.Left="10" Canvas.Top="3"
+                           FontFamily="Tahoma" FontSize="13"
+                           Foreground="Black" />
+
+                <!-- rbtnHarvester: GroupBox-relative (16,27) 127x83 -->
+                <RadioButton x:Name="rbtnHarvester"
+                             Classes="vehicleType" GroupName="VehicleType"
+                             Canvas.Left="16" Canvas.Top="27" Width="127" Height="83">
+                    <Image Source="avares://AgOpenGPS/btnImages/vehiclePageHarvester.png" Stretch="Uniform" />
+                </RadioButton>
+
+                <!-- rbtnTractor: GroupBox-relative (192,27) 127x83 (WinForms default selection) -->
+                <RadioButton x:Name="rbtnTractor"
+                             Classes="vehicleType" GroupName="VehicleType" IsChecked="True"
+                             Canvas.Left="192" Canvas.Top="27" Width="127" Height="83">
+                    <Image Source="avares://AgOpenGPS/btnImages/vehiclePageTractor.png" Stretch="Uniform" />
+                </RadioButton>
+
+                <!-- rbtnArticulated: GroupBox-relative (366,27) 127x83 -->
+                <RadioButton x:Name="rbtnArticulated"
+                             Classes="vehicleType" GroupName="VehicleType"
+                             Canvas.Left="366" Canvas.Top="27" Width="127" Height="83">
+                    <Image Source="avares://AgOpenGPS/btnImages/vehiclePageArticulated.png" Stretch="Uniform" />
+                </RadioButton>
+            </Canvas>
+        </Border>
+
+        <!-- ============================================================================
+             B. Brand panels — EMPTY containers. The code-behind adds the per-vehicle brand
+                radios (Classes="brand") and toggles IsVisible. Hidden until a type is chosen.
+             ============================================================================ -->
+        <StackPanel x:Name="panelHarvesterBrands"
+                    Canvas.Left="59" Canvas.Top="115" Width="80" Height="467"
+                    Orientation="Vertical" IsVisible="False" />
+
+        <WrapPanel x:Name="panelTractorBrands"
+                   Canvas.Left="131" Canvas.Top="115" Width="289" Height="467"
+                   Orientation="Horizontal" IsVisible="False" />
+
+        <StackPanel x:Name="panelArticulatedBrands"
+                    Canvas.Left="412" Canvas.Top="115" Width="80" Height="467"
+                    Orientation="Vertical" IsVisible="False" />
+
+        <!-- ============================================================================
+             C. "No Image" toggle + opacity preview.
+             ============================================================================ -->
+
+        <!-- labelImage: WinForms Label @ (653,-9), normalized top 0; text set in code-behind
+             from gStr.gsImage + ":" ("No Image"). -->
+        <TextBlock x:Name="labelImage"
+                   Canvas.Left="653" Canvas.Top="0" Width="88"
+                   FontFamily="Tahoma" FontSize="16" FontWeight="Bold"
+                   Foreground="Black" />
+
+        <!-- cboxIsImage: WinForms CheckBox (Appearance.Button) @ (651,17) 96x96. -->
+        <CheckBox x:Name="cboxIsImage"
+                  Classes="imageToggle"
+                  Canvas.Left="651" Canvas.Top="17" Width="96" Height="96">
+            <Image Source="avares://AgOpenGPS/ResourcesBrands/Brands/Brand/BrandTriangleVehicle.png" Stretch="Uniform" />
+        </CheckBox>
+
+        <!-- panelOpacity: WinForms Panel @ (571,144) 256x256, BackColor MistyRose (#FFE4E1).
+             Hosts previewImage (replaces the WinForms pboxAlpha PictureBox). The image Source
+             and Opacity are assigned in code-behind; Opacity replaces the GDI SetAlpha matrix. -->
+        <Border x:Name="panelOpacity"
+                Canvas.Left="571" Canvas.Top="144" Width="256" Height="256"
+                Background="#FFE4E1">
+            <Image x:Name="previewImage" Width="256" Height="256" Stretch="Uniform" />
+        </Border>
+
+        <!-- labelOpacity: WinForms Label @ (665,422); text set in code-behind from
+             gStr.gsOpacity + ":" ("Opacity"). -->
+        <TextBlock x:Name="labelOpacity"
+                   Canvas.Left="665" Canvas.Top="422" Width="70"
+                   FontFamily="Tahoma" FontSize="16" FontWeight="Bold"
+                   Foreground="Black" />
+
+        <!-- lblOpacityPercent: WinForms Label @ (631,453) 139x45, Tahoma large Bold, MiddleCenter.
+             Wrapped in a transparent Border to reproduce MiddleCenter vertical+horizontal centering. -->
+        <Border Canvas.Left="631" Canvas.Top="453" Width="139" Height="45" Background="Transparent">
+            <TextBlock x:Name="lblOpacityPercent"
+                       Text="100%"
+                       FontFamily="Tahoma" FontSize="24" FontWeight="Bold"
+                       Foreground="Black"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       TextAlignment="Center" />
+        </Border>
+
+        <!-- btnOpacityDn: WinForms Button @ (555,438) 73x72, flat/transparent, DnArrow64 image.
+             Plain Button (single click steps opacity -0.2 in the source — NOT a RepeatButton). -->
+        <Button x:Name="btnOpacityDn"
+                Canvas.Left="555" Canvas.Top="438" Width="73" Height="72"
+                Background="Transparent" BorderThickness="0" Padding="0">
+            <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png" Stretch="Uniform" />
+        </Button>
+
+        <!-- btnOpacityUp: WinForms Button @ (773,438) 73x72, flat/transparent, UpArrow64 image. -->
+        <Button x:Name="btnOpacityUp"
+                Canvas.Left="773" Canvas.Top="438" Width="73" Height="72"
+                Background="Transparent" BorderThickness="0" Padding="0">
+            <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</UserControl>

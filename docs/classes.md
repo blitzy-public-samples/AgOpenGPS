@@ -2,18 +2,24 @@
 
 ## Business Logic Distribution
 
-The business logic is split between two locations:
+Following the cross-platform migration (.NET Framework 4.8 / Windows Forms → .NET 8/9 + Avalonia), the business logic is distributed across the portable `AgOpenGPS.Core` library and the GPS application project:
 
 | Location | Purpose |
 |----------|---------|
-| `GPS/Classes/` | Main application logic, state management, guidance |
+| `GPS/Classes/` | Main application logic, state management, guidance (recompiled cross-platform; behavior unchanged) |
 | `AgOpenGPS.Core/Models/` | Reusable models, geo conversions, helpers |
+| `AgOpenGPS.Core/ViewModels/` | MVVM view-models and commands (`ApplicationViewModel`, `RelayCommand` / `RelayCommand<T>`, base `ViewModel`) — the previously null-wired scaffold is now active and bound to the Avalonia views |
+| `AgOpenGPS.Core/Presenters/` + `Interfaces/Presenters/` | Presenter contracts and implementations (`IApplicationPresenter`, `IErrorPresenter`, `IPanelPresenter`, concrete `ApplicationPresenter`) wired through the composition root `ApplicationCore` |
+| `AgOpenGPS.Core/Platform/` | Cross-platform OS abstraction (`IPlatformServices`, `PlatformServicesFactory`) isolating per-OS capabilities behind one interface |
+| `GPS/Services/` | Plain services extracted from the former `FormGPS` partial classes — scan-loop, PGN dispatch, section control, field I/O, and render coordination (behavior frozen) |
 
 ---
 
 # GPS/Classes/ - Main Application Logic
 
 These classes manage application state and core operations:
+
+> **Cross-platform note:** Every `C`-prefixed class below is recompiled unchanged on .NET 8/9 — its **behavior, methods, and outputs are frozen** by the migration. The only structural change is how collaborators are obtained: the former global `FormGPS` (`mf`) back-reference has been replaced by **constructor-injected** collaborators and Core view-models (see [Dependency Injection](#dependency-injection-replaces-the-formgps-reference) below).
 
 ## CVehicle
 
@@ -669,27 +675,37 @@ public double Longitude { get; set; }
 # Naming Convention
 
 - Classes in GPS/: `C` prefix (e.g., `CSection`)
-- Forms: `Form` prefix (e.g., `FormGPS`)
+- Views (Avalonia): `*.axaml` markup + matching code-behind (e.g., `MainView.axaml` / `MainView.axaml.cs`)
+- View-models: `*ViewModel` suffix (e.g., `ApplicationViewModel`)
+- Services (extracted): `*Service` suffix (e.g., `PositionService`)
 - Core models: No prefix (e.g., `GeoCoord`)
+
+> The legacy WinForms shells that used the `Form` prefix (e.g., `FormGPS`, `FormLoop`) have been reimplemented as Avalonia views following the naming above.
 
 ---
 
 # Common Patterns
 
-## FormGPS Reference
+## Dependency Injection (replaces the FormGPS reference)
 
-Most classes hold a reference to the main form:
+Collaborators are **constructor-injected** into the extracted `GPS/Services/` classes and bound through the Core view-models (`ApplicationViewModel`). This eliminates the former `FormGPS` god-object: classes no longer reach back to a single global form for shared state.
 
 ```csharp
-private readonly FormGPS mf;
+// Collaborators are supplied explicitly at construction
+public PositionService(CVehicle vehicle, CTool tool, CAHRS ahrs, CTrack trk, /* position-navigation */ ...)
 ```
 
-This provides access to:
-- `mf.vehicle` - CVehicle instance
-- `mf.tool` - CTool instance
-- `mf.ahrs` - CAHRS instance
-- `mf.trk` - CTrack instance
-- `mf.pn` - Position/Navigation data
+The same collaborators that were previously reached through the main form are now received directly:
+
+| Collaborator | Type | Role |
+|--------------|------|------|
+| `vehicle` | `CVehicle` | Vehicle configuration and steering parameters |
+| `tool` | `CTool` | Tool configuration and section management |
+| `ahrs` | `CAHRS` | IMU data and GPS/IMU fusion |
+| `trk` | `CTrack` | Current guidance track state |
+| `pn` | Position/Navigation data | GPS fix and local-plane position |
+
+> **Historical context:** the legacy net48/WinForms build held `private readonly FormGPS mf;` in most classes and accessed shared state via `mf.vehicle`, `mf.tool`, `mf.ahrs`, `mf.trk`, and `mf.pn`. That back-reference has been **replaced** by the constructor injection shown above and by data binding from the Avalonia view-models.
 
 ## Static Settings Access
 
@@ -701,16 +717,34 @@ Properties.ToolSettings.Default.setVehicle_toolWidth = 4.0;
 Properties.Settings.Default.setMenu_isMetric = true;
 ```
 
-## Partial Classes
+## From FormGPS Partial Classes to Services
 
-FormGPS is split across multiple files:
-- `FormGPS.cs` - Main form
-- `UDPComm.Designer.cs` - UDP communication
-- `PGN.Designer.cs` - PGN definitions
-- And many more partial class files
+The migration **decomposes** the former `FormGPS` partial classes (`FormGPS.cs`, `UDPComm.Designer.cs`, `PGN.Designer.cs`, and the other `*.Designer.cs` partials) into a thin Avalonia UI shell plus plain, injectable services. **Behavior is frozen** — only the *location and ownership* of the logic changed:
+
+| Former partial | New owner | Responsibility |
+|----------------|-----------|----------------|
+| `FormGPS.cs` (UI shell) | `Views/MainView.axaml` (+ `.axaml.cs`) and `App.axaml` (+ `.axaml.cs`), bound to `ApplicationViewModel` | Main kiosk window and application bootstrap |
+| `Position.designer.cs` | `Services/PositionService.cs` | Per-fix scan loop (GPS-fix processing, heading/roll fusion, WGS84→local-plane conversion) |
+| `UDPComm.Designer.cs` + `PGN.Designer.cs` | `Services/PgnDispatcher.cs` | UDP receive loops and PGN encode/decode/CRC |
+| `Sections.Designer.cs` | `Services/SectionService.cs` | Section/zone control and machine-byte logic |
+| `SaveOpen.Designer.cs` | `Services/FieldIoService.cs` | Field load/save/export |
+| `OpenGL.Designer.cs` | `Services/RenderCoordinator.cs` (+ `Controls/AvaloniaGeoViewport.cs` for GL hosting) | Projection/frustum/back-buffer scan and overlays |
+
+The extracted services take explicit inputs and produce explicit outputs (no global form back-reference), and each is parity-tested against the WinForms baseline so the real-time loop timing and guidance outputs remain identical.
+
+## Cross-Platform Services
+
+Operating-system-specific capabilities are isolated behind a single interface, `IPlatformServices`, defined in the portable `AgOpenGPS.Core/Platform/` assembly. A `PlatformServicesFactory` selects the concrete implementation at startup via `RuntimeInformation.IsOSPlatform`:
+
+- `WindowsPlatformServices` — Windows-only paths and capabilities (compiled under `net8.0-windows`).
+- `LinuxPlatformServices` — Linux paths and best-effort capabilities.
+- `MacPlatformServices` — macOS paths and capabilities (some features gracefully gated).
+
+The interface abstracts the application-data/config root, monitor brightness, serial-port name enumeration, and the single-instance guard — replacing the former Windows Registry/`%AppData%` source, WMI brightness, `COMx`-only enumeration, and named-Mutex single-instance mechanisms. Application and UI code depend only on the interface (Dependency Inversion), and unavailable capabilities degrade to a no-op rather than breaking startup.
 
 ## Related Files
 
 - [Architecture](architecture.md) - System architecture and component relationships
 - [Settings](settings.md) - Settings system and properties
 - [PGN Protocol](pgn-protocol.md) - Communication protocol specification
+- [Transition Map](../MIGRATION_DOCS/TRANSITION_MAP.md) - Old→new file-by-file migration mapping

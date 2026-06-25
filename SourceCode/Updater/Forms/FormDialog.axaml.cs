@@ -35,12 +35,12 @@ namespace AgOpenGPS.Updater.Forms
         public static Task<bool> ShowConfirm(Window parent, string title, string message, string okText = "Yes", string cancelText = "No")
         {
             var dialog = new FormDialog { Title = title };
-            dialog.lblMessage.Text = message;
-            dialog.btnOK.Content = okText;
-            dialog.btnCancel.Content = cancelText;
-            dialog.lblIcon.Text = "?";
-            dialog.panelIcon.Background = AccentBrush;
-            // btnOK keeps its default green; btnCancel stays visible (its default red).
+            dialog.LblMessage.Text = message;
+            dialog.BtnOK.Content = okText;
+            dialog.BtnCancel.Content = cancelText;
+            dialog.LblIcon.Text = "?";
+            dialog.PanelIcon.Background = AccentBrush;
+            // BtnOK keeps its default green; BtnCancel stays visible (its default red).
             dialog.AdjustWidth(message);
             return dialog.ShowResultAsync(parent);
         }
@@ -49,11 +49,11 @@ namespace AgOpenGPS.Updater.Forms
         public static Task ShowInfo(Window parent, string title, string message)
         {
             var dialog = new FormDialog { Title = title };
-            dialog.lblMessage.Text = message;
-            dialog.btnOK.Content = "OK";
-            dialog.btnCancel.IsVisible = false;
-            dialog.lblIcon.Text = "i";
-            dialog.panelIcon.Background = AccentBrush;
+            dialog.LblMessage.Text = message;
+            dialog.BtnOK.Content = "OK";
+            dialog.BtnCancel.IsVisible = false;
+            dialog.LblIcon.Text = "i";
+            dialog.PanelIcon.Background = AccentBrush;
             dialog.AdjustWidth(message);
             return dialog.ShowResultAsync(parent);
         }
@@ -62,12 +62,12 @@ namespace AgOpenGPS.Updater.Forms
         public static Task ShowError(Window parent, string title, string message)
         {
             var dialog = new FormDialog { Title = title };
-            dialog.lblMessage.Text = message;
-            dialog.btnOK.Content = "OK";
-            dialog.btnCancel.IsVisible = false;
-            dialog.lblIcon.Text = "!";
-            dialog.panelIcon.Background = ErrorBrush;
-            dialog.btnOK.Background = ErrorBrush;
+            dialog.LblMessage.Text = message;
+            dialog.BtnOK.Content = "OK";
+            dialog.BtnCancel.IsVisible = false;
+            dialog.LblIcon.Text = "!";
+            dialog.PanelIcon.Background = ErrorBrush;
+            dialog.BtnOK.Background = ErrorBrush;
             dialog.AdjustWidth(message);
             return dialog.ShowResultAsync(parent);
         }
@@ -76,12 +76,12 @@ namespace AgOpenGPS.Updater.Forms
         public static Task ShowSuccess(Window parent, string title, string message)
         {
             var dialog = new FormDialog { Title = title };
-            dialog.lblMessage.Text = message;
-            dialog.btnOK.Content = "OK";
-            dialog.btnCancel.IsVisible = false;
-            dialog.lblIcon.Text = "\u2713"; // ✓
-            dialog.panelIcon.Background = SuccessBrush;
-            dialog.btnOK.Background = SuccessBrush;
+            dialog.LblMessage.Text = message;
+            dialog.BtnOK.Content = "OK";
+            dialog.BtnCancel.IsVisible = false;
+            dialog.LblIcon.Text = "\u2713"; // ✓
+            dialog.PanelIcon.Background = SuccessBrush;
+            dialog.BtnOK.Background = SuccessBrush;
             dialog.AdjustWidth(message);
             return dialog.ShowResultAsync(parent);
         }
