@@ -97,6 +97,14 @@ preserved 1:1 in the corresponding Avalonia view and view-model.
 
 ---
 
+## GPS — Controls (`SourceCode/GPS/Controls/`)
+
+| Original | Replaced With | Disposition | Parity Status | Notes |
+|---|---|---|---|---|
+| `SourceCode/GPS/Controls/NudlessNumericUpDownExtensions.cs` | `SourceCode/Keypad/NumKeypad.axaml.cs`<br/>`SourceCode/GPS/Views/Inputs/FormNumeric.axaml.cs` | Deleted | Superseded | `// [XPLAT]` WinForms static extension class `NudlessNumericUpDownExtensions` in namespace `AgOpenGPS.Controls`. Provided a single method `ShowKeypad(this NudlessNumericUpDown, System.Windows.Forms.Form)` that highlighted the control red and opened the WinForms `FormNumeric` modal numeric keypad. Both surfaces (`NudlessNumericUpDown` and WinForms `FormNumeric`) cease to exist after Avalonia re-platforming (AAP §0.3.1, §0.4.1). Target structure `GPS/Controls/` retains only `AvaloniaGeoViewport.cs`; this helper is not listed. Touch numeric-entry functionality is reimplemented natively by `SourceCode/Keypad/NumKeypad.axaml.cs` (Avalonia `UserControl` keypad) and `SourceCode/GPS/Views/Inputs/FormNumeric.axaml.cs` (Avalonia numeric-input view). `System.Drawing` and `System.Windows.Forms` dependencies purged per AAP §0.4.2. References in WinForms form files (`FormShiftPos.cs`, `FormSteerWiz.cs`, `ConfigVehicle.Designer.cs`, `FormConfig.cs`, `FormSimCoords.cs`, `FormSteer.cs`, `ConfigTool.Designer.cs`, etc.) superseded by Avalonia view agents. |
+
+---
+
 ## AgIO — Classes (de-WinForms / cross-platform)
 
 | Original | Replaced With | Disposition | Parity Status | Notes |

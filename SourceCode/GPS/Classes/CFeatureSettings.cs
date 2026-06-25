@@ -1,4 +1,5 @@
-﻿namespace AgOpenGPS
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+namespace AgOpenGPS
 {
     public class CFeatureSettings
     {

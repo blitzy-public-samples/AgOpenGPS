@@ -1,9 +1,8 @@
-﻿namespace AgOpenGPS
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+namespace AgOpenGPS
 {
     public class CAHRS
     {
-        //private readonly FormGPS mf;
-
         //Roll and heading from the IMU
         public double imuHeading = 99999, imuRoll = 0, imuPitch = 0, imuYawRate = 0;
 

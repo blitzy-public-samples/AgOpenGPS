@@ -406,7 +406,9 @@ namespace AgOpenGPS
             isobus = new CISOBUS(this);
 
             //Smart WAS Calibration system
-            smartWAS = new CSmartWAS(this);
+            // [XPLAT] CSmartWAS is now decoupled from FormGPS and takes the shared ApplicationModel
+            // (runtime state read/written live-by-reference) — see MIGRATION_DOCS/TRANSITION_MAP.md.
+            smartWAS = new CSmartWAS(AppModel);
         }
 
         private void FormGPS_Load(object sender, EventArgs e)

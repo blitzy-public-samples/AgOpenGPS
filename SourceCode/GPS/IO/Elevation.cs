@@ -1,4 +1,5 @@
-﻿// AgOpenGPS.IO/ElevationFiles.cs
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+// AgOpenGPS.IO/ElevationFiles.cs
 using System;
 using System.Collections.Generic;
 using System.Globalization;

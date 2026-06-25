@@ -1,8 +1,8 @@
-﻿//Please, if you use this, share the improvements
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+//Please, if you use this, share the improvements
 
 using AgOpenGPS.Core.Models;
 using System;
-using System.Globalization;
 
 namespace AgOpenGPS
 {
