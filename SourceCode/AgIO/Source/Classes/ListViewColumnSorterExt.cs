@@ -1,100 +1,107 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.Collections;
-using System.Windows.Forms;
+using System.Globalization;
 
 namespace AgIO
 {
+    /// <summary>
+    /// Sort order state. Portable replacement for System.Windows.Forms.SortOrder.
+    /// </summary>
+    public enum ListSortState
+    {
+        None,
+        Ascending,
+        Descending
+    }
+
+    /// <summary>
+    /// Framework-agnostic, culture-invariant, type-aware column sorter.
+    /// Migrated from a WinForms ListView IComparer. The consuming Avalonia view-model
+    /// extracts the active sort column's cell text for each row and uses this comparer
+    /// (via Compare(object,object) on the cell-text values, or by calling CompareText directly).
+    /// </summary>
     public class ListViewColumnSorterExt : IComparer
     {
         /// <summary>
-        /// Case insensitive comparer object
+        /// Case insensitive comparer object (InvariantCulture for cross-OS deterministic ordering).
         /// </summary>
         private CaseInsensitiveComparer ObjectCompare;
 
-        private ListView listView;
-
-        /// <summary>
-        /// Class constructor.  Initializes various elements
-        /// </summary>
-        public ListViewColumnSorterExt(ListView lv)
+        public ListViewColumnSorterExt()
         {
-            listView = lv;
-            listView.ListViewItemSorter = this;
-            listView.ColumnClick += new ColumnClickEventHandler(listView_ColumnClick);
-
             // Initialize the column to '0'
             SortColumn = 0;
 
             // Initialize the sort order to 'none'
-            Order = SortOrder.None;
+            Order = ListSortState.None;
 
-            // Initialize the CaseInsensitiveComparer object
-            ObjectCompare = new CaseInsensitiveComparer();
+            // Initialize the CaseInsensitiveComparer object (InvariantCulture)
+            ObjectCompare = new CaseInsensitiveComparer(CultureInfo.InvariantCulture);
         }
 
         /// <summary>
         /// Gets or sets the number of the column to which to apply the sorting operation (Defaults to '0').
         /// </summary>
-        private int SortColumn { set; get; }
+        public int SortColumn { set; get; }
 
         /// <summary>
         /// Gets or sets the order of sorting to apply (for example, 'Ascending' or 'Descending').
         /// </summary>
-        private SortOrder Order { set; get; }
+        public ListSortState Order { set; get; }
 
-        private void listView_ColumnClick(object sender, ColumnClickEventArgs e)
+        /// <summary>
+        /// IComparer implementation. Compares the two already-extracted cell-text values.
+        /// </summary>
+        public int Compare(object x, object y)
         {
-            ReverseSortOrderAndSort(e.Column, (ListView)sender);
+            return CompareText(
+                Convert.ToString(x, CultureInfo.InvariantCulture) ?? string.Empty,
+                Convert.ToString(y, CultureInfo.InvariantCulture) ?? string.Empty);
         }
 
         /// <summary>
-        /// This method is inherited from the IComparer interface.  It compares the two objects passed using a case insensitive comparison.
+        /// Type-aware, culture-invariant comparison of two cell-text strings, with tri-state Order applied.
         /// </summary>
-        /// <param name="x">First object to be compared</param>
-        /// <param name="y">Second object to be compared</param>
-        /// <returns>The result of the comparison. "0" if equal, negative if 'x' is less than 'y' and positive if 'x' is greater than 'y'</returns>
-        public int Compare(object x, object y)
+        public int CompareText(string x, string y)
         {
             int compareResult;
-            ListViewItem listviewX, listviewY;
 
-            // Cast the objects to be compared to ListViewItem objects
-            listviewX = (ListViewItem)x;
-            listviewY = (ListViewItem)y;
-
-            if (decimal.TryParse(listviewX.SubItems[SortColumn].Text, out decimal dx) && decimal.TryParse(listviewY.SubItems[SortColumn].Text, out decimal dy))
+            if (decimal.TryParse(x, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal dx) &&
+                decimal.TryParse(y, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal dy))
             {
-                //compare the 2 items as doubles
+                // compare the 2 items as numbers
                 compareResult = decimal.Compare(dx, dy);
             }
-            else if (DateTime.TryParse(listviewX.SubItems[SortColumn].Text, out DateTime dtx) && DateTime.TryParse(listviewY.SubItems[SortColumn].Text, out DateTime dty))
+            else if (DateTime.TryParse(x, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dtx) &&
+                     DateTime.TryParse(y, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dty))
             {
-                //compare the 2 items as doubles
+                // compare the 2 items as dates
                 compareResult = DateTime.Compare(dtx, dty);
             }
             // When one is a number and the other not, return -1 to have the numbers on top (or bottom)
-            else if (decimal.TryParse(listviewX.SubItems[SortColumn].Text, out dx))
+            else if (decimal.TryParse(x, NumberStyles.Number, CultureInfo.InvariantCulture, out dx))
             {
                 compareResult = -1;
             }
             // When one is a number and the other not, return 1 to have the numbers on top (or bottom)
-            else if (decimal.TryParse(listviewY.SubItems[SortColumn].Text, out dy))
+            else if (decimal.TryParse(y, NumberStyles.Number, CultureInfo.InvariantCulture, out dy))
             {
                 compareResult = 1;
             }
             else
             {
-                // Compare the two items
-                compareResult = ObjectCompare.Compare(listviewX.SubItems[SortColumn].Text, listviewY.SubItems[SortColumn].Text);
+                // Compare the two items as case-insensitive strings
+                compareResult = ObjectCompare.Compare(x, y);
             }
 
             // Calculate correct return value based on object comparison
-            if (Order == SortOrder.Ascending)
+            if (Order == ListSortState.Ascending)
             {
                 // Ascending sort is selected, return normal result of compare operation
                 return compareResult;
             }
-            else if (Order == SortOrder.Descending)
+            else if (Order == ListSortState.Descending)
             {
                 // Descending sort is selected, return negative result of compare operation
                 return (-compareResult);
@@ -106,30 +113,31 @@ namespace AgIO
             }
         }
 
-        private void ReverseSortOrderAndSort(int column, ListView lv)
+        /// <summary>
+        /// Toggles sort direction for the clicked column (ascending&lt;-&gt;descending), or selects a new
+        /// column ascending. The consuming view re-applies the sort afterward.
+        /// </summary>
+        public void ReverseSortOrderAndSort(int column)
         {
             // Determine if clicked column is already the column that is being sorted.
             if (column == SortColumn)
             {
                 // Reverse the current sort direction for this column.
-                if (Order == SortOrder.Ascending)
+                if (Order == ListSortState.Ascending)
                 {
-                    Order = SortOrder.Descending;
+                    Order = ListSortState.Descending;
                 }
                 else
                 {
-                    Order = SortOrder.Ascending;
+                    Order = ListSortState.Ascending;
                 }
             }
             else
             {
                 // Set the column number that is to be sorted; default to ascending.
                 SortColumn = column;
-                Order = SortOrder.Ascending;
+                Order = ListSortState.Ascending;
             }
-
-            // Perform the sort with these new sort options.
-            lv.Sort();
         }
     }
 }

@@ -1,5 +1,5 @@
-﻿using System;
-using System.Windows.Forms;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 
 namespace AgIO
 {
