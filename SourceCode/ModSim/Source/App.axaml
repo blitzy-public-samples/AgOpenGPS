@@ -1,0 +1,32 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    ModSim standalone simulator — Avalonia Application definition.
+
+    Pairs with the code-behind App.axaml.cs via x:Class="ModSim.App" (namespace ModSim).
+    There is no WinForms App equivalent in the source: the original Program.cs called
+    Application.Run(new FormSim()) directly, so this is net-new Avalonia scaffolding
+    (AAP §0.3.3 — a 1:1 parity reimplementation of the simulator's simple visual look,
+    not a redesign).
+
+    Scope: ModSim is a STANDALONE module simulator. This Application is ModSim's OWN and
+    deliberately references no other project (in particular, not AgOpenGPS.Core). It
+    supplies only the app-wide base theme; all view-specific markup lives under Views/*.axaml.
+
+    Theme: the Fluent theme is the base design system (Avalonia.Themes.Fluent, referenced
+    in ModSim.csproj). RequestedThemeVariant="Default" lets the host OS / user choose the
+    light or dark variant — the simulator's simple UI needs no pinned day/night palette.
+
+    Fonts: the Inter font is registered in code via .WithInterFont() in
+    Program.BuildAvaloniaApp(), so no explicit font include is required here.
+-->
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ModSim.App"
+             RequestedThemeVariant="Default">
+
+    <!-- App-wide base theme. The light/dark variant follows RequestedThemeVariant above. -->
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+</Application>

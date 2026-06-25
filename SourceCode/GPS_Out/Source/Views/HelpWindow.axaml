@@ -1,0 +1,22 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GPS_Out.Views.HelpWindow"
+        Title="Help"
+        Width="450" Height="281"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Microsoft Sans Serif" FontSize="19">
+    <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <ScrollViewer x:Name="panel1"
+                  Margin="12"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto"
+                  PointerPressed="OnSurfacePressed">
+        <TextBlock x:Name="label1"
+                   Margin="3,9,0,0"
+                   TextWrapping="Wrap"
+                   Text="label1"
+                   PointerPressed="OnSurfacePressed" />
+    </ScrollViewer>
+</Window>
