@@ -1,0 +1,9 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AgDiag.App"
+             RequestedThemeVariant="Default">
+    <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+</Application>

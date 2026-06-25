@@ -48,5 +48,6 @@ dotnet_diagnostic.CS1690.severity = silent
 dotnet_diagnostic.IDE0055.severity = warning
 
 # Enable code analysis for *.Designer files that are not actually designer generated
+# [XPLAT] migrated from net48/WinForms — *.Designer.cs partials are case-normalized (capital D) for case-sensitive filesystems; see MIGRATION_DOCS/TRANSITION_MAP.md
 [{ConfigData,ConfigHelp,ConfigMenu,ConfigModule,ConfigTool,ConfigVehicle,Controls,GUI,NMEA,NTRIPComm,OpenGL,PGN,Position,SaveOpen,Sections,SerialComm,UDP,UDPComm}.Designer.cs]
 generated_code = false

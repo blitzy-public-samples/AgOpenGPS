@@ -15,3 +15,32 @@
 *.PDF	 diff=astextplain
 *.rtf	 diff=astextplain
 *.RTF	 diff=astextplain
+
+# [XPLAT] migrated from net48/WinForms - byte-stable fixtures for cross-OS golden/parity tests
+# (see MIGRATION_DOCS/PARITY_REPORT.md). The migration adds golden-file BYTE-COMPARISON parity
+# tests (AAP 0.6.4) that run on a windows / ubuntu / macos CI matrix. Any file taking part in a
+# byte-for-byte round-trip/golden comparison must NOT be EOL-converted by Git, so the bytes on
+# disk equal the committed bytes on every OS. The "-text" attribute disables Git's CRLF<->LF
+# normalization entirely (for a pure-binary blob, "binary" is the equivalent "-text -diff"
+# shorthand). These rules are PATH-SCOPED to test/fixture directories only; the global
+# "* text=auto" above still governs ordinary source, docs, and config, and a more specific
+# path rule here intentionally overrides it for the fixtures listed below.
+
+# Existing settings golden fixture: AgLibrary.Tests reads this file back and asserts it equals
+# the freshly-saved output (round-trip byte-compare in
+# XmlSettingsHandlerTests.SaveXMLFile_ShouldSaveWithoutException).
+SourceCode/AgLibrary.Tests/Settings/TestSettings.xml  -text
+
+# New parity golden artifacts created under the AgOpenGPS.Tests parity suite (PGN frame .bin,
+# field-file round-trips, ISOXML V3/V4, settings round-trips). Parity/ is a dedicated
+# fixture+test directory, so pin everything beneath it to keep every committed golden artifact
+# byte-identical across operating systems, whatever its extension.
+SourceCode/AgOpenGPS.Tests/Parity/**  -text
+
+# Field-file test data and ISOXML exports used by the parity suite, pinned anywhere within the
+# parity test project regardless of fixture subfolder layout. Field formats are plain-text .txt
+# (Boundary, Contour, Elevation, Field, Flags, Headland, Headlines, RecPath, Sections,
+# TrackLines, Tram); ISOXML exports are .xml. Scoped to the test project only - NOT a repo-wide
+# *.txt / *.xml rule.
+SourceCode/AgOpenGPS.Tests/**/*.txt  -text
+SourceCode/AgOpenGPS.Tests/**/*.xml  -text

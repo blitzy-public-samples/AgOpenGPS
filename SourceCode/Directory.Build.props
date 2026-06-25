@@ -1,7 +1,8 @@
 <Project>
 
   <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
+    <!-- [XPLAT] migrated from net48/WinForms to net8.0 (+Avalonia) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <TargetFramework>net8.0</TargetFramework>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>

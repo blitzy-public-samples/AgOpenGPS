@@ -1,0 +1,39 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AgOpenGPS.Updater.App"
+             RequestedThemeVariant="Light">
+    <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        Avalonia Application definition for the cross-platform AgOpenGPS Updater.
+        Pairs with the App.axaml.cs code-behind (partial class AgOpenGPS.Updater.App).
+
+        Theme: the Fluent theme is the base; RequestedThemeVariant is pinned to "Light"
+        so the updater always renders light to preserve visual parity with the original
+        Windows Forms updater (light lavender panels, white-on-teal header), independent
+        of the host operating system's light/dark preference (AAP §0.3.3 — parity
+        reimplementation, not a redesign).
+
+        Palette: the three semantic brushes below mirror the exact Color.FromArgb values
+        used by the WinForms originals (Forms/FormDialog.cs + Forms/FormUpdate.Designer.cs)
+        so the reimplemented Avalonia dialogs reference them by key (AccentBrush / ErrorBrush
+        / SuccessBrush) instead of hard-coding hex in each view:
+          • Accent / info (teal)  Color.FromArgb(27, 151, 160)  -> #1B97A0
+          • Error (red)           Color.FromArgb(220, 60, 60)   -> #DC3C3C
+          • Success (green)       Color.FromArgb(40, 167, 69)   -> #28A745
+    -->
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Color values (must precede the brushes that reference them via StaticResource). -->
+            <Color x:Key="AccentColor">#1B97A0</Color>
+            <Color x:Key="ErrorColor">#DC3C3C</Color>
+            <Color x:Key="SuccessColor">#28A745</Color>
+            <!-- Semantic brushes consumed by the Avalonia updater views. -->
+            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+            <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
+            <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

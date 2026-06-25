@@ -4,6 +4,8 @@
 
 AgOpenGPS uses a custom PGN (Parameter Group Number) protocol for UDP communication between AgIO and the main application. The protocol wraps data in a specific format with headers, PGN identifier, length, data payload, and CRC checksum.
 
+> **Note (cross-platform migration):** This protocol is **preserved byte-for-byte** across the migration of AgOpenGPS from .NET Framework 4.8 / Windows Forms to cross-platform .NET 8/9 + Avalonia (Windows, macOS, Linux). Nothing in this specification changes — the frame header, additive-checksum CRC, loopback ports, and every PGN definition are unchanged and serve as a **parity verification target** (see `../MIGRATION_DOCS/PARITY_REPORT.md` and the `PgnFrameGoldenTests` golden-file suite). The encode/decode implementation has been extracted from the former WinForms `Forms/UDPComm.Designer.cs` / `Forms/PGN.Designer.cs` partials into a plain service (`SourceCode/GPS/Services/PgnDispatcher.cs`), but the **wire format is identical**.
+
 ## PGN Byte Structure
 
 | Byte | Description | Value |
