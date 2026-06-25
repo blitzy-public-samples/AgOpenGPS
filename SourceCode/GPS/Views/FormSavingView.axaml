@@ -1,0 +1,118 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] Avalonia 1:1 PARITY reimplementation of the WinForms `Forms/FormSaving`
+    (source: FormSaving.cs + FormSaving.Designer.cs) — the modal "saving in progress"
+    dialog shown while a field/settings save sequence runs. This is a faithful
+    re-platform, never a redesign: every size, font and colour below is taken verbatim
+    from FormSaving.Designer.cs and the behaviour is preserved exactly (AAP §0.3.3).
+
+    Shell parity (FormSaving / FormSaving.Designer.cs):
+      * Form.Text "FormSaving"; ClientSize 933x491; FormBorderStyle=None -> SystemDecorations="None";
+        ControlBox=false; TopMost=true; ShowInTaskbar=false. The WinForms StartPosition was
+        CenterScreen; this dialog is shown owned/modal during the save, so CenterOwner is used
+        (AAP wiring) for the same centred-on-screen result.
+      * Form.BackColor = Color.FromArgb(0,192,0) = #00C000 (green). panel1 sits at (12,12) sized
+        909x467 with BackColor = Color.FromArgb(255,192,128) = #FFC080 (peach); the 12px green
+        margin framing the peach panel is reproduced by Window Background="#00C000" plus a
+        Border with Margin="12". These colours are hard-coded for parity — FormSaving is
+        theme-independent, so the App.axaml day/night brushes are intentionally NOT used here.
+
+    Contents (panel1 children) — preserved 1:1:
+      * listViewSteps : the WinForms ListView (View=List, BorderStyle=None, BackColor #FFC080,
+        Microsoft Sans Serif 24pt Bold, at (67,22) sized 771x333) becomes an ItemsControl. Each
+        saving step is one item. The glyph/colour rules live in the behaviour (FormSaving.cs
+        GetStepText/GetStepColor): "• " Pending, "✓ " Done, "✗ " Failed; ForeColor Gray when
+        Pending, otherwise Black.
+      * progressBar : the WinForms Marquee ProgressBar at (182,374) sized 566x28 -> an Avalonia
+        ProgressBar with IsIndeterminate="True" (the equivalent continuously-running animation).
+      * labelBeer   : the WinForms Label (Microsoft Sans Serif 24pt Bold, ForeColor Green,
+        hidden until Finish()) -> a TextBlock, IsVisible="False" until Finish().
+
+    Code-behind contract — FormSavingView.axaml.cs (partial class AgOpenGPS.Views.FormSavingView : Window):
+      * Declares a parameterless constructor that calls InitializeComponent().
+      * Owns the three named controls referenced below: listViewSteps, progressBar, labelBeer.
+      * Assigns listViewSteps.ItemsSource = an ObservableCollection of step view items, where each
+        item exposes EXACTLY these two public properties (reflection bindings — there is no
+        x:DataType / compiled binding here, so the property NAMES are the contract):
+            string Text       -> bound to the row TextBlock.Text       (glyph + message)
+            IBrush Foreground -> bound to the row TextBlock.Foreground  (Gray for Pending, else Black)
+      * AddStep(key,message) / UpdateStep(key,message,state) mutate that collection (parity with
+        the WinForms ListViewItem add/update by key).
+      * Finish() sets progressBar.IsVisible=false and labelBeer.IsVisible=true and assigns
+        labelBeer.Text = "✔ " + gStr.gsSaveBeerTime (the localized "beer time" string).
+
+    No WinForms, no OpenTK, no Win32 types are referenced — Avalonia 11.3 markup only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormSavingView"
+        Title="FormSaving"
+        Width="933" Height="491"
+        Background="#00C000"
+        CanResize="False"
+        SystemDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Microsoft Sans Serif">
+
+    <!-- panel1: the peach inner panel. Margin="12" reveals the green Window background as the
+         12px frame, matching panel1 Location (12,12) / Size 909x467 over the 933x491 form. -->
+    <Border Margin="12" Background="#FFC080">
+
+        <!-- Vertical layout. The steps list fills the top; the progress bar and the beer label
+             share the bottom band and swap visibility, exactly as FormSaving.Finish() does. -->
+        <Grid RowDefinitions="*,Auto">
+
+            <!-- listViewSteps — WinForms ListView at (67,22) 771x333. Margin "67,22,71,0" over the
+                 909-wide / 467-tall panel reproduces that rectangle exactly (909-67-71 = 771 wide;
+                 the bottom band below consumes 112px, leaving 355 - top 22 = 333 tall). Background
+                 is left transparent so the peach Border shows through (the ListView BackColor
+                 matched the panel). -->
+            <ItemsControl x:Name="listViewSteps"
+                          Grid.Row="0"
+                          Margin="67,22,71,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <!-- Microsoft Sans Serif 24pt Bold == 32px at 96dpi (24 * 96/72). Text and
+                             Foreground are supplied per item by the code-behind (contract above). -->
+                        <TextBlock Text="{Binding Text}"
+                                   Foreground="{Binding Foreground}"
+                                   FontFamily="Microsoft Sans Serif"
+                                   FontSize="32"
+                                   FontWeight="Bold"
+                                   TextWrapping="NoWrap" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Bottom band. Margin "0,12,0,63" places the band so labelBeer's top lands at y=367
+                 (467 - 63 - 37) — exactly the WinForms labelBeer Location.Y — with the progress bar
+                 vertically centred in the same band (~y=371, matching progressBar Location.Y 374). -->
+            <Grid Grid.Row="1" Margin="0,12,0,63">
+
+                <!-- progressBar — WinForms Marquee ProgressBar at (182,374) 566x28. Centred
+                     horizontally (566 of 909). IsIndeterminate reproduces the running marquee. -->
+                <ProgressBar x:Name="progressBar"
+                             Width="566"
+                             Height="28"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             IsIndeterminate="True" />
+
+                <!-- labelBeer — WinForms Label, ForeColor=Color.Green (#008000), 24pt Bold, hidden
+                     until Finish(). Design-time default text mirrors the WinForms designer default;
+                     the code-behind overrides it at runtime with "✔ " + gStr.gsSaveBeerTime. -->
+                <TextBlock x:Name="labelBeer"
+                           IsVisible="False"
+                           Text="✔ See you next time!"
+                           Foreground="Green"
+                           FontFamily="Microsoft Sans Serif"
+                           FontSize="32"
+                           FontWeight="Bold"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

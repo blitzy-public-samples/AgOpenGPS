@@ -95,7 +95,7 @@ namespace AgOpenGPS.Updater.Forms
                 }
                 else if (arg.Equals("--include-prerelease", StringComparison.OrdinalIgnoreCase))
                 {
-                    chkIncludePrerelease.IsChecked = true;
+                    ChkIncludePrerelease.IsChecked = true;
                 }
                 else if (arg.Equals("--auto-check", StringComparison.OrdinalIgnoreCase))
                 {
@@ -129,7 +129,7 @@ namespace AgOpenGPS.Updater.Forms
             }
 
             // Display current version
-            lblCurrentVersion.Text = $"Current Version: {_currentVersion}";
+            LblCurrentVersion.Text = $"Current Version: {_currentVersion}";
 
             // Auto-detect local update
             bool foundLocal = CheckForLocalUpdate();
@@ -169,8 +169,8 @@ namespace AgOpenGPS.Updater.Forms
             _localUpdatePath = filePath;
             _localUpdateVersion = version;
 
-            lblSourceInfo.Text = message;
-            lblSourceInfo.IsVisible = true;
+            LblSourceInfo.Text = message;
+            LblSourceInfo.IsVisible = true;
 
             return found;
         }
@@ -179,52 +179,52 @@ namespace AgOpenGPS.Updater.Forms
         {
             if (currentSource == _updateSource.Web)
             {
-                btnToggleSource.Content = "Use USB";
-                btnToggleSource.Background = GrayBrush;
-                btnToggleSource.IsEnabled = true;
-                btnCheckForUpdates.IsEnabled = !(_isInstalling && _isBusy);
-                btnCheckForUpdates.IsVisible = true;
+                BtnToggleSource.Content = "Use USB";
+                BtnToggleSource.Background = GrayBrush;
+                BtnToggleSource.IsEnabled = true;
+                BtnCheckForUpdates.IsEnabled = !(_isInstalling && _isBusy);
+                BtnCheckForUpdates.IsVisible = true;
 
                 if (_localUpdatePath != null && !string.IsNullOrEmpty(_localUpdateVersion))
                 {
-                    lblSourceInfo.Text = $"Web update (Local v{_localUpdateVersion} available)";
+                    LblSourceInfo.Text = $"Web update (Local v{_localUpdateVersion} available)";
                 }
                 else if (_localUpdatePath != null)
                 {
-                    lblSourceInfo.Text = "Web update (Local update available)";
+                    LblSourceInfo.Text = "Web update (Local update available)";
                 }
                 else
                 {
-                    lblSourceInfo.Text = "Web update (GitHub Releases)";
+                    LblSourceInfo.Text = "Web update (GitHub Releases)";
                 }
             }
             else
             {
-                btnToggleSource.Content = "Use Web";
-                btnToggleSource.Background = TealBrush;
-                btnToggleSource.IsEnabled = true;
-                btnCheckForUpdates.IsEnabled = false;
-                btnCheckForUpdates.IsVisible = false;
+                BtnToggleSource.Content = "Use Web";
+                BtnToggleSource.Background = TealBrush;
+                BtnToggleSource.IsEnabled = true;
+                BtnCheckForUpdates.IsEnabled = false;
+                BtnCheckForUpdates.IsVisible = false;
 
                 if (_localUpdatePath != null)
                 {
                     string versionText = !string.IsNullOrEmpty(_localUpdateVersion) ? $" v{_localUpdateVersion}" : "";
-                    lblSourceInfo.Text = $"Local{versionText}: {Path.GetFileName(_localUpdatePath)}";
+                    LblSourceInfo.Text = $"Local{versionText}: {Path.GetFileName(_localUpdatePath)}";
                 }
                 else
                 {
-                    lblSourceInfo.Text = "Local: No AgOpenGPS_*.zip found on USB";
+                    LblSourceInfo.Text = "Local: No AgOpenGPS_*.zip found on USB";
                 }
             }
 
             // Update button text and state
             if (_availableUpdate != null || _localUpdatePath != null)
             {
-                btnInstallUpdate.IsEnabled = !(_isInstalling && _isBusy);
+                BtnInstallUpdate.IsEnabled = !(_isInstalling && _isBusy);
             }
             else
             {
-                btnInstallUpdate.IsEnabled = false;
+                BtnInstallUpdate.IsEnabled = false;
             }
         }
 
@@ -267,7 +267,7 @@ namespace AgOpenGPS.Updater.Forms
             }
             else
             {
-                lblSourceInfo.Text = "Web update - Click Check for Updates";
+                LblSourceInfo.Text = "Web update - Click Check for Updates";
                 UpdateUIState(_availableUpdate != null);
             }
 
@@ -278,44 +278,44 @@ namespace AgOpenGPS.Updater.Forms
         {
             _isBusy = busy;
 
-            btnCheckForUpdates.IsEnabled = !busy && !_isInstalling;
-            btnInstallUpdate.IsEnabled = !busy && _availableUpdate != null && !_isInstalling;
-            btnViewReleaseNotes.IsEnabled = !busy && _availableUpdate != null &&
+            BtnCheckForUpdates.IsEnabled = !busy && !_isInstalling;
+            BtnInstallUpdate.IsEnabled = !busy && _availableUpdate != null && !_isInstalling;
+            BtnViewReleaseNotes.IsEnabled = !busy && _availableUpdate != null &&
                 !string.IsNullOrEmpty(_availableUpdate.Body) && !_isInstalling;
-            chkIncludePrerelease.IsEnabled = !busy && !_isInstalling;
+            ChkIncludePrerelease.IsEnabled = !busy && !_isInstalling;
 
             // Close button changes to Cancel when installing
             if (_isInstalling)
             {
-                btnClose.Content = "Cancel";
-                btnClose.Background = CancelRedBrush; // Red
-                btnClose.IsEnabled = true;
+                BtnClose.Content = "Cancel";
+                BtnClose.Background = CancelRedBrush; // Red
+                BtnClose.IsEnabled = true;
             }
             else
             {
-                btnClose.Content = busy ? "Please wait..." : "Close";
-                btnClose.Background = CloseRedBrush; // Lighter red
-                btnClose.IsEnabled = !busy;
+                BtnClose.Content = busy ? "Please wait..." : "Close";
+                BtnClose.Background = CloseRedBrush; // Lighter red
+                BtnClose.IsEnabled = !busy;
             }
         }
 
         private void UpdateUIState(bool hasUpdate)
         {
-            btnInstallUpdate.IsEnabled = hasUpdate && !_isInstalling;
+            BtnInstallUpdate.IsEnabled = hasUpdate && !_isInstalling;
 
             // Enable View Release Notes button if update has release notes
-            btnViewReleaseNotes.IsEnabled = hasUpdate && _availableUpdate != null &&
+            BtnViewReleaseNotes.IsEnabled = hasUpdate && _availableUpdate != null &&
                 !string.IsNullOrEmpty(_availableUpdate.Body) && !_isInstalling;
 
             if (hasUpdate && _availableUpdate != null)
             {
-                lblLatestVersion.Text = $"Latest Version: {_availableUpdate.Version} (New!)";
-                lblLatestVersion.Foreground = TealBrush;
+                LblLatestVersion.Text = $"Latest Version: {_availableUpdate.Version} (New!)";
+                LblLatestVersion.Foreground = TealBrush;
             }
             else
             {
-                lblLatestVersion.Text = "Latest Version: Up to date";
-                lblLatestVersion.Foreground = UpToDateBrush;
+                LblLatestVersion.Text = "Latest Version: Up to date";
+                LblLatestVersion.Foreground = UpToDateBrush;
             }
         }
 
@@ -328,19 +328,19 @@ namespace AgOpenGPS.Updater.Forms
                 return;
             }
 
-            lblStatus.Text = message;
-            progressBar1.IsVisible = isProgress;
-            lblProgressPercent.IsVisible = isProgress;
+            LblStatus.Text = message;
+            ProgressBar1.IsVisible = isProgress;
+            LblProgressPercent.IsVisible = isProgress;
 
             if (isProgress)
             {
-                progressBar1.Value = progressPercent;
-                lblProgressPercent.Text = $"{progressPercent}%";
+                ProgressBar1.Value = progressPercent;
+                LblProgressPercent.Text = $"{progressPercent}%";
             }
             else
             {
-                progressBar1.Value = 0;
-                lblProgressPercent.Text = "0%";
+                ProgressBar1.Value = 0;
+                LblProgressPercent.Text = "0%";
             }
         }
 
@@ -373,7 +373,7 @@ namespace AgOpenGPS.Updater.Forms
                 if (currentSource == _updateSource.Web)
                 {
                     SetStatus("Checking GitHub releases...");
-                    bool includePrerelease = chkIncludePrerelease.IsChecked == true;
+                    bool includePrerelease = ChkIncludePrerelease.IsChecked == true;
                     var (hasUpdate, releaseInfo, message) = await _updateService.CheckForUpdate(
                         _currentVersion, includePrerelease);
 
@@ -470,8 +470,8 @@ namespace AgOpenGPS.Updater.Forms
 
             _isInstalling = true;
             SetBusy(true);
-            progressBar1.IsVisible = true;
-            progressBar1.Value = 0;
+            ProgressBar1.IsVisible = true;
+            ProgressBar1.Value = 0;
 
             // Start installation - runs on background thread, UI updates marshaled via Progress<T>
             await InstallUpdateAsync(_cancellationTokenSource.Token);
@@ -483,7 +483,7 @@ namespace AgOpenGPS.Updater.Forms
             {
                 // Step 1: Close applications
                 SetStatus("Closing AgOpenGPS and AgIO...", true);
-                progressBar1.Value = 10;
+                ProgressBar1.Value = 10;
 
                 var (closed, closeMsg) = await _updateService.CloseApplicationsAsync();
                 if (!closed)
@@ -615,7 +615,7 @@ namespace AgOpenGPS.Updater.Forms
                 _isInstalling = false;
                 SetBusy(false);
                 SetStatus("Cancelled");
-                progressBar1.IsVisible = false;
+                ProgressBar1.IsVisible = false;
 
                 await ShowInfoFromBackground("Cancelled", "Update was cancelled.");
             }
@@ -624,7 +624,7 @@ namespace AgOpenGPS.Updater.Forms
                 _isInstalling = false;
                 SetBusy(false);
                 SetStatus($"Error: {ex.Message}");
-                progressBar1.IsVisible = false;
+                ProgressBar1.IsVisible = false;
 
                 await ShowErrorFromBackground("Error", $"An error occurred:\n\n{ex.Message}");
             }
@@ -701,7 +701,7 @@ namespace AgOpenGPS.Updater.Forms
 
         /// <summary>
         /// [XPLAT] Esc triggers the same logic as the Close/Cancel button, replacing the WinForms
-        /// <c>CancelButton = btnClose</c> behavior.
+        /// <c>CancelButton = BtnClose</c> behavior.
         /// </summary>
         protected override void OnKeyDown(KeyEventArgs e)
         {

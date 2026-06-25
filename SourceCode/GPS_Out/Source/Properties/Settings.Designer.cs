@@ -7,6 +7,7 @@
 //     the code is regenerated.
 // </auto-generated>
 //------------------------------------------------------------------------------
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 
 namespace GPS_Out.Properties {
     
@@ -50,10 +51,6 @@ namespace GPS_Out.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("210, 220, 230")]
-        // [XPLAT] DayColour stored as an "R, G, B" string (Settings.settings: Type="System.String")
-        // instead of the WinForms-only System.Drawing.Color, which would require the Windows-only
-        // System.Drawing.ColorConverter at runtime. App.axaml.cs parses this string into an
-        // Avalonia.Media.Color at startup. Persisted value/format is unchanged ("210, 220, 230").
         public string DayColour {
             get {
                 return ((string)(this["DayColour"]));

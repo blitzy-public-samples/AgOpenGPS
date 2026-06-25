@@ -1,0 +1,178 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — severity message / question dialog (Avalonia view).
+
+    1:1 parity reimplementation of the WinForms `Forms/FormDialog` (FormDialog.cs +
+    FormDialog.Designer.cs). Per AAP §0.3.3 this is visual + behavioral FIDELITY, never a
+    redesign: the same 700x400 borderless, centred, top-most window with a 20px coloured frame,
+    and the same icon + bold title + message + OK/Cancel image-button layout.
+
+    Code-behind contract — FormDialogView.axaml.cs (partial class AgOpenGPS.Views.FormDialogView : Window):
+      * Parameterless ctor calling InitializeComponent(); shown with ShowDialog over an owner.
+      * Sets labelTitle.Text / labelMessage.Text from the caller (parity with the private
+        FormDialog(title, message, showCancel, severity) ctor).
+      * Question variant: sets buttonCancel.IsVisible = true (default below is hidden, mirroring
+        the WinForms `showCancel` flag; FormDialog.ShowQuestion passes showCancel: true).
+      * Severity (Error / Warning / Info): recolours RootBorder.Background + RootBorder.BorderBrush
+        to the EXACT WinForms ARGB values and sets pictureBoxIcon.Source + pictureBoxIcon.IsVisible
+        (parity with FormDialog.SetSeverity). The WinForms ARGB values are, for reference:
+            Error   : border #FFC00000  body #FFFFC0C0   (Color.FromArgb(192,0,0) / (255,192,192))
+            Warning : border #FFC09100  body #FFE3D998   (Color.FromArgb(192,145,0) / (227,217,152))
+            Info    : border #FF0000C0  body #FFC0C0FF   (Color.FromArgb(0,0,192) / (192,192,255))
+      * Wires buttonOK / buttonCancel Click to close with the OK / Cancel result. IsDefault /
+        IsCancel below route Enter / Escape to those same buttons for keyboard operability.
+
+    This dialog is CODE-BEHIND DRIVEN: there is intentionally NO x:DataType and NO {Binding}; the
+    x:Name'd controls below are the entire integration surface. Its palette is FIXED — the WinForms
+    dialog was never day/night themed (BackColor Lavender, a CornflowerBlue painted frame, and the
+    default black ControlText). The App.axaml day/night theme brushes are therefore deliberately NOT
+    used here: a theme-driven light text would be unreadable on these fixed light backgrounds, which
+    would break both parity and legibility.
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs —
+    the same btnImages/ assets the other GPS Avalonia views consume (e.g. SelectFieldMenuView).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormDialogView"
+        Title="AgOpenGPS"
+        Width="700"
+        Height="400"
+        CanResize="False"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma">
+
+    <!--
+        Flat, chrome-less image buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor = Transparent: just the 64x64 glyph, with no
+        button surface in any visual state. The :pointerover / :pressed template overrides suppress
+        the Fluent hover/press background that would otherwise box the glyph.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        RootBorder == the 20px frame painted in FormDialog.OnPaintBackground. The default colours are
+        the WinForms defaults (CornflowerBlue frame, Lavender body); the code-behind recolours BOTH
+        BorderBrush and Background for a severity. The Border paints the ring and its Background fills
+        the interior, giving the cornflower ring + lavender interior exactly as the form rendered.
+        Named "Lavender" / "CornflowerBlue" are the standard colours and equal the GDI ARGB values.
+    -->
+    <Border x:Name="RootBorder"
+            BorderThickness="20"
+            BorderBrush="CornflowerBlue"
+            Background="Lavender">
+
+        <!--
+            Two columns + three rows reproduce the WinForms absolute layout (every coordinate is the
+            WinForms value minus the 20px frame inset). Column 0 is a FIXED 96px icon gutter so the
+            title's left edge stays put whether or not the severity icon is shown (the WinForms form
+            used absolute positions, so hiding the PictureBox never shifted the title). Rows: title /
+            message / buttons.
+        -->
+        <Grid ColumnDefinitions="96,*"
+              RowDefinitions="101,*,Auto">
+
+            <!-- pictureBoxIcon: WinForms PictureBox (31,28) 64x64 StretchImage, hidden until a
+                 severity is set. Margin 11,8 == WinForms (31,28) minus the 20px frame inset.
+                 Source + IsVisible are assigned by the code-behind (SetSeverity parity). -->
+            <Image x:Name="pictureBoxIcon"
+                   Grid.Row="0"
+                   Grid.Column="0"
+                   Width="64"
+                   Height="64"
+                   Margin="11,8,0,0"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Top"
+                   Stretch="Fill"
+                   IsVisible="False" />
+
+            <!-- labelTitle: WinForms Label (116,9) 572x101, Tahoma 20 Bold, MiddleLeft (left-aligned,
+                 vertically centred). Text is assigned by the code-behind. -->
+            <TextBlock x:Name="labelTitle"
+                       Grid.Row="0"
+                       Grid.Column="1"
+                       Margin="0,0,12,0"
+                       FontFamily="Tahoma"
+                       FontSize="20"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       TextWrapping="Wrap"
+                       TextAlignment="Left"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Center" />
+
+            <!-- labelMessage: WinForms Label (122,110) 566x185, Tahoma 20, MiddleLeft. The 6px left
+                 margin places it at WinForms x=122 (column 1 starts at the inner x=96). -->
+            <TextBlock x:Name="labelMessage"
+                       Grid.Row="1"
+                       Grid.Column="1"
+                       Margin="6,0,12,0"
+                       FontFamily="Tahoma"
+                       FontSize="20"
+                       Foreground="Black"
+                       TextWrapping="Wrap"
+                       TextAlignment="Left"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Center" />
+
+            <!-- Bottom-right buttons. WinForms: buttonCancel (472,313) then buttonOK (583,313), each
+                 105x75, anchored Bottom|Right with a 6px gap. Cancel is hidden for the message-only
+                 variant (FormDialog showCancel = false) and shown by the code-behind for questions. -->
+            <StackPanel Grid.Row="2"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Spacing="6"
+                        Margin="0,0,6,6">
+                <Button x:Name="buttonCancel"
+                        Classes="imageButton"
+                        Width="105"
+                        Height="75"
+                        IsCancel="True"
+                        IsVisible="False"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center">
+                    <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                           Width="64"
+                           Height="64"
+                           Stretch="Uniform" />
+                </Button>
+                <Button x:Name="buttonOK"
+                        Classes="imageButton"
+                        Width="105"
+                        Height="75"
+                        IsDefault="True"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center">
+                    <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                           Width="64"
+                           Height="64"
+                           Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+
+        </Grid>
+    </Border>
+</Window>

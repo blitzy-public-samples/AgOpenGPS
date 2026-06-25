@@ -1,0 +1,149 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Input-name prompt dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/FormInputDialog`
+    (FormInputDialog.cs + FormInputDialog.Designer.cs). A single-line text-input prompt that
+    asks the operator for a name (field / track / boundary / …) with on-the-fly filename
+    sanitisation and an optional on-screen keyboard. Per AAP §0.3.3 this is a faithful parity
+    reimplementation of the current Windows Forms look, never a redesign.
+
+    Window shell mirrors FormInputDialog.Designer.cs exactly:
+      ClientSize 700x312      -> Width/Height (SystemDecorations="None", so Width == client width).
+      BackColor Lavender      -> Background="Lavender"      (WinForms Color.Lavender      == #FFE6E6FA).
+      FormBorderStyle.None    -> SystemDecorations="None".
+      TopMost = true          -> Topmost="True".
+      ControlBox = false      -> covered by the borderless (SystemDecorations="None") shell.
+      ShowInTaskbar = false   -> ShowInTaskbar="False".
+      (not resizable)         -> CanResize="False".
+    StartPosition was CenterScreen in WinForms; per the file spec this modal opens centred on
+    its owner window (WindowStartupLocation="CenterOwner").
+
+    The 20px CornflowerBlue frame that FormInputDialog drew in OnPaintBackground (a Pen of width
+    20, Color.CornflowerBlue == #FF6495ED) is reproduced declaratively as the root Border's 20px
+    BorderBrush="CornflowerBlue" edge. The literal Lavender / CornflowerBlue colours come straight
+    from the WinForms source and intentionally take precedence over App.axaml's day/night theme
+    brushes for this specific dialog (1:1 parity). App.axaml's FluentTheme still supplies the
+    default TextBox / Button control templates.
+
+    Wiring contract — the partner code-behind (FormInputDialogView.axaml.cs) owns behaviour:
+      * No DataContext / no x:DataType / no MVVM bindings: this is a code-behind dialog, exactly
+        like the sibling FormYesView. Controls are addressed imperatively by name
+        (labelTitle / labelPrompt / textBoxInput / buttonOK / buttonCancel).
+      * buttonOK -> OnOkClick and buttonCancel -> OnCancelClick (the WinForms DialogResult.OK /
+        DialogResult.Cancel; the code-behind closes the dialog returning the result), matching the
+        established FormYesView Click-handler convention used across this migration.
+      * labelTitle.Text / labelPrompt.Text and the initial textBoxInput.Text are assigned at
+        runtime by the code-behind (FormInputDialog.ShowInput). The textBoxInput on-screen
+        keyboard (FormGPS.isKeyboardOn) and the glm.fileRegex sanitisation TextChanged handler are
+        wired in the code-behind, reproducing FormInputDialog.cs — so no input events are declared
+        here. The "Title" / "Prompt" strings below are the designer's design-time placeholders.
+
+    Button glyphs are served from the GPS assembly via avares:// URIs
+    (avares://AgOpenGPS/btnImages/{Cancel64,OK64}.png), matching the file casing on disk and the
+    convention already used by the sibling GPS views (ConfigVehicleControl / SelectFieldMenuView).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormInputDialogView"
+        Title="FormInputDialog"
+        Width="700" Height="312"
+        Background="Lavender"
+        SystemDecorations="None"
+        CanResize="False"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma">
+
+    <!-- WinForms OnPaintBackground: a 20px CornflowerBlue frame around the Lavender form. -->
+    <Border BorderBrush="CornflowerBlue"
+            BorderThickness="20">
+
+        <!--
+            The designer used absolute Location/Size; inside the 20px frame the content origin
+            aligns with the WinForms x=20 column, so each control keeps its original left edge.
+            The row heights/gaps reproduce the designer's vertical rhythm
+            (title 65, gap 8, prompt 35, gap 10, textbox 38); the "*" filler pins the 105x75
+            OK/Cancel buttons to the bottom-right, as in the designer (buttons at y=225).
+        -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="65" />   <!-- labelTitle   : designer (20,15) 660x65 -->
+                <RowDefinition Height="8" />    <!-- gap          : designer 88 - 80         -->
+                <RowDefinition Height="35" />   <!-- labelPrompt  : designer (20,88) 660x35  -->
+                <RowDefinition Height="10" />   <!-- gap          : designer 133 - 123       -->
+                <RowDefinition Height="38" />   <!-- textBoxInput : designer (20,133) 660x38 -->
+                <RowDefinition Height="*" />    <!-- filler -> pushes the buttons to the bottom -->
+                <RowDefinition Height="75" />   <!-- buttons row  : designer 105x75 @ y=225  -->
+            </Grid.RowDefinitions>
+
+            <!-- labelTitle: Tahoma 20 Bold, MiddleLeft (VerticalAlignment=Center + TextAlignment=Left).
+                 Text is a design-time placeholder; FormInputDialog.ShowInput sets it at runtime. -->
+            <TextBlock x:Name="labelTitle"
+                       Grid.Row="0"
+                       Text="Title"
+                       FontFamily="Tahoma"
+                       FontSize="20"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Center"
+                       TextAlignment="Left" />
+
+            <!-- labelPrompt: Tahoma 14, MiddleLeft. Runtime text set by the code-behind. -->
+            <TextBlock x:Name="labelPrompt"
+                       Grid.Row="2"
+                       Text="Prompt"
+                       FontFamily="Tahoma"
+                       FontSize="14"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Center"
+                       TextAlignment="Left" />
+
+            <!-- textBoxInput: Tahoma 18, single line, stretched to the 660px content width.
+                 Click (on-screen keyboard) and TextChanged (glm.fileRegex sanitisation) are wired
+                 in the code-behind, reproducing FormInputDialog.cs. -->
+            <TextBox x:Name="textBoxInput"
+                     Grid.Row="4"
+                     FontFamily="Tahoma"
+                     FontSize="18"
+                     HorizontalAlignment="Stretch"
+                     VerticalContentAlignment="Center" />
+
+            <!-- Bottom-right command buttons: Cancel (left) then OK (right), matching the designer
+                 order (btnCancel @ x=472, btnOK @ x=583). Flat + transparent so only the 64px glyph
+                 shows, mirroring WinForms (FlatStyle.Flat, FlatAppearance.BorderSize=0,
+                 BackColor=Transparent). DialogResult.Cancel/OK -> OnCancelClick/OnOkClick. -->
+            <StackPanel Grid.Row="6"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Spacing="6">
+                <Button x:Name="buttonCancel"
+                        Width="105"
+                        Height="75"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="OnCancelClick">
+                    <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                           Width="64"
+                           Height="64"
+                           Stretch="Uniform" />
+                </Button>
+                <Button x:Name="buttonOK"
+                        Width="105"
+                        Height="75"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="OnOkClick">
+                    <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                           Width="64"
+                           Height="64"
+                           Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

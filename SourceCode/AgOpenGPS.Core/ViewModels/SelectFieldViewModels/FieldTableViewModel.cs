@@ -1,5 +1,4 @@
-﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-using AgOpenGPS.Core.Models;
+﻿using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Streamers;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
@@ -31,8 +30,7 @@ namespace AgOpenGPS.Core.ViewModels
         }
 
         // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-        // Exposed as plain bool (was WPF System.Windows.Visibility). Avalonia binds these directly
-        // to Control.IsVisible, removing the PresentationCore/WPF dependency from the portable Core.
+        // WPF System.Windows.Visibility replaced with portable bool; Avalonia binds IsVisible to bool (Visible=>true, Collapsed=>false).
         public bool ByNameVisible => SortMode == FieldSortMode.ByName;
         public bool ByDistanceVisible => SortMode == FieldSortMode.ByDistance;
         public bool ByAreaVisible => SortMode == FieldSortMode.ByArea;

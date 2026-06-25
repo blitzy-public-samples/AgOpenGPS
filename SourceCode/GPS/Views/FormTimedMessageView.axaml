@@ -1,0 +1,88 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — auto-closing timed "toast" message popup (Avalonia view).
+
+    1:1 visual PARITY reimplementation of the deleted WinForms Forms/FormTimedMessage
+    (FormTimedMessage.cs + FormTimedMessage.Designer.cs), per AAP §0.3.3 — never a redesign.
+    It shows a bold title plus a message, is pinned near the top-left of the screen by the
+    code-behind, and auto-closes after a caller-supplied timeout.
+
+    Pairs with the code-behind FormTimedMessageView.axaml.cs via
+    x:Class="AgOpenGPS.Views.FormTimedMessageView" (namespace AgOpenGPS.Views). That code-behind
+    assigns lblMessage.Text / lblMessage2.Text, pins the window position (Left=20, Top=20) and runs
+    the one-shot auto-close timer (WinForms System.Windows.Forms.Timer -> Avalonia DispatcherTimer);
+    the x:Name values below are that contract. This view sets NO DataContext and uses NO {Binding},
+    so no x:DataType is declared — the text is supplied imperatively, exactly like the original
+    WinForms ctor FormTimedMessage(int timeInMsec, string titleString, string messageString).
+
+    Window attribute provenance (WinForms FormTimedMessage.Designer.cs / .cs):
+      Title="AgOpenGPS Message"        maps to  this.Text = "AgOpenGPS Message"
+      SystemDecorations="None"         maps to  this.FormBorderStyle = None (+ ControlBox = false)
+      Topmost="True"                   maps to  this.TopMost = true
+      ShowInTaskbar="False"            maps to  this.ShowInTaskbar = false
+      CanResize="False"                maps to  borderless, fixed popup (no resize grips)
+      SizeToContent="WidthAndHeight"   maps to  ctor computed ClientSize from label PreferredSize
+      WindowStartupLocation="Manual"   maps to  this.StartPosition = Manual (Left/Top set in code-behind)
+      Background="Red"                 maps to  this.BackColor = Color.Red
+      Padding="7"                      maps to  this.Padding = new Padding(7)  (the red border thickness)
+
+    Inner surface (WinForms panel1: Dock=Fill, BackColor=OldLace):
+      The OldLace Border fills the area inside the 7px Window padding, so the Red Window background
+      shows through as a 7px frame around the OldLace panel — visually identical to the original.
+
+    Labels (WinForms lblMessage / lblMessage2 — both Tahoma 18, autosize):
+      lblMessage  (title)   : Tahoma 18 Bold,    designer Location (3, 0)   -> Margin "3,0,0,0".
+      lblMessage2 (message) : Tahoma 18 regular, designer Location (43, 52) -> Margin "43,23,0,0".
+                              In a vertical StackPanel both labels share the same left origin (the
+                              Border's inner-left), so the left value 43 reproduces the WinForms
+                              absolute Location.X = 43 directly. The top value 23 is the WinForms
+                              inter-label gap (message Top 52 minus the ~29px Tahoma-18-Bold title
+                              height), applied as the StackPanel top margin so the message sits the
+                              same distance below the title. The Border Padding reproduces the
+                              original's roomy ClientSize (ctor added +60 width / +30 height) so
+                              SizeToContent yields the same padded look.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormTimedMessageView"
+        Title="AgOpenGPS Message"
+        SystemDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="Manual"
+        Background="Red"
+        Padding="7">
+
+    <!-- WinForms panel1: Dock=Fill, BackColor=OldLace. Sits inside the 7px red Window padding,
+         so the Red Window Background frames it on every side. -->
+    <Border Background="OldLace"
+            Padding="16,12">
+
+        <!-- Vertical stack mirrors the two stacked WinForms labels. -->
+        <StackPanel Orientation="Vertical">
+
+            <!-- WinForms lblMessage (title): Tahoma 18 Bold @ (3, 0). Text set at runtime by the
+                 code-behind; "Message" is the original designer placeholder. -->
+            <TextBlock x:Name="lblMessage"
+                       Margin="3,0,0,0"
+                       FontFamily="Tahoma"
+                       FontSize="18"
+                       FontWeight="Bold"
+                       Text="Message" />
+
+            <!-- WinForms lblMessage2 (message): Tahoma 18 regular @ (43, 52). In a StackPanel the
+                 siblings share one left origin, so left=43 matches the WinForms absolute X exactly;
+                 top=23 is the WinForms inter-label gap. "Message 2" is the designer placeholder. -->
+            <TextBlock x:Name="lblMessage2"
+                       Margin="43,23,0,0"
+                       FontFamily="Tahoma"
+                       FontSize="18"
+                       Text="Message 2" />
+
+        </StackPanel>
+
+    </Border>
+
+</Window>

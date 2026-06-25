@@ -1,0 +1,133 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Yes"/acknowledgment message box (Avalonia view).
+
+    1:1 PARITY reimplementation of the deleted WinForms `Forms/FormYes` (FormYes.cs +
+    FormYes.designer.cs). FormYes is a large, centered, full-screen-style acknowledgment
+    dialog: a pink borderless window holding one big white message panel and a single OK
+    image button in the bottom-right corner. Per AAP §0.3.3 this is visual parity to the
+    currently rendered Windows Forms UI, never a redesign — no new colors, no relayout.
+
+    WIRING CONTRACT (the partner code-behind FormYesView.axaml.cs owns behaviour, NOT this markup):
+      * This view is IMPERATIVE, not MVVM — there is intentionally NO x:DataType, no DataContext
+        and no {Binding}. The original `FormYes(string messageStr)` constructor set
+        `lblMessage2.Text = messageStr`; the code-behind reproduces that by addressing the named
+        TextBlock `lblMessage2` directly. The named controls below MUST stay `lblMessage2` and
+        `btnSerialOK` to match the generated x:Name fields the code-behind references.
+      * `btnSerialOK` carried `DialogResult.OK` in WinForms. Here the OK click is routed to the
+        code-behind handler `OnOkClick` (the established sibling convention — see AgIO/ModSim
+        FormYesView.axaml.cs), which closes the dialog returning true for ShowDialog<bool>.
+
+    WINDOW SHELL — mirrors FormYes.designer.cs exactly:
+      Text "AgOpenGPS Message"  -> Title
+      ClientSize 881 x 459       -> Width / Height (SystemDecorations="None" => client == window)
+      BackColor ARGB(254,170,170)-> Background "#FFFEAAAA" (hard-coded pink alert color, theme-independent)
+      FormBorderStyle.None       -> SystemDecorations="None"
+      (Fixed, ControlBox=false)  -> CanResize="False"
+      TopMost = true             -> Topmost="True"
+      ShowInTaskbar = false      -> ShowInTaskbar="False"
+      StartPosition.CenterScreen -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS)
+      Font Tahoma 14.25          -> FontFamily/FontSize (inherited default; children override below)
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormYesView"
+        Title="AgOpenGPS Message"
+        Width="881"
+        Height="459"
+        Background="#FFFEAAAA"
+        SystemDecorations="None"
+        CanResize="False"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+
+    <!--
+        Overlay layout. The white message Border and the OK button are siblings in a single Grid;
+        the button is declared AFTER the Border so it paints on top of (inside) the white panel,
+        reproducing the WinForms z-order where btnSerialOK overlaps lblMessage2.
+    -->
+    <Grid>
+
+        <!--
+            lblMessage2 host. WinForms Label: BackColor White, Location (24,21), Size 831 x 415
+            inside the 881 x 459 client => insets L=24 T=21 R=26 B=23. The Border supplies the
+            white fill (Label.BackColor) and the inset; the TextBlock carries the centered text.
+        -->
+        <Border Background="White"
+                Margin="24,21,26,23">
+            <!--
+                lblMessage2: Tahoma 21.75pt Bold, TextAlign MiddleCenter. 21.75pt x 96/72 = 29 DIP
+                (Avalonia FontSize is in device-independent pixels, WinForms Font is in points).
+                Foreground is hard-coded Black (the WinForms default ControlText) so the message
+                stays legible on the white panel regardless of the app's day/night theme variant.
+                Text "Message 2" is the original designer placeholder; the code-behind replaces it
+                with the real message at runtime.
+            -->
+            <TextBlock x:Name="lblMessage2"
+                       Text="Message 2"
+                       FontFamily="Tahoma"
+                       FontSize="29"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!--
+            btnSerialOK — the SINGLE OK button (the WinForms source has exactly one button; do NOT
+            add a No/Cancel). WinForms: Location (743,363), Size 105 x 64, anchored Bottom|Right
+            => bottom-right insets R=33 B=32. FlatStyle.Flat + FlatAppearance.BorderSize=0 + the
+            image-only face => a flat, border-less, transparent button showing the OK64 glyph
+            (it sits over the white panel, so Transparent reads as white, matching BackColor White).
+            IsDefault makes Enter trigger OK (acknowledgment box); AutomationProperties.Name gives
+            the image-only button an accessible label.
+        -->
+        <Button x:Name="btnSerialOK"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Width="105"
+                Height="64"
+                Margin="0,0,33,32"
+                Padding="0"
+                Background="Transparent"
+                BorderThickness="0"
+                FontFamily="Tahoma"
+                FontSize="12"
+                IsDefault="True"
+                AutomationProperties.Name="OK"
+                Click="OnOkClick">
+            <!--
+                Keep the flat/transparent face in every interaction state (the Fluent Button
+                template otherwise paints a hover/pressed fill). Targets the template content
+                presenter so it overrides the theme's own state setters — same technique used by
+                Keypad/NumKeypad.axaml.
+            -->
+            <Button.Styles>
+                <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                </Style>
+                <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                </Style>
+            </Button.Styles>
+            <!--
+                WinForms btnSerialOK.Image = Resources.OK64 (native 64 x 64), drawn centered. The
+                glyph is served from the GPS assembly via avares://AgOpenGPS/btnImages/OK64.png
+                (asset confirmed 64 x 64). Stretch="Uniform" + explicit 64 x 64 keep it at native
+                size, centered in the 105 x 64 button — matching the WinForms Image property.
+            -->
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+    </Grid>
+</Window>

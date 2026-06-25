@@ -7,8 +7,8 @@ namespace AgOpenGPS.Core.Models
         // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
         // The background-imagery pixels are now held as a portable, tightly-packed RGBA byte
         // buffer (4 bytes/pixel, row-major) with explicit dimensions, replacing the Windows-only
-        // GDI+ System.Drawing.Bitmap. The BackPic.png wire format is unchanged — BingMapStreamer
-        // decodes/encodes it with SkiaSharp — so the field-file PNG contract is preserved.
+        // GDI+ raster image type. The BackPic.png wire format is unchanged — BingMapStreamer
+        // decodes/encodes it with a cross-platform PNG codec — so the field-file PNG contract is preserved.
         public BingMap(
             GeoBoundingBox geoBoundingBox,
             byte[] rgbaPixels,

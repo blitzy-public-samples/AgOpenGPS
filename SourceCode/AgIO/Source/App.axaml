@@ -1,57 +1,79 @@
-<!-- [XPLAT] migrated from net48/WinForms (Program.cs + FormLoop shell) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
 <!--
-    AgIO Avalonia Application definition.
+    AgIO — Avalonia Application definition (the AgOpenGPS communications-hub program:
+    serial / NTRIP / UDP; the 2nd of the two programs, auto-started by AgOpenGPS over the
+    UDP loopback fabric).
 
-    Pairs with the code-behind App.axaml.cs (partial class AgIO.App : Application);
-    x:Class below MUST stay "AgIO.App" to match it. There was no WinForms "App"
-    equivalent in the source — the original Program.cs called Application.Run(new FormLoop())
-    directly — so this is net-new Avalonia scaffolding. Per AAP §0.3.3 this is a 1:1 visual
-    PARITY reimplementation of the current Windows Forms look, never a redesign.
+    Pairs with the code-behind App.axaml.cs (partial class AgIO.App : Application); the
+    x:Class below MUST stay "AgIO.App" to match it. There was no WinForms "App" equivalent
+    in the source — the original Program.cs called Application.Run(new FormLoop()) directly —
+    so this is net-new Avalonia scaffolding. Per AAP §0.3.3 this is a 1:1 visual PARITY
+    reimplementation of the current Windows Forms look, never a redesign: no new colors, no
+    relayout, no UX changes.
 
-    Theme:
-      The Avalonia Fluent theme (Avalonia.Themes.Fluent, referenced in AgIO.csproj) is the
-      app-wide base. AgIO is the small two-program "comms hub" status window; unlike the GPS
-      program it had no day/night palette toggle in WinForms (it used the default system
-      chrome), so RequestedThemeVariant is left at the system default.
+    Theme — LIGHT ONLY (parity; no day/night):
+      AgIO's WinForms FormLoop had NO day/night palette toggle (no isDay / isNightMode /
+      dayColor / nightColor anywhere in Forms/FormLoop.cs or Properties/Settings.cs); it
+      rendered with the classic light WinForms system chrome and did NOT follow the OS
+      dark-mode setting. RequestedThemeVariant is therefore pinned to "Light" — NOT "Default"
+      — because "Default" adopts the OS variant and would render dark on a dark-mode OS,
+      breaking visual parity with the original light appearance. This is the deliberate
+      difference from the sibling GPS App.axaml, which uses "Default" only because the GPS
+      program toggles Light/Dark at runtime via ThemeDictionaries. AgIO is light-only and has
+      no such toggle — see MIGRATION_DOCS/TRANSITION_MAP.md.
 
     Fonts:
       The Inter font family is registered programmatically via .WithInterFont() in
-      Program.BuildAvaloniaApp(), so no font include is required here.
+      Program.BuildAvaloniaApp(), so no font include is required here (mirrors GPS App.axaml).
 
     Status palette (Application.Resources):
-      The module connection indicators reproduce the exact WinForms FormLoop status colours
-      (DoHelloAlarmLogic / SetModulesOnOff): LimeGreen when a module is talking, Red when it
-      has gone silent, plus the NTRIP activity colours. These are referenced from
-      MainWindow.axaml.cs as {DynamicResource Aog*Brush} when recolouring the indicators, so
-      the colour values live in one place.
+      The module-connection indicators and the NTRIP activity indicator reproduce the EXACT
+      WinForms FormLoop status colors, exposed as shared named brushes so the migrated Views
+      bind to one central definition instead of hard-coding System.Drawing.Color values:
+        - AogModuleOk*    = LimeGreen      — a module is talking (hello received in window;
+                                             FormLoop.cs btnMachine / btnSteer / btnIMU / btnGPS).
+        - AogModuleAlarm* = Red            — a module has gone silent / is absent.
+        - AogNtripActive* = CornflowerBlue — NTRIP bytes are flowing (activity toggle on).
+        - AogNtripIdle*   = DarkOrange     — NTRIP is idle (activity toggle off).
+      Avalonia color syntax is #AARRGGBB — no WinForms/GDI color types are referenced.
+      Consumers (STABLE key contract): MainWindow.axaml binds {DynamicResource Aog*Brush} and
+      MainWindow.axaml.cs resolves GetBrush("Aog*Brush") when recoloring the indicators, so
+      every status color lives in exactly one place.
 -->
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="AgIO.App"
-             RequestedThemeVariant="Default">
+             RequestedThemeVariant="Light">
 
-    <!-- App-wide base theme. -->
+    <!-- App-wide base design system (Avalonia.Themes.Fluent, referenced in AgIO.csproj).
+         AgIO pins the Light variant above for parity, so there is deliberately NO
+         ResourceDictionary.ThemeDictionaries block here — unlike GPS App.axaml. AgIO is
+         light-only (no day/night) — see MIGRATION_DOCS/TRANSITION_MAP.md. -->
     <Application.Styles>
         <FluentTheme />
     </Application.Styles>
 
     <!--
-        Module/NTRIP status palette — parity with the WinForms FormLoop status colours.
-        Avalonia colour syntax is #AARRGGBB — no WinForms/GDI colour types are referenced.
+        Module / NTRIP status palette — parity with the WinForms FormLoop status colors.
+        Each color key is paired with a SolidColorBrush of the same name + "Brush" so views
+        can bind to a brush directly. Avalonia color syntax is #AARRGGBB.
     -->
     <Application.Resources>
-        <!-- Color.LimeGreen — module is talking (hello received within window). -->
-        <Color x:Key="AogModuleOkColor">#FF32CD32</Color>
-        <!-- Color.Red — module has gone silent. -->
-        <Color x:Key="AogModuleAlarmColor">#FFFF0000</Color>
-        <!-- Color.CornflowerBlue / Color.DarkOrange — NTRIP byte activity toggle. -->
-        <Color x:Key="AogNtripActiveColor">#FF6495ED</Color>
-        <Color x:Key="AogNtripIdleColor">#FFFF8C00</Color>
+        <ResourceDictionary>
+            <!-- Color.LimeGreen — module is talking (hello received within the window). -->
+            <Color x:Key="AogModuleOkColor">#FF32CD32</Color>
+            <!-- Color.Red — module has gone silent / is absent. -->
+            <Color x:Key="AogModuleAlarmColor">#FFFF0000</Color>
+            <!-- Color.CornflowerBlue — NTRIP bytes flowing (activity toggle on). -->
+            <Color x:Key="AogNtripActiveColor">#FF6495ED</Color>
+            <!-- Color.DarkOrange — NTRIP idle (activity toggle off). -->
+            <Color x:Key="AogNtripIdleColor">#FFFF8C00</Color>
 
-        <SolidColorBrush x:Key="AogModuleOkBrush" Color="{StaticResource AogModuleOkColor}" />
-        <SolidColorBrush x:Key="AogModuleAlarmBrush" Color="{StaticResource AogModuleAlarmColor}" />
-        <SolidColorBrush x:Key="AogNtripActiveBrush" Color="{StaticResource AogNtripActiveColor}" />
-        <SolidColorBrush x:Key="AogNtripIdleBrush" Color="{StaticResource AogNtripIdleColor}" />
+            <SolidColorBrush x:Key="AogModuleOkBrush" Color="{StaticResource AogModuleOkColor}" />
+            <SolidColorBrush x:Key="AogModuleAlarmBrush" Color="{StaticResource AogModuleAlarmColor}" />
+            <SolidColorBrush x:Key="AogNtripActiveBrush" Color="{StaticResource AogNtripActiveColor}" />
+            <SolidColorBrush x:Key="AogNtripIdleBrush" Color="{StaticResource AogNtripIdleColor}" />
+        </ResourceDictionary>
     </Application.Resources>
 
 </Application>

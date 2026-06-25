@@ -1,4 +1,5 @@
-﻿using AgOpenGPS.Core.Models;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core.Models;
 using System;
 using System.Globalization;
 using System.IO;
@@ -9,6 +10,10 @@ namespace AgOpenGPS.Core.Streamers
     {
         public GeoStreamWriter(FileInfo fileInfo, bool append = false) : base(fileInfo.FullName, append)
         {
+            // [XPLAT] Pin newline to CRLF so cross-platform (Linux/macOS) output is byte-identical to the
+            // net48/Windows golden field files asserted by FieldRoundTripTests. StreamWriter.NewLine would
+            // otherwise default to Environment.NewLine ("\n" on Unix), breaking byte-for-byte parity.
+            NewLine = "\r\n";
         }
 
         public string BoolString(bool boolValue)
