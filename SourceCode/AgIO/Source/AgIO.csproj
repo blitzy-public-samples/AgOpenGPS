@@ -42,4 +42,15 @@
     <ProjectReference Include="..\..\AgOpenGPS.Core\AgOpenGPS.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- [XPLAT] Properties/Resources.Designer.cs is the retained net48 StronglyTypedResourceBuilder
+         accessor; its 165 members return System.Drawing.Bitmap. AgIO was re-platformed to a pure
+         cross-platform net8.0/Avalonia project (UseWindowsForms and the System.Drawing reference were
+         removed), and the migration introduces no System.Drawing.Common / GDI+ dependency (see the
+         convention documented in AgLibrary.csproj). The Avalonia views load their imagery via Avalonia
+         assets, so this generated accessor is unused. It is retained in source control for provenance
+         but excluded from compilation so AgIO builds on Windows, Linux, and macOS. -->
+    <Compile Remove="Properties\Resources.Designer.cs" />
+  </ItemGroup>
+
 </Project>

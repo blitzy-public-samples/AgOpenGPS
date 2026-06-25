@@ -1,11 +1,24 @@
-﻿using AgOpenGPS.Core.Translations;
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core;
+using System.Windows.Input;
 
 namespace AgOpenGPS
 {
     public class CModuleComm
     {
-        //copy of the mainform address
-        private readonly FormGPS mf;
+        // [XPLAT] Decoupled from the WinForms FormGPS host (the former `mf` back-reference is gone).
+        // The section-master button tri-state (manual/auto) and the autosteer-engaged flag now live
+        // in the shared Core ApplicationModel — the SAME state the Avalonia view-models and the
+        // section/guidance logic read/write — the AHRS sensor state is injected directly, and the
+        // three on-screen button actions are invoked through view-model commands (RelayCommand via
+        // ICommand) rather than WinForms button clicks. No new abstraction is introduced beyond the
+        // existing Core view-model command surface. Module-comm state, timeout/heartbeat handling and
+        // switch-decoding behavior are unchanged. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        private readonly ApplicationModel _appModel;
+        private readonly CAHRS _ahrs;
+        private readonly ICommand _autoSteerToggleCommand;
+        private readonly ICommand _sectionMasterManualCommand;
+        private readonly ICommand _sectionMasterAutoCommand;
 
         //Critical Safety Properties
         public bool isOutOfBounds = true;
@@ -37,10 +50,25 @@ namespace AgOpenGPS
 
         public bool workSwitchHigh, oldWorkSwitchHigh, steerSwitchHigh, oldSteerSwitchHigh, oldSteerSwitchRemote;
 
-        //constructor
-        public CModuleComm(FormGPS _f)
+        // [XPLAT] Constructor now receives its collaborators by injection instead of the WinForms host:
+        //   appModel                    - shared Core state (manualBtnState / autoBtnState / isBtnAutoSteerOn).
+        //   ahrs                        - injected AHRS sensor state (was mf.ahrs).
+        //   autoSteerToggleCommand      - command bound to the autosteer button (was mf.btnAutoSteer).
+        //   sectionMasterManualCommand  - command bound to the section-master-manual button.
+        //   sectionMasterAutoCommand    - command bound to the section-master-auto button.
+        public CModuleComm(
+            ApplicationModel appModel,
+            CAHRS ahrs,
+            ICommand autoSteerToggleCommand,
+            ICommand sectionMasterManualCommand,
+            ICommand sectionMasterAutoCommand)
         {
-            mf = _f;
+            _appModel = appModel;
+            _ahrs = ahrs;
+            _autoSteerToggleCommand = autoSteerToggleCommand;
+            _sectionMasterManualCommand = sectionMasterManualCommand;
+            _sectionMasterAutoCommand = sectionMasterAutoCommand;
+
             //WorkSwitch logic
             isRemoteWorkSystemOn = false;
 
@@ -52,13 +80,13 @@ namespace AgOpenGPS
         public void CheckWorkAndSteerSwitch()
         {
             //AutoSteerAuto button enable - Ray Bear inspired code - Thx Ray!
-            if (mf.ahrs.isAutoSteerAuto && steerSwitchHigh != oldSteerSwitchRemote)
+            if (_ahrs.isAutoSteerAuto && steerSwitchHigh != oldSteerSwitchRemote)
             {
                 oldSteerSwitchRemote = steerSwitchHigh;
                 //steerSwith is active low
-                if (steerSwitchHigh == mf.isBtnAutoSteerOn)
+                if (steerSwitchHigh == _appModel.isBtnAutoSteerOn)
                 {
-                    mf.btnAutoSteer.PerformClick();
+                    _autoSteerToggleCommand.Execute(null);
                 }
             }
 
@@ -72,22 +100,22 @@ namespace AgOpenGPS
                     {
                         if (isWorkSwitchManualSections)
                         {
-                            if (mf.manualBtnState != btnStates.On)
-                                mf.btnSectionMasterManual.PerformClick();
+                            if (_appModel.manualBtnState != btnStates.On)
+                                _sectionMasterManualCommand.Execute(null);
                         }
                         else
                         {
-                            if (mf.autoBtnState != btnStates.Auto)
-                                mf.btnSectionMasterAuto.PerformClick();
+                            if (_appModel.autoBtnState != btnStates.Auto)
+                                _sectionMasterAutoCommand.Execute(null);
                         }
                     }
 
                     else//Checks both on-screen buttons, performs click if button is not off
                     {
-                        if (mf.autoBtnState != btnStates.Off)
-                            mf.btnSectionMasterAuto.PerformClick();
-                        if (mf.manualBtnState != btnStates.Off)
-                            mf.btnSectionMasterManual.PerformClick();
+                        if (_appModel.autoBtnState != btnStates.Off)
+                            _sectionMasterAutoCommand.Execute(null);
+                        if (_appModel.manualBtnState != btnStates.Off)
+                            _sectionMasterManualCommand.Execute(null);
                     }
                 }
 
@@ -95,27 +123,27 @@ namespace AgOpenGPS
                 {
                     oldSteerSwitchHigh = steerSwitchHigh;
 
-                    if ((mf.isBtnAutoSteerOn && mf.ahrs.isAutoSteerAuto)
-                        || !mf.ahrs.isAutoSteerAuto && !steerSwitchHigh)
+                    if ((_appModel.isBtnAutoSteerOn && _ahrs.isAutoSteerAuto)
+                        || !_ahrs.isAutoSteerAuto && !steerSwitchHigh)
                     {
                         if (isSteerWorkSwitchManualSections)
                         {
-                            if (mf.manualBtnState != btnStates.On)
-                                mf.btnSectionMasterManual.PerformClick();
+                            if (_appModel.manualBtnState != btnStates.On)
+                                _sectionMasterManualCommand.Execute(null);
                         }
                         else
                         {
-                            if (mf.autoBtnState != btnStates.Auto)
-                                mf.btnSectionMasterAuto.PerformClick();
+                            if (_appModel.autoBtnState != btnStates.Auto)
+                                _sectionMasterAutoCommand.Execute(null);
                         }
                     }
 
                     else//Checks both on-screen buttons, performs click if button is not off
                     {
-                        if (mf.autoBtnState != btnStates.Off)
-                            mf.btnSectionMasterAuto.PerformClick();
-                        if (mf.manualBtnState != btnStates.Off)
-                            mf.btnSectionMasterManual.PerformClick();
+                        if (_appModel.autoBtnState != btnStates.Off)
+                            _sectionMasterAutoCommand.Execute(null);
+                        if (_appModel.manualBtnState != btnStates.Off)
+                            _sectionMasterManualCommand.Execute(null);
                     }
                 }
             }

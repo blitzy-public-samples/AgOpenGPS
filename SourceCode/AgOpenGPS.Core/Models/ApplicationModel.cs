@@ -47,5 +47,21 @@ namespace AgOpenGPS.Core
         public bool isBtnAutoSteerOn;
         public double avgSpeed;
         public short guidanceLineDistanceOff;
+
+        // [XPLAT] Section-master button tri-states relocated here from the WinForms host form
+        // (FormGPS, Sections.Designer.cs) so portable cross-platform domain code — the CModuleComm
+        // work/steer-switch bridge and the section/guidance logic — reads and writes the SAME state
+        // the Avalonia view-models bind to, with no WinForms coupling. The type (btnStates) and the
+        // defaults (btnStates.Off) are preserved exactly from the originals so section-control
+        // activation stays behavior-identical. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public btnStates manualBtnState = btnStates.Off;
+        public btnStates autoBtnState = btnStates.Off;
     }
+
+    // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+    // Section-master / autosteer on-screen button tri-state. Moved out of the deleted WinForms
+    // FormGPS partial (Sections.Designer.cs) into the portable Core so the shared ApplicationModel
+    // and the cross-platform GPS classes (CModuleComm, CSection, CYouTurn, CRecordedPath, ...)
+    // reference one canonical definition. Member names, values and order are unchanged: Off, Auto, On.
+    public enum btnStates { Off, Auto, On }
 }
