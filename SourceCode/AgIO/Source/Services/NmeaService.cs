@@ -1,22 +1,41 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.Globalization;
+using System.Text;
 using AgLibrary.Logging;
 
-namespace AgIO
+namespace AgIO.Services
 {
-    public partial class FormLoop
+    /// <summary>
+    /// [XPLAT] Plain, injectable NMEA parse/build service extracted 1:1 (behavior frozen) from the
+    /// former WinForms <c>FormLoop</c> partial class (<c>SourceCode/AgIO/Source/Forms/NMEA.Designer.cs</c>).
+    /// This service is the single source of truth for parsed GPS/IMU state: the NTRIP and UDP loopback
+    /// peer services read its public fields, and the serial/UDP peers feed incoming "$" sentences in by
+    /// appending bytes to <see cref="rawBuffer"/> and calling <c>ParseNMEA</c>. The only outward call
+    /// — sending the assembled PGN 0xD6 frame — is routed through the <see cref="Udp"/> peer.
+    /// </summary>
+    public sealed class NmeaService
     {
-        private string rawBuffer = "";
-        private string[] words;
-        private string nextNMEASentence = "";
+        /// <summary>
+        /// [XPLAT] Peer reference to the UDP loopback service. Wired AFTER construction by the
+        /// coordinator/composition root to break the construction cycle between NmeaService and
+        /// UdpLoopbackService (each needs the other). It is guarded with the null-conditional
+        /// operator at every call site because it can be briefly null during bootstrap.
+        /// </summary>
+        internal UdpLoopbackService Udp { get; set; }
 
-        private bool isNMEAToSend = false;
+        // [XPLAT] rawBuffer is appended to by the serial/UDP peers, then drained here by ParseNMEA(ref ...).
+        public string rawBuffer = "";
+        public string[] words;
+        public string nextNMEASentence = "";
 
-        private bool isSti035Available = false;
-        private bool isSti036Available = false;
+        public bool isNMEAToSend = false;
 
-        public string ggaSentence, vtgSentence, hdtSentence, avrSentence, paogiSentence,
-            hpdSentence, rmcSentence, pandaSentence, ksxtSentence;
+        public bool isSti035Available = false;
+        public bool isSti036Available = false;
+
+        public string ggaSentence = "", vtgSentence = "", hdtSentence = "", avrSentence = "", paogiSentence = "",
+            hpdSentence = "", rmcSentence = "", pandaSentence = "", ksxtSentence = "";
 
         public float hdopData, altitude = float.MaxValue, headingTrue = float.MaxValue,
             headingTrueDual = float.MaxValue, speed = float.MaxValue, roll = float.MaxValue;
@@ -34,10 +53,18 @@ namespace AgIO
 
         public byte fixQualityData, fixQuality = byte.MaxValue;
 
-        private float rollK, Pc, G, Xp, Zp, XeRoll, P = 1.0f;
-        private readonly float varRoll = 0.1f, varProcess = 0.0003f;
+        public float rollK, Pc, G, Xp, Zp, XeRoll, P = 1.0f;
+        public readonly float varRoll = 0.1f, varProcess = 0.0003f;
 
-        double LastUpdateUTC = 0;
+        public double LastUpdateUTC = 0;
+
+        // [XPLAT] Log/monitor flags formerly declared on FormLoop; kept here as public state so the
+        // coordinator/view-model can toggle them. The original FormLoop UI label updates are intentionally
+        // dropped (they become Avalonia view-model bindings); only data + log-buffer state is retained.
+        public bool isLogMonitorOn;
+        public StringBuilder logMonitorSentence = new StringBuilder();
+        public bool isGPSSentencesOn = false;
+        public bool isSendNMEAToUDP;
 
         //Convert Fix value to Text
         public string FixQuality
@@ -305,10 +332,10 @@ namespace AgIO
                 nmeaPGN[56] = (byte)CK_A;
 
                 //Send nmea to AgOpenGPS
-                SendToLoopBackMessageAOG(nmeaPGN);
+                Udp?.SendToLoopBackMessageAOG(nmeaPGN);
 
                 //Send nmea to autosteer module 8888
-                if (isSendNMEAToUDP) SendUDPMessage(nmeaPGN, epModule);
+                if (isSendNMEAToUDP) Udp?.SendUDPMessage(nmeaPGN, Udp.epModule);
             }
         }
 

@@ -37,9 +37,6 @@
     <Compile Update="Forms\NMEA.Designer.cs">
       <DependentUpon>FormLoop.cs</DependentUpon>
     </Compile>
-    <Compile Update="Forms\NTRIPComm.Designer.cs">
-      <DependentUpon>FormLoop.cs</DependentUpon>
-    </Compile>
     <Compile Update="Forms\SerialComm.Designer.cs">
       <DependentUpon>FormLoop.cs</DependentUpon>
     </Compile>
