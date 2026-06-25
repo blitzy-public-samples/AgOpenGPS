@@ -305,6 +305,7 @@ section). The G7 case-fix files (`FormYes.designer.cs`, `FormtimedMessage.resx`)
 | `SourceCode/GPS/Forms/Field/FormBoundaryPlayer.*` | `SourceCode/GPS/Views/Field/FormBoundaryPlayerView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Boundary record/playback + section-on gate. |
 | `SourceCode/GPS/Forms/Field/FormBuildBoundaryFromTracks.*` | `SourceCode/GPS/Views/Field/FormBuildBoundaryFromTracksView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Track selection + OpenGL preview + save validation + boundary generation. |
 | `SourceCode/GPS/Forms/Field/FormMap.*` | cross-platform map control **or feature-gated** in `SourceCode/GPS/Views/Field/` `(deferred — CP4)` | Feature-gated | Deferred | `// [XPLAT]` GMap-based boundary/map editing (F-021); online imagery optional, tile cache (SQLite) is cross-platform; field still renders without it (AAP §0.6.3). |
+| `SourceCode/GPS/Forms/Field/FormSaveOrNot.*` | `SourceCode/GPS/Views/Field/FormSaveOrNotView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Save-or-not confirmation dialog (exit to desktop / shutdown / cancel with auto-countdown timers). Timer-driven auto-exit (`countExit`=4 / `countShutdown`=5) and `setWindow_isShutdownComputer` setting preserved in view-model; `DialogResult.OK`/`DialogResult.Yes`/`DialogResult.Ignore` → Avalonia close-result semantics; `AgShareEnabled` snapshot trigger on job-started preserved. |
 
 ---
 
