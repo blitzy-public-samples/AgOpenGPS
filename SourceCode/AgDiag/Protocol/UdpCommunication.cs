@@ -1,8 +1,9 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
+using System.Diagnostics;
 using System.Net.Sockets;
-using System.Windows.Forms;
-using System.Threading.Tasks;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace AgDiag.Protocol
 {
@@ -48,7 +49,8 @@ namespace AgDiag.Protocol
             }
             catch (Exception ex)
             {
-                MessageBox.Show("UDP Error: " + ex.Message, "UDP Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // [XPLAT] WinForms MessageBox replaced with cross-platform diagnostic output
+                Debug.WriteLine($"UDP Error: {ex.Message}");
             }
         }
 

@@ -1,0 +1,56 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ModSim.Views.FormYesView"
+        Title="AgTwo Message"
+        Width="241" Height="225"
+        Background="#F0C8C8"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!--
+        Avalonia 1:1 parity reimplementation of the deleted WinForms `Forms/FormYes`
+        confirmation dialog (ModSim standalone simulator): a single message line plus one
+        large "Ok" button. Declarative layout only — the dialog-result behaviour (close the
+        window returning true, the DialogResult.OK equivalent for ShowDialog<bool>) and the
+        per-message Width override both live in the partner code-behind FormYesView.axaml.cs.
+
+        STANDALONE: ModSim owns this view outright — it references no other project (in
+        particular not the shared core library) and uses no MVVM, no data binding and no
+        compiled-binding data context; the controls are addressed imperatively by name from
+        the code-behind. Layout reproduces the WinForms designer pixel-for-pixel via absolute
+        Canvas positioning, and the WinForms point sizes (Tahoma 14.25 / 18 / 24) are carried
+        across unchanged as Avalonia font sizes.
+
+        Window-shell values mirror FormYes.designer.cs exactly:
+          Text "AgTwo Message"; ClientSize 241x225; BackColor ARGB(240,200,200) = #F0C8C8;
+          FormBorderStyle.FixedSingle -> CanResize="False"; StartPosition.CenterScreen;
+          TopMost; ShowInTaskbar=false; Font Tahoma 14.25.
+        (ControlBox=false is non-portable and cosmetic-only, so the standard full system
+        decorations are kept via SystemDecorations="Full".)
+    -->
+    <Canvas>
+        <!-- WinForms lblMessage2: Label @ (46,71), Tahoma 18 Bold. The code-behind replaces this
+             text with the constructor's message; "Message 2" is the original designer placeholder. -->
+        <TextBlock x:Name="lblMessage2"
+                   Canvas.Left="46" Canvas.Top="71"
+                   FontFamily="Tahoma" FontSize="18" FontWeight="Bold"
+                   Text="Message 2"
+                   TextWrapping="Wrap" />
+
+        <!-- WinForms btnSerialOK: Button @ (136,161) size 105x64, Tahoma 24 Bold,
+             FlatStyle.Flat + FlatAppearance.BorderSize=2 (-> BorderThickness 2 / black border),
+             DialogResult.OK. OnOkClick in the code-behind closes the dialog returning true. -->
+        <Button x:Name="btnSerialOK"
+                Canvas.Left="136" Canvas.Top="161"
+                Width="105" Height="64"
+                FontFamily="Tahoma" FontSize="24" FontWeight="Bold"
+                Content="Ok"
+                BorderThickness="2" BorderBrush="Black"
+                Click="OnOkClick" />
+    </Canvas>
+</Window>

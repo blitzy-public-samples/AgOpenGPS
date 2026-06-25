@@ -1,0 +1,172 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgDiag.FormLoop"
+        Title="AgDiag"
+        Width="476" Height="529"
+        MinWidth="50" MinHeight="50"
+        CanResize="True"
+        FontFamily="Tahoma"
+        Foreground="White"
+        Background="#1E1E32">
+    <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        Avalonia 1:1 parity reimplementation of the deleted WinForms diagnostics dashboard
+        previously defined in Forms/FormLoop.Designer.cs (AgDiag — the passive PGN/loopback
+        diagnostics viewer). This is the LAYOUT half of `partial class FormLoop : Window`; all
+        runtime behaviour (the 250 ms timer1 tick, UDP loopback wiring, and every readout update)
+        lives in the partner code-behind FormLoop.axaml.cs.
+
+        Design intent (AAP §0.3.3): reproduce the same readouts and the same logical grouping —
+        no UX redesign. Pixel-exact placement is intentionally NOT reproduced; instead the five
+        PGN groups are laid out as a vertical stack of colour-coded Border panels inside a
+        ScrollViewer so cross-platform font-metric differences (Tahoma may be absent on
+        Linux/macOS) can never clip a readout. The five panel background colours are carried over
+        verbatim from the source designer's Panel.BackColor values.
+
+        Standalone window (AAP constraint): AgDiag does not depend on AgOpenGPS.Core. There is no
+        Core xmlns, no x:DataType, no MVVM and no DataContext binding — every dynamic readout is
+        updated imperatively by the code-behind via its x:Name. Two kinds of dynamic control exist:
+          * Border  — its Background is reassigned at runtime (section indicators + Steer/Work
+                       switches): lblSection1..8, lblSteerSwitch, lblWorkSwitch.
+          * TextBlock — its Text is reassigned at runtime (all other named readouts).
+        The Avalonia XAML source generator emits one strongly-typed field per x:Name, so the
+        Border/TextBlock split below must match exactly what the code-behind assigns to.
+    -->
+    <ScrollViewer>
+        <StackPanel Margin="6" Spacing="6">
+
+            <!-- ============ AutoSteer Data (source panel4, PGN 0xFE / asData) ============ -->
+            <!-- BackColor FromArgb(40,80,90) -> #28505A -->
+            <Border Background="#28505A" Padding="6" CornerRadius="3">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="AutoSteer" FontSize="14" FontWeight="Bold" TextDecorations="Underline"/>
+
+                    <!-- label -> value readout rows -->
+                    <Grid ColumnDefinitions="Auto,Auto" RowDefinitions="Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Set Angle" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="lblSetSteerAngle" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Speed" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="lblSpeed" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Status" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="lblStatus" Text="12.3" FontWeight="Bold"/>
+                    </Grid>
+
+                    <!-- Section indicators: row 1 (1-8) are DYNAMIC Borders (Background set by
+                         code-behind to Green/Red); row 2 (9-16) are STATIC inert gray Borders
+                         kept for visual parity only (the protocol reports just 8 sections). -->
+                    <UniformGrid Columns="8" Rows="2">
+                        <Border x:Name="lblSection1" Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="1" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border x:Name="lblSection2" Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="2" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border x:Name="lblSection3" Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="3" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border x:Name="lblSection4" Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="4" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border x:Name="lblSection5" Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="5" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border x:Name="lblSection6" Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="6" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border x:Name="lblSection7" Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="7" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border x:Name="lblSection8" Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="8" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="9" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="10" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="11" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="12" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="13" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="14" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="15" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border Background="#808080" BorderBrush="#555555" BorderThickness="1" Height="32" Margin="1"><TextBlock Text="16" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                    </UniformGrid>
+
+                    <!-- Raw PGN 0xFE hex dump -->
+                    <TextBlock x:Name="lblSteerDataPGN" Text="12.3"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ========== From AutoSteer module (source panel3, PGN 0xFD / asModule) ========== -->
+            <!-- BackColor FromArgb(70,50,80) -> #463250 -->
+            <Border Background="#463250" Padding="6" CornerRadius="3">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="From AutoSteer" FontWeight="Bold" TextDecorations="Underline"/>
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" RowDefinitions="Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="PWM" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="lblPWM" Text="8887" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="Heading" Margin="12,0,8,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="3" x:Name="lblHeading" Text="9997" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Act Angle" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="lblSteerAngleActual" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="1" Grid.Column="2" Text="Roll" Margin="12,0,8,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="3" x:Name="lblRoll" Text="8887" FontWeight="Bold"/>
+                    </Grid>
+
+                    <!-- Steer / Work switch indicators: DYNAMIC Borders (Background set by code-behind),
+                         STATIC centered text. ~63x24 to mirror the WinForms label size. -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border x:Name="lblSteerSwitch" Background="#808080" BorderBrush="#555555" BorderThickness="1" Width="63" Height="24"><TextBlock Text="Steer" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                        <Border x:Name="lblWorkSwitch" Background="#808080" BorderBrush="#555555" BorderThickness="1" Width="63" Height="24"><TextBlock Text="Work" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                    </StackPanel>
+
+                    <TextBlock x:Name="lblPGNFromAutosteerModule" Text="12.3"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ============== Steer Setting (source panel2, PGN 0xFC / asSet) ============== -->
+            <!-- BackColor FromArgb(70,70,80) -> #464650 -->
+            <Border Background="#464650" Padding="6" CornerRadius="3">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Steer Setting" FontWeight="Bold"/>
+                    <Grid ColumnDefinitions="Auto,Auto,24,Auto,Auto,24,Auto,Auto" RowDefinitions="Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Hi PWM" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" x:Name="lblHiPWM" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="0" Grid.Column="3" Text="P" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="4" x:Name="lblP" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="0" Grid.Column="6" Text="CPD" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="7" x:Name="lblCPD" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Lo PWM" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" x:Name="lblLoPWM" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="1" Grid.Column="6" Text="Offset" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="7" x:Name="lblOffset" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Min PWM" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" x:Name="lblMinPWM" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Row="2" Grid.Column="6" Text="Ackerman" Margin="0,0,8,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="7" x:Name="lblAckerman" Text="12.3" FontWeight="Bold"/>
+                    </Grid>
+                    <TextBlock x:Name="lblPGNSteerSettings" Text="12.3"/>
+                </StackPanel>
+            </Border>
+
+            <!-- =============== Steer Config (source panel1, PGN 0xFB / asConfig) =============== -->
+            <!-- BackColor FromArgb(90,40,90) -> #5A285A -->
+            <Border Background="#5A285A" Padding="6" CornerRadius="3">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Steer Config" FontWeight="Bold"/>
+                    <Grid ColumnDefinitions="Auto,Auto,24,Auto,Auto,24,Auto,Auto" RowDefinitions="Auto">
+                        <TextBlock Grid.Column="0" Text="Set0" Margin="0,0,8,0"/>
+                        <TextBlock Grid.Column="1" x:Name="lblSet0" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="3" Text="Pulse #" Margin="0,0,8,0"/>
+                        <TextBlock Grid.Column="4" x:Name="lblPulseCount" Text="12.3" FontWeight="Bold"/>
+                        <TextBlock Grid.Column="6" Text="Min Speed" Margin="0,0,8,0"/>
+                        <TextBlock Grid.Column="7" x:Name="lblMinSpeed" Text="12.3" FontWeight="Bold"/>
+                    </Grid>
+                    <TextBlock x:Name="lblPGNAutoSteerConfig" Text="12.3"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ================= Machine (source panel5, PGN 0xEF / maData) ================= -->
+            <!-- BackColor DarkGreen -> #006400. NOTE the exact source spellings: TreeLbl (no lbl
+                 prefix) and lblPNGMachine (PNG transposition) are intentional and must be kept. -->
+            <Border Background="#006400" Padding="6" CornerRadius="3">
+                <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Machine" TextDecorations="Underline"/>
+                        <TextBlock Text="Speed"/>
+                        <TextBlock x:Name="TreeLbl" Text="12.3" FontWeight="Bold"/>
+                    </StackPanel>
+                    <TextBlock x:Name="lblPNGMachine" Text="12.3"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ===================== Bottom row: NTRIP UDP default-sends ===================== -->
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="4,0,0,0">
+                <TextBlock Text="NTRIP UDP"/>
+                <TextBlock x:Name="lblDefaultSends" Text="12.3" FontWeight="Bold"/>
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Window>
