@@ -1,18 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+  <!-- [XPLAT] migrated from net48/WinForms to net8.0 + Avalonia (cross-platform rework, Option A) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
 
   <PropertyGroup>
-    <!-- [XPLAT] Exe (not WinExe) so the Avalonia updater launches as a normal cross-platform
-         process; Avalonia owns its windowing/message loop. TargetFramework is inherited from
-         SourceCode/Directory.Build.props (net8.0) — the explicit net48 was removed. -->
-    <OutputType>Exe</OutputType>
+    <!-- [XPLAT] WinExe (not plain Exe) so the Avalonia desktop updater does NOT spawn a console
+         window on Windows. OutputType=WinExe only sets the Windows PE subsystem flag, which is
+         ignored on Linux/macOS, so the process behaves identically cross-platform. Do not change
+         to Exe/Library. -->
+    <OutputType>WinExe</OutputType>
+    <!-- [XPLAT] explicit net8.0 target, matching the SourceCode/Directory.Build.props baseline and
+         replacing this project's former explicit legacy-framework override (this was the only
+         project that pinned its own TFM). Option A purges all Windows-only APIs, so no
+         Windows-specific target and no multi-targeting are required here. -->
+    <TargetFramework>net8.0</TargetFramework>
     <!-- [XPLAT] per-OS self-contained publish targets for the tri-OS CI matrix (Windows/Linux/macOS);
-         replaces the single win-x64 RuntimeIdentifier. -->
+         replaces the single win-x64 RuntimeIdentifier. A specific RID is selected at
+         `dotnet publish -r <rid>` time, not at plain build time. -->
     <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <PublishDir>..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>AOG.ico</ApplicationIcon>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <!-- [XPLAT] compiled XAML + generated typed x:Name fields for the Forms/*.axaml code-behind -->
+    <EmbeddedResourceUseDependentUponConvention>true</EmbeddedResourceUseDependentUponConvention>
+    <!-- [XPLAT] compiled XAML bindings by default for the Forms/*.axaml views. -->
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <RootNamespace>AgOpenGPS.Updater</RootNamespace>
     <AssemblyName>AgOpenGPS.Updater</AssemblyName>
@@ -27,19 +35,29 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+  <PropertyGroup>
+    <!-- Disable PDB generation to reduce file count -->
+    <DebugSymbols>false</DebugSymbols>
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DebugType>full</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
-    <!-- [XPLAT] Avalonia cross-platform UI stack (replaces WinForms); all packages share one version -->
+    <!-- [XPLAT] Avalonia cross-platform UI stack (replaces WinForms); all packages share one version. -->
     <PackageReference Include="Avalonia" Version="11.3.18" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.18" />
-    <!-- [XPLAT] developer diagnostics overlay; Debug builds only -->
+    <!-- [XPLAT] developer diagnostics overlay; Debug builds only. -->
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.18" Condition="'$(Configuration)' == 'Debug'" />
-    <!-- GitHub release JSON (de)serialization — unchanged from the net48 updater. -->
+    <!-- GitHub release JSON (de)serialization — carried over unchanged from the original updater. -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 

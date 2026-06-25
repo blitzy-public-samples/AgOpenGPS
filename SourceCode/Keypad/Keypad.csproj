@@ -18,6 +18,10 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.18" />
+    <!-- [XPLAT] Fluent styling base for the re-platformed touch/kiosk controls. Version is pinned
+         identical to the Avalonia package and aligned with every other re-platformed UI project
+         (AgIO/ModSim/AgDiag/GPS_Out/Updater all reference Avalonia.Themes.Fluent 11.3.18). -->
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
   </ItemGroup>
 
   <ItemGroup>
