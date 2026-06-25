@@ -26,20 +26,31 @@ and the parity status. It is maintained incrementally as files are migrated.
 | **Notes** | Additional context |
 
 > **Checkpoint legend.** This map is authored across multiple checkpoints (CP). The current
-> checkpoint is **CP3 — GPS WinForms Shell, FormGPS Partials & Dialog Catalog Part 1 Retired**.
-> CP3 removes the GPS `FormGPS` shell, its real-time scan-loop/comm/section/render/save partial
-> classes, and the first batch of GPS dialogs (root dialogs + Config controls + Pickers + Field
-> Part 1) — **91 files** in total under `SourceCode/GPS/Forms/`. Their Avalonia Views and the
-> extracted Services are **Deferred** to later GPS checkpoints (CP4–CP9) and are recorded in the
-> CP3 sections below with named target files and frozen-behavior contracts — **never** as
-> "At parity". The remaining GPS dialogs (Settings / Guidance / Inputs / Profiles + Field Part 2),
-> the Avalonia GL viewport, and the GPS `csproj`→Avalonia conversion are later-checkpoint work
-> (CP4/CP9) per the AAP's one-solution, multi-checkpoint structure.
+> checkpoint is **CP4 — GPS WinForms Dialog Catalog Part 2 Retired (Settings / Guidance / Inputs /
+> Profiles / Field Part 2 + Charting)**. CP4 removes the **remaining** GPS WinForms dialogs — the
+> second batch — completing the retirement of the entire legacy GPS Windows Forms UI catalog:
+> **128 files** in total across `SourceCode/GPS/Forms/{Field,Guidance,Inputs,Profiles,Settings}/`,
+> covering **47 dialog/config groups** (11 Field Part 2, 12 Guidance, 2 Inputs, 4 Profiles, 18
+> Settings/Config/Charting). With CP4, `SourceCode/GPS/Forms/` is **absent** and
+> `Forms/Settings/FormButtonsRightPanel.*` was the **last legacy WinForms dialog** deleted. Their
+> Avalonia Views/ViewModels (and the six `Config*.Designer.cs` config panels, and the three
+> charting forms' cross-platform chart replacement) are **Deferred** to later GPS checkpoints
+> (CP4–CP9) and are recorded in the CP4 sections below with named target files and frozen-behavior
+> contracts — **never** as "At parity" (`SourceCode/GPS/Views/` and `SourceCode/GPS/Services/` do
+> not exist yet). The Avalonia GL viewport and the GPS `csproj`→Avalonia conversion remain
+> later-checkpoint work (CP9) per the AAP's one-solution, multi-checkpoint structure. CP1–CP3
+> retired the runtime baseline, the AgIO hub, the GPS `FormGPS` shell + real-time partials, and the
+> first dialog batch (root dialogs + Config controls + Pickers + Field Part 1); those sections are
+> retained below for historical traceability.
 >
-> **GPS buildability (CP3).** Because the runtime moniker was flipped to `net8.0` in CP1 while the
-> GPS UI is re-platformed later, the **GPS project is intentionally non-buildable from CP1 until its
-> Avalonia conversion completes**. See *GPS — Build Sequencing & Retained-Reference Inventory (CP3)*
-> below and `CHANGELOG.md`. AgIO, AgOpenGPS.Core, AgLibrary, and the test projects build and pass.
+> **GPS buildability (CP4 — unchanged from CP3).** Because the runtime moniker was flipped to
+> `net8.0` in CP1 while the GPS UI is re-platformed later, the **GPS project remains intentionally
+> non-buildable until its Avalonia `csproj` conversion completes** (CP9). CP4 deletes only dialog
+> sources and updates documentation + the GPS `csproj` charting/metadata; it does **not** alter the
+> `UseWindowsForms`/TFM blocker, so the GPS build still fails at SDK target-resolution
+> (NETSDK1100/NETSDK1136) **before any source is compiled** — identically to CP3. See *GPS — Build
+> Sequencing & Retained-Reference Inventory* below and `CHANGELOG.md`. AgIO, AgOpenGPS.Core,
+> AgLibrary, and the test projects build and pass.
 
 ---
 
@@ -256,17 +267,17 @@ section). The G7 case-fix files (`FormYes.designer.cs`, `FormtimedMessage.resx`)
 
 | Original (`.cs` + `.Designer`/`.designer.cs` [+ `.resx`]) | Replaced With | Disposition | Parity Status | Notes |
 |---|---|---|---|---|
-| `SourceCode/GPS/Forms/FormDialog.*` | `SourceCode/GPS/Views/FormDialogView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Shared alert/confirm (`Show`/`ShowQuestion`, `DialogSeverity`). **(retained callers)** `Program.cs`, `Properties/RegistrySettings.cs`, `Profiles/FormLoadProfile.cs`, `Profiles/FormLoadVehicleTool.cs`. |
+| `SourceCode/GPS/Forms/FormDialog.*` | `SourceCode/GPS/Views/FormDialogView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Shared alert/confirm (`Show`/`ShowQuestion`, `DialogSeverity`). **(retained callers after CP4)** `Program.cs`, `Properties/RegistrySettings.cs`. The dialog callers `Profiles/FormLoadProfile.cs` and `Profiles/FormLoadVehicleTool.cs` were **deleted in CP4** (resolved by deletion; replacements `FormLoadProfileView`/`FormLoadVehicleToolView` in *GPS — Profile Dialogs (CP4)*). |
 | `SourceCode/GPS/Forms/FormAgShareSettings.*` | `SourceCode/GPS/Views/FormAgShareSettingsView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Server/API-key settings, connection test, clipboard/paste. `AgShareEnabled=false` default preserved. |
 | `SourceCode/GPS/Forms/FormEventViewer.*` | `SourceCode/GPS/Views/FormEventViewerView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Event/log read + refresh. |
 | `SourceCode/GPS/Forms/FormGPSData.*` | `SourceCode/GPS/Views/FormGPSDataView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Live GPS telemetry readout; was `FormGPS`-coupled → binds to `ApplicationModel`. |
 | `SourceCode/GPS/Forms/FormHelp.*` | `SourceCode/GPS/Views/FormHelpView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` External help/update links. |
-| `SourceCode/GPS/Forms/FormInputDialog.*` (`.cs` + `.Designer.cs`, no `.resx`) | `SourceCode/GPS/Views/FormInputDialogView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` **Security:** filename regex sanitization (`glm.fileRegex`). **(retained caller)** `Profiles/FormLoadVehicleTool.ShowInput`. |
+| `SourceCode/GPS/Forms/FormInputDialog.*` (`.cs` + `.Designer.cs`, no `.resx`) | `SourceCode/GPS/Views/FormInputDialogView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` **Security:** filename regex sanitization (`glm.fileRegex`). **(caller resolved in CP4)** the former caller `Profiles/FormLoadVehicleTool.ShowInput` was **deleted in CP4**; now hosted by `FormLoadVehicleToolView` (*GPS — Profile Dialogs (CP4)*). |
 | `SourceCode/GPS/Forms/FormPan.*` | `SourceCode/GPS/Views/FormPanView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Camera pan; was `FormGPS`-coupled. |
 | `SourceCode/GPS/Forms/FormSaving.*` | `SourceCode/GPS/Views/FormSavingView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Saving step/progress status. |
 | `SourceCode/GPS/Forms/FormShiftPos.*` | `SourceCode/GPS/Views/FormShiftPosView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` GPS drift/offset; was `FormGPS`-coupled. |
 | `SourceCode/GPS/Forms/FormTermsAndConditions.*` | `SourceCode/GPS/Views/FormTermsAndConditionsView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Terms acceptance flow + external license/help links + terms-text resource. |
-| `SourceCode/GPS/Forms/FormTimedMessage.*` (`.cs` + `.Designer.cs`, no `.resx`) | `SourceCode/GPS/Views/FormTimedMessageView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Auto-dismissing timed popup. **(retained caller)** `Profiles/FormNewProfile.cs` (`new FormTimedMessage(...)`). |
+| `SourceCode/GPS/Forms/FormTimedMessage.*` (`.cs` + `.Designer.cs`, no `.resx`) | `SourceCode/GPS/Views/FormTimedMessageView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Auto-dismissing timed popup. **(caller resolved in CP4)** the former caller `Profiles/FormNewProfile.cs` (`new FormTimedMessage(...)`) was **deleted in CP4**; now hosted by `FormNewProfileView` (*GPS — Profile Dialogs (CP4)*). |
 | `SourceCode/GPS/Forms/FormWebCam.*` | `SourceCode/GPS/Views/FormWebCamView` **or feature-gated** `(deferred — CP4)` | Feature-gated | Deferred | `// [XPLAT]` Optional webcam (F-045); `isWebCamOn=false` default; Accord/DirectShow is Windows-only — gate off-Windows (AAP §0.6.3). |
 | `SourceCode/GPS/Forms/FormYes.cs` + `FormYes.designer.cs` + `FormYes.resx` | `SourceCode/GPS/Views/FormYesView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Yes/No confirmation. **G7:** lowercase `.designer.cs` case-hazard resolved by deletion. |
 | `SourceCode/GPS/Forms/Form_Keys.*` | `SourceCode/GPS/Views/FormKeysView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` **Security:** hotkey character whitelist (`[^0-9a-zA-Z]`); shortcut settings update. |
@@ -278,8 +289,8 @@ section). The G7 case-fix files (`FormYes.designer.cs`, `FormtimedMessage.resx`)
 
 | Original (`.cs` + `.Designer.cs` + `.resx`) | Replaced With | Disposition | Parity Status | Notes |
 |---|---|---|---|---|
-| `SourceCode/GPS/Forms/Config/ConfigSummaryControl.*` | `SourceCode/GPS/Views/Config/ConfigSummaryView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Config-summary `UserControl` → Avalonia `UserControl`. **(retained reference)** `Forms/Settings/FormConfig.Designer.cs` L64/L9220 still declares/instantiates `ConfigSummaryControl`; migrated together with `FormConfig` at CP4. |
-| `SourceCode/GPS/Forms/Config/ConfigVehicleControl.*` | `SourceCode/GPS/Views/Config/ConfigVehicleView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Vehicle-config `UserControl` → Avalonia `UserControl`. **(retained reference)** `Forms/Settings/FormConfig.Designer.cs` L66/L9221. |
+| `SourceCode/GPS/Forms/Config/ConfigSummaryControl.*` | `SourceCode/GPS/Views/Config/ConfigSummaryView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Config-summary `UserControl` → Avalonia `UserControl`. **(reference resolved in CP4)** the former declaring/instantiating file `Forms/Settings/FormConfig.Designer.cs` was **deleted in CP4**; this control is now composed by `FormConfigView` (see *GPS — Settings Dialogs (CP4)*). |
+| `SourceCode/GPS/Forms/Config/ConfigVehicleControl.*` | `SourceCode/GPS/Views/Config/ConfigVehicleView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Vehicle-config `UserControl` → Avalonia `UserControl`. **(reference resolved in CP4)** `Forms/Settings/FormConfig.Designer.cs` deleted in CP4; now composed by `FormConfigView`. |
 
 ---
 
@@ -287,9 +298,9 @@ section). The G7 case-fix files (`FormYes.designer.cs`, `FormtimedMessage.resx`)
 
 | Original (`.cs` + `.Designer.cs` + `.resx`) | Replaced With | Disposition | Parity Status | Notes |
 |---|---|---|---|---|
-| `SourceCode/GPS/Forms/Pickers/FormColorPicker.*` | Avalonia `ColorPicker` hosted in `SourceCode/GPS/Views/Pickers/` `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Replaces the `MechanikaDesign.WinForms.UI.ColorPicker` dialog (AAP §0.5). **(retained callers)** `Forms/Settings/FormColor.cs` (6×), `Forms/Settings/FormColorSection.cs`. |
-| `SourceCode/GPS/Forms/Pickers/FormDrivePicker.*` | `SourceCode/GPS/Views/Pickers/FormDrivePickerView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Field selection by distance/path. **(retained caller)** `Forms/Field/FormJob.cs` L219. |
-| `SourceCode/GPS/Forms/Pickers/FormFilePicker.*` | `SourceCode/GPS/Views/Pickers/FormFilePickerView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` **Security:** field list + area calculation + `InvariantCulture` file parsing. **(retained caller)** `Forms/Field/FormJob.cs` L140. |
+| `SourceCode/GPS/Forms/Pickers/FormColorPicker.*` | Avalonia `ColorPicker` hosted in `SourceCode/GPS/Views/Pickers/` `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Replaces the `MechanikaDesign.WinForms.UI.ColorPicker` dialog (AAP §0.5). **(callers resolved in CP4)** former callers `Forms/Settings/FormColor.cs`, `FormColorSection.cs` were **deleted in CP4**; the `ColorPicker` is now hosted by `FormColorView`/`FormColorSectionView` (see *GPS — Settings Dialogs (CP4)*). |
+| `SourceCode/GPS/Forms/Pickers/FormDrivePicker.*` | `SourceCode/GPS/Views/Pickers/FormDrivePickerView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Field selection by distance/path. **(caller resolved in CP4)** former caller `Forms/Field/FormJob.cs` deleted in CP4; now hosted by `FormJobView` (see *GPS — Field Dialogs — Part 2 (CP4)*). |
+| `SourceCode/GPS/Forms/Pickers/FormFilePicker.*` | `SourceCode/GPS/Views/Pickers/FormFilePickerView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` **Security:** field list + area calculation + `InvariantCulture` file parsing. **(caller resolved in CP4)** former caller `Forms/Field/FormJob.cs` deleted in CP4; now hosted by `FormJobView`. |
 | `SourceCode/GPS/Forms/Pickers/FormRecordPicker.*` | `SourceCode/GPS/Views/Pickers/FormRecordPickerView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Recorded-path file copy/load/delete. |
 
 ---
@@ -298,14 +309,186 @@ section). The G7 case-fix files (`FormYes.designer.cs`, `FormtimedMessage.resx`)
 
 | Original (`.cs` + `.Designer.cs` + `.resx`) | Replaced With | Disposition | Parity Status | Notes |
 |---|---|---|---|---|
-| `SourceCode/GPS/Forms/Field/FormAgShareDownloader.*` | `SourceCode/GPS/Views/Field/FormAgShareDownloaderView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Cloud field preview/download; **job-state gate** (`if (gps.isJobStarted)`). **(retained caller)** `Forms/Field/FormJob.cs` L304. |
-| `SourceCode/GPS/Forms/Field/FormAgShareUploader.*` | `SourceCode/GPS/Views/Field/FormAgShareUploaderView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Cloud upload; `DuplicateNameChoice` Cancel/Overwrite; boundary/field-file collection; credential flow. **(retained caller)** `Forms/Field/FormJob.cs` L328 (`new FormAgShareUploader(mf.agShareClient)`). |
+| `SourceCode/GPS/Forms/Field/FormAgShareDownloader.*` | `SourceCode/GPS/Views/Field/FormAgShareDownloaderView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Cloud field preview/download; **job-state gate** (`if (gps.isJobStarted)`). **(caller resolved in CP4)** former caller `Forms/Field/FormJob.cs` deleted in CP4; now hosted by `FormJobView` (*GPS — Field Dialogs — Part 2 (CP4)*). |
+| `SourceCode/GPS/Forms/Field/FormAgShareUploader.*` | `SourceCode/GPS/Views/Field/FormAgShareUploaderView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Cloud upload; `DuplicateNameChoice` Cancel/Overwrite; boundary/field-file collection; credential flow. **(caller resolved in CP4)** former caller `Forms/Field/FormJob.cs` (`new FormAgShareUploader(mf.agShareClient)`) deleted in CP4; now hosted by `FormJobView`. |
 | `SourceCode/GPS/Forms/Field/FormBndTool.*` | `SourceCode/GPS/Views/Field/FormBndToolView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Boundary smoothing/reduction/build tool. |
 | `SourceCode/GPS/Forms/Field/FormBoundary.*` | `SourceCode/GPS/Views/Field/FormBoundaryView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Boundary add/delete/import + KML file logic. |
 | `SourceCode/GPS/Forms/Field/FormBoundaryPlayer.*` | `SourceCode/GPS/Views/Field/FormBoundaryPlayerView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Boundary record/playback + section-on gate. |
 | `SourceCode/GPS/Forms/Field/FormBuildBoundaryFromTracks.*` | `SourceCode/GPS/Views/Field/FormBuildBoundaryFromTracksView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Track selection + OpenGL preview + save validation + boundary generation. |
 | `SourceCode/GPS/Forms/Field/FormMap.*` | cross-platform map control **or feature-gated** in `SourceCode/GPS/Views/Field/` `(deferred — CP4)` | Feature-gated | Deferred | `// [XPLAT]` GMap-based boundary/map editing (F-021); online imagery optional, tile cache (SQLite) is cross-platform; field still renders without it (AAP §0.6.3). |
-| `SourceCode/GPS/Forms/Field/FormSaveOrNot.*` | `SourceCode/GPS/Views/Field/FormSaveOrNotView.axaml(.cs)` + ViewModel `(deferred — CP4)` | Reimplemented | Deferred | `// [XPLAT]` Save-or-not confirmation dialog (exit to desktop / shutdown / cancel with auto-countdown timers). Timer-driven auto-exit (`countExit`=4 / `countShutdown`=5) and `setWindow_isShutdownComputer` setting preserved in view-model; `DialogResult.OK`/`DialogResult.Yes`/`DialogResult.Ignore` → Avalonia close-result semantics; `AgShareEnabled` snapshot trigger on job-started preserved. |
+
+> **Note (CP4):** `FormSaveOrNot.*` was deleted in **CP4** (Field Part 2), not CP3; its direct
+> replacement row has been **consolidated** into *GPS — Dialog Catalog Part 2 (CP4) → Field Dialogs
+> Part 2* below so that all eleven CP4 Field dialogs are recorded together and correctly attributed.
+
+---
+
+## GPS — Dialog Catalog Part 2 (CP4)
+
+The **second and final** batch of GPS WinForms dialogs was **removed** in CP4, completing the
+retirement of the entire legacy GPS Windows Forms UI catalog (**128 files / 47 dialog-config
+groups** under `SourceCode/GPS/Forms/{Field,Guidance,Inputs,Profiles,Settings}/`). Avalonia
+View/ViewModel replacements are **Deferred** — `SourceCode/GPS/Views/` and `SourceCode/GPS/Services/`
+do **not** exist yet, so every row below is recorded `Deferred` with its named target file and
+frozen-behavior contract, **never** "At parity" (accuracy contract). The `FormGPS` (`mf`) god-object
+back-reference held by these dialogs becomes constructor-injected `ApplicationModel`/services +
+view-models (AAP §0.3.2 MVVM). All destination views consume the existing `GPS/App.axaml` Fluent
+theme and the `Aog*` day/night brush resources (see *UI / Design / Accessibility Parity* below).
+
+> **Retained-caller reconciliation (CP4).** Several CP3 rows above annotated `(retained caller)`
+> targets that were themselves deleted in CP4 — `Forms/Field/FormJob.cs`,
+> `Forms/Settings/FormColor.cs`, `Forms/Settings/FormColorSection.cs`,
+> `Forms/Settings/FormConfig.Designer.cs`, `Forms/Profiles/FormLoadProfile.cs`,
+> `Forms/Profiles/FormLoadVehicleTool.cs`, and `Forms/Profiles/FormNewProfile.cs`. Those callers no
+> longer exist; their dangling references to deleted CP3 types are therefore **resolved by deletion**
+> at CP4, and each now has its own direct replacement row in this catalog. The *Retained references
+> to deleted CP3 types* table further below has been updated to reflect this.
+
+### GPS — Field Dialogs — Part 2 (CP4)
+
+| Original (`.cs` + `.Designer.cs` [+ `.resx`]) | Replaced With | Disposition | Parity Status | Notes |
+|---|---|---|---|---|
+| `SourceCode/GPS/Forms/Field/FormCopyTracks.*` | `SourceCode/GPS/Views/Field/FormCopyTracksView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Copy/duplicate guidance tracks between fields (source-field list, multi-select, copy to current field). **Frozen:** track-file enumeration under the field directory and `InvariantCulture` path/area parsing; overwrite handling preserved. |
+| `SourceCode/GPS/Forms/Field/FormEasyDrive.*` (`.cs` + `.Designer.cs`, no `.resx`) | `SourceCode/GPS/Views/Field/FormEasyDriveView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` On-screen "easy drive" steering/joystick overlay (manual nudge of the simulated/auto path). Was `FormGPS`-coupled → binds to `ApplicationModel`/`PositionService`. No `.resx` in the CP4 diff. |
+| `SourceCode/GPS/Forms/Field/FormEnterFlag.*` | `SourceCode/GPS/Views/Field/FormEnterFlagView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Flag add/import/save. **Frozen safety/validation:** `FlagsFiles.DeduplicateFlags(mf.flagPts)` dedup; lat/lon line-format guard on import raising `"Invalid line: {line}"` and aborting; success/error dialogs; file read/write error handling. `double` parse via `InvariantCulture` for file I/O (AAP §0.6.5). |
+| `SourceCode/GPS/Forms/Field/FormFieldData.*` | `SourceCode/GPS/Views/Field/FormFieldDataView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Read-only field statistics readout (area worked/remaining, boundary area, overlap). Binds to `CFieldData`/`ApplicationModel`; numeric formatting via `InvariantCulture`. |
+| `SourceCode/GPS/Forms/Field/FormFieldDir.*` | `SourceCode/GPS/Views/Field/FormFieldDirView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Field-directory chooser/rename. **Frozen:** `Directory.Exists` guards, filename sanitization, and cross-platform path handling (`Path.Combine`, no hard-coded `\`). |
+| `SourceCode/GPS/Forms/Field/FormFieldExisting.*` | `SourceCode/GPS/Views/Field/FormFieldExistingView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Open an existing field (list + select + open). **Frozen:** field-list enumeration, `File.Exists` guard, and the `isJobStarted` close-gate before switching fields. |
+| `SourceCode/GPS/Forms/Field/FormFieldISOXML.*` | `SourceCode/GPS/Views/Field/FormFieldISOXMLView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` ISOXML field import/export dialog. **Frozen contract (behavior-frozen, AAP §0.2.2):** ISOXML V3/V4 semantics, name ≤248 bytes, AB+Curve export limit; delegates to the (deferred) `FieldIoService`. Parity: `IsoXmlEquivalenceTests`. |
+| `SourceCode/GPS/Forms/Field/FormFieldKML.*` | `SourceCode/GPS/Views/Field/FormFieldKMLView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` KML boundary import. **Frozen:** KML parse + `InvariantCulture` lat/lon parsing; `File.Exists` guard. |
+| `SourceCode/GPS/Forms/Field/FormFlags.*` | `SourceCode/GPS/Views/Field/FormFlagsView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Flag list/edit/delete/goto. **Frozen:** flag-collection CRUD against `mf.flagPts`, dedup on save, and delete-all confirmation. |
+| `SourceCode/GPS/Forms/Field/FormJob.*` | `SourceCode/GPS/Views/Field/FormJobView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` New / resume / drive-to / AgShare field-job entry hub. **Frozen:** `isJobStarted` gating; hosts the (deferred) `FormFilePickerView`/`FormDrivePickerView`/`FormAgShareDownloaderView`/`FormAgShareUploaderView` (the CP3 Pickers/Field-Part-1 rows that named `FormJob.cs` as their `(retained caller)` — that caller is now this Avalonia view). |
+| `SourceCode/GPS/Forms/Field/FormSaveOrNot.*` | `SourceCode/GPS/Views/Field/FormSaveOrNotView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` **Consolidated from the former CP3-Field-Part-1 placement.** Save-or-not confirmation (exit to desktop / shutdown / cancel) with auto-countdown timers. **Frozen:** timer-driven auto-exit (`countExit`=4 / `countShutdown`=5), `setWindow_isShutdownComputer` setting, `DialogResult.OK`/`Yes`/`Ignore` → Avalonia close-result semantics, and the `AgShareEnabled` snapshot trigger on job-started. |
+
+### GPS — Guidance Dialogs (CP4)
+
+| Original (`.cs` + `.Designer`/`.designer.cs` + `.resx`) | Replaced With | Disposition | Parity Status | Notes |
+|---|---|---|---|---|
+| `SourceCode/GPS/Forms/Guidance/FormABDraw.*` | `SourceCode/GPS/Views/Guidance/FormABDrawView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` AB-line draw-on-field tool (point capture + OpenGL preview). **Frozen geometry:** AB/curve point capture, `glm.Distance`-based densification, and exact track-array writes; render preview rehosts on `AvaloniaGeoViewport` (CP9). Parity: `GuidanceEquivalenceTests`. |
+| `SourceCode/GPS/Forms/Guidance/FormBuildTracks.*` | `SourceCode/GPS/Views/Guidance/FormBuildTracksView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Build/manage the track set (list, add, delete, reorder, set reference). **Frozen:** track CRUD against `CTrack`; behavior frozen. |
+| `SourceCode/GPS/Forms/Guidance/FormGrid.*` | `SourceCode/GPS/Views/Guidance/FormGridView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Grid/origin guidance configuration. **Frozen:** grid origin + spacing, `InvariantCulture` numeric entry. |
+| `SourceCode/GPS/Forms/Guidance/FormHeadAche.*` | `SourceCode/GPS/Views/Guidance/FormHeadAcheView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Headland/clip-line builder. **Frozen safety/validation:** start-point ≠ end-point guard raising `"Line Error" / "Start Point = End Point"` and aborting; clip-line geometry (`glm.Distance` densification, slice loops) preserved exactly. Parity: `GuidanceEquivalenceTests`. |
+| `SourceCode/GPS/Forms/Guidance/FormHeadLine.*` | `SourceCode/GPS/Views/Guidance/FormHeadLineView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Headland-line builder/mover. **Frozen safety/validation:** `distance == 0 && curve` guard raising `"Distance Error" / "Distance Set to 0, Nothing to Move"` and aborting; point-distance-too-big guard; headland geometry frozen. Parity: `GuidanceEquivalenceTests`. |
+| `SourceCode/GPS/Forms/Guidance/FormNudge.*` (`.cs` + lowercase `.designer.cs` + `.resx`) | `SourceCode/GPS/Views/Guidance/FormNudgeView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Nudge the active guidance line (step left/right, snap). **Frozen:** nudge-distance step + snap value applied to `guidanceLineDistanceOff`. **G7:** the lowercase `.designer.cs` case-hazard is resolved by deletion. |
+| `SourceCode/GPS/Forms/Guidance/FormQuickAB.*` | `SourceCode/GPS/Views/Guidance/FormQuickABView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Quick AB-line creation (set A, set B, create). **Frozen:** AB heading computation and track creation. |
+| `SourceCode/GPS/Forms/Guidance/FormRecordName.*` | `SourceCode/GPS/Views/Guidance/FormRecordNameView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Recorded-path naming. **Frozen:** filename sanitization (`glm.fileRegex`) and duplicate handling before save. |
+| `SourceCode/GPS/Forms/Guidance/FormRefNudge.*` (`.cs` + lowercase `.designer.cs` + `.resx`) | `SourceCode/GPS/Views/Guidance/FormRefNudgeView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Reference-line nudge (move the reference AB/curve). **Frozen:** reference-offset step. **G7:** lowercase `.designer.cs` case-hazard resolved by deletion. |
+| `SourceCode/GPS/Forms/Guidance/FormSmoothAB.*` | `SourceCode/GPS/Views/Guidance/FormSmoothABView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` AB-curve smoothing. **Frozen:** smoothing window/iteration math on the curve point list; behavior frozen. Parity: `GuidanceEquivalenceTests`. |
+| `SourceCode/GPS/Forms/Guidance/FormTram.*` | `SourceCode/GPS/Views/Guidance/FormTramView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Tramline UI (pattern, passes, on/off). **Frozen:** tram pattern + pass-count applied to `CTram`. |
+| `SourceCode/GPS/Forms/Guidance/FormTramLine.*` | `SourceCode/GPS/Views/Guidance/FormTramLineView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Tramline geometry configuration. **Frozen safety/validation:** track-spacing/width validation and tram offset; invalid-spacing guard preserved. |
+
+### GPS — Input Dialogs (CP4)
+
+| Original (`.cs` + `.Designer.cs` + `.resx`) | Replaced With | Disposition | Parity Status | Notes |
+|---|---|---|---|---|
+| `SourceCode/GPS/Forms/Inputs/FormKeyboard.*` | `SourceCode/GPS/Views/Inputs/FormKeyboardView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)`, hosting `SourceCode/Keypad/Keyboard.axaml` | Reimplemented | Deferred | `// [XPLAT]` GPS on-screen keyboard for touch text entry, hosting the shared Avalonia `Keypad.Keyboard` `UserControl` (already migrated). Distinct from the AgIO `FormKeyboardView` (the AgIO keyboard rows do **not** cover this GPS dialog). Touch-friendly large keys preserved 1:1; OK/Cancel close-result. |
+| `SourceCode/GPS/Forms/Inputs/FormNumeric.*` | `SourceCode/GPS/Views/Inputs/FormNumericView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)`, hosting `SourceCode/Keypad/NumKeypad.axaml` | Reimplemented | Deferred | `// [XPLAT]` GPS on-screen numeric keypad. **Frozen safety/validation:** `readonly` `min`/`max`; out-of-range highlighting (value `< min` → min label red, `> max` → max label red) with clamp; decimal/sign/backspace/clear entry. The reusable `Keypad.NumKeypad` primitive already exists; this GPS host view is deferred. File/protocol numeric I/O uses `InvariantCulture` (AAP §0.6.5). |
+
+### GPS — Profile Dialogs (CP4)
+
+| Original (`.cs` + `.Designer.cs` + `.resx`) | Replaced With | Disposition | Parity Status | Notes |
+|---|---|---|---|---|
+| `SourceCode/GPS/Forms/Profiles/FormConvertProfiles.*` | `SourceCode/GPS/Views/Profiles/FormConvertProfilesView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Convert legacy profiles → split Vehicle/Tool profiles. **Frozen safety/validation:** filename sanitization via `glm.fileRegex`; **duplicate-name block** (`File.Exists` → `"…Already Exists"` error, abort); convert-enable gate = `hasSelection && vehicleValid && toolValid && atLeastOne`. Round-trip must honor the frozen split settings XML schema (AAP §0.2.2). |
+| `SourceCode/GPS/Forms/Profiles/FormLoadProfile.*` | `SourceCode/GPS/Views/Profiles/FormLoadProfileView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Load a saved profile. **Frozen:** selection-count guard; user-facing warnings routed through the (deferred) `FormDialogView` (this view is the former `(retained caller)` for `FormDialog` recorded in the CP3 Root-Dialogs row). |
+| `SourceCode/GPS/Forms/Profiles/FormLoadVehicleTool.*` | `SourceCode/GPS/Views/Profiles/FormLoadVehicleToolView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Load vehicle + tool profiles. **Frozen safety/validation:** filename sanitization; **job-state guard** (block while `isJobStarted`); duplicate handling; `ShowInput` filename prompt routed through the (deferred) `FormDialogView`/`FormInputDialogView` (former `(retained caller)`). |
+| `SourceCode/GPS/Forms/Profiles/FormNewProfile.*` | `SourceCode/GPS/Views/Profiles/FormNewProfileView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Create a new profile. **Frozen safety/validation:** `InvalidFileRegex` (strips Windows-invalid filename chars `< > : " / \ ? *` and the pipe) **and** `glm.fileRegex` sanitization; **`isJobStarted` close-gate** (timed `"close field first"` message); `File.Exists` → overwrite confirmation; `Directory.Exists(environmentDirectory)` guard. The timed message uses the (deferred) `FormTimedMessageView` (former `(retained caller)`). |
+
+### GPS — Settings Dialogs (CP4)
+
+| Original (`.cs` + `.Designer.cs` + `.resx`) | Replaced With | Disposition | Parity Status | Notes |
+|---|---|---|---|---|
+| `SourceCode/GPS/Forms/Settings/FormAllSettings.*` | `SourceCode/GPS/Views/Settings/FormAllSettingsView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Searchable all-settings grid (read/reset every persisted setting). **Frozen:** settings enumeration + reset; bound to the cross-platform settings store (schema frozen, AAP §0.2.2). |
+| `SourceCode/GPS/Forms/Settings/FormButtonsRightPanel.*` | `SourceCode/GPS/Views/Settings/FormButtonsRightPanelView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` **Last legacy WinForms dialog deleted (CP4 final).** Right-panel button picker/arranger. **Frozen safety/validation:** minimum button-count guard — `if (mf.buttonOrder.Count < 2)` → `"Button Error" / "Not Enough Buttons Added"`, log, and abort save; `setDisplay_buttonOrder` persistence (default `"0,1,2,3,4,5,6,7"`); `ScreenHelper.IsOnScreen` bounds restore. |
+| `SourceCode/GPS/Forms/Settings/FormColor.*` | Avalonia `ColorPicker` hosted in `SourceCode/GPS/Views/Settings/FormColorView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Day/night + field/section color settings (replaces the `MechanikaDesign.WinForms.UI.ColorPicker` dialog). **Frozen:** 16 custom colors parsed with `int.Parse(…, InvariantCulture)` + ARGB packing; the product default ARGB values are already mapped to the `App.axaml` `Aog*` color/brush keys. |
+| `SourceCode/GPS/Forms/Settings/FormColorSection.*` | `SourceCode/GPS/Views/Settings/FormColorSectionView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Per-section color assignment. **Frozen:** section-color list + `InvariantCulture` ARGB parse; hosts the Avalonia `ColorPicker`. |
+| `SourceCode/GPS/Forms/Settings/FormConfig.*` | `SourceCode/GPS/Views/Settings/FormConfigView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` The settings/config **shell** that hosted the six `Config*` tab panels and the `ConfigSummaryControl`/`ConfigVehicleControl` user controls. Reimplemented as the Avalonia config shell composing the `Config*View` panels (see *Config Controls — Part 2* below) + the CP3 `ConfigSummaryView`/`ConfigVehicleView`. Resolves the CP3 `(retained reference)` notes for those controls (the referencing `FormConfig.Designer.cs` is now deleted). |
+| `SourceCode/GPS/Forms/Settings/FormCorrection.*` | `SourceCode/GPS/Views/Settings/FormCorrectionView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` GPS correction-source / heading-fusion settings. **Frozen:** correction-source selection + thresholds; any live readout chart element shares the cross-platform charting work (see *Charting Dialogs* below). |
+| `SourceCode/GPS/Forms/Settings/FormSimCoords.*` | `SourceCode/GPS/Views/Settings/FormSimCoordsView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Simulator start-coordinate settings (lat/lon entry for `CSim`). **Frozen:** `InvariantCulture` lat/lon parse; feeds the in-app simulator (cross-OS integration without hardware, AAP §0.6.4). |
+| `SourceCode/GPS/Forms/Settings/FormSteer.*` | `SourceCode/GPS/Views/Settings/FormSteerView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Steering settings. **Frozen safety bounds (AAP §0.2.2):** `setVehicle_maxSteerAngle` capped (`maxSteerAngle=30°`), `maxAngularVelocity=0.64°/s`, `setAS_minSteerPWM`/`maxSteerPWM`, `maxPulseCounts`, min/max steer speed, snap distance (cm↔inch ×2.54), WAS offset; writes the steer-config PGN (`p_252`) byte-for-byte. Parity: `GuidanceEquivalenceTests` + `PgnFrameGoldenTests`. |
+| `SourceCode/GPS/Forms/Settings/FormSteerWiz.*` | `SourceCode/GPS/Views/Settings/FormSteerWizView.axaml(.cs)` + ViewModel `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Steering calibration wizard (multi-step). **Frozen safety bounds:** same steering limits as `FormSteer` plus WAS-offset/zero calibration and `maxPulseCounts` sensor calibration; steer-config PGN (`p_252`) writes preserved. Parity: `GuidanceEquivalenceTests` + `PgnFrameGoldenTests`. |
+
+### GPS — Config Controls — Part 2 (CP4)
+
+These six `Config*.Designer.cs` files were **partial-class designer panels of `FormConfig`** (the config
+tab pages, `DependentUpon FormConfig.cs` in the GPS `csproj`). They are reimplemented as Avalonia config
+panels composed by `FormConfigView` (above). The matching stale `<Compile Update>` `csproj` entries are
+removed in CP4 (see `CHANGELOG.md` Build/CI).
+
+| Original | Replaced With | Disposition | Parity Status | Notes |
+|---|---|---|---|---|
+| `SourceCode/GPS/Forms/Settings/ConfigData.Designer.cs` | `SourceCode/GPS/Views/Config/ConfigDataView.axaml(.cs)` `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Config "Data/Sources" panel → Avalonia `UserControl` hosted in `FormConfigView`. |
+| `SourceCode/GPS/Forms/Settings/ConfigHelp.Designer.cs` | `SourceCode/GPS/Views/Config/ConfigHelpView.axaml(.cs)` `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Config "Help" panel → Avalonia `UserControl`. |
+| `SourceCode/GPS/Forms/Settings/ConfigMenu.Designer.cs` | `SourceCode/GPS/Views/Config/ConfigMenuView.axaml(.cs)` `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Config menu/navigation panel → Avalonia `UserControl`. |
+| `SourceCode/GPS/Forms/Settings/ConfigModule.Designer.cs` | `SourceCode/GPS/Views/Config/ConfigModuleView.axaml(.cs)` `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Config "Module" (hardware module) panel → Avalonia `UserControl`. |
+| `SourceCode/GPS/Forms/Settings/ConfigTool.Designer.cs` | `SourceCode/GPS/Views/Config/ConfigToolView.axaml(.cs)` `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Config "Tool/Implement" panel → Avalonia `UserControl`; tool-width/section settings (frozen). |
+| `SourceCode/GPS/Forms/Settings/ConfigVehicle.Designer.cs` | `SourceCode/GPS/Views/Config/ConfigVehicleView.axaml(.cs)` `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Config "Vehicle" panel → Avalonia `UserControl`; vehicle dimensions/antenna offsets (frozen). |
+
+### GPS — Charting Dialogs (CP4)
+
+The three live-graph dialogs used the **Windows-only** `System.Windows.Forms.DataVisualization`
+charting control. They are reimplemented with a **cross-platform** charting surface — a custom Avalonia
+drawing control (or a selected cross-platform chart package) — preserving series, axes, zoom/autoscale,
+and the retained rolling-data buffer behavior (AAP §0.5.1, R10). The Windows-only
+`System.Windows.Forms.DataVisualization` `<Reference>` is **removed** from `SourceCode/GPS/AgOpenGPS.csproj`
+in CP4 (no consumer remains after these deletions); see `CHANGELOG.md` Build/CI.
+
+| Original (`.cs` + `.Designer.cs` + `.resx`) | Replaced With | Disposition | Parity Status | Notes |
+|---|---|---|---|---|
+| `SourceCode/GPS/Forms/Settings/FormGraphSteer.*` | `SourceCode/GPS/Views/Settings/FormGraphSteerView.axaml(.cs)` (custom Avalonia chart) `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Live steer-angle graph (set-vs-actual steer angle, PWM). **Frozen:** series definitions, axis ranges/labels, autoscale/zoom, and the rolling sample buffer; replaces `DataVisualization.Chart` with cross-platform drawing. Data source unchanged (steer telemetry). |
+| `SourceCode/GPS/Forms/Settings/FormGraphXTE.*` | `SourceCode/GPS/Views/Settings/FormGraphXTEView.axaml(.cs)` (custom Avalonia chart) `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Live cross-track-error (XTE) graph. **Frozen:** XTE series, axis scaling, autoscale/zoom, rolling buffer; cross-platform chart replacement. |
+| `SourceCode/GPS/Forms/Settings/FormGraphHeading.*` | `SourceCode/GPS/Views/Settings/FormGraphHeadingView.axaml(.cs)` (custom Avalonia chart) `(deferred — CP4/CP9)` | Reimplemented | Deferred | `// [XPLAT]` Live heading/IMU graph (heading sources, fusion). **Frozen:** heading series, axis scaling, autoscale/zoom, rolling buffer; cross-platform chart replacement. |
+
+---
+
+## GPS — Security & Safety Control Destinations (CP4)
+
+Per AAP §0.7.1 (R1) and the CP4 review's safety findings, every validation/safety control removed by the
+CP4 deletions is mapped here to its destination so it cannot be silently lost during the later Avalonia
+reimplementation, together with the golden/parity test that must verify it. All destinations are
+`Deferred` until the corresponding View/ViewModel exists (CP4–CP9).
+
+| Control (deleted source) | Destination | Frozen behavior to preserve | Parity test |
+|---|---|---|---|
+| Minimum button-count (`Settings/FormButtonsRightPanel.cs` `buttonOrder.Count < 2`) | `FormButtonsRightPanelView` ViewModel | Block save + show `"Not Enough Buttons Added"` when fewer than 2 buttons added; persist `setDisplay_buttonOrder` | button-picker validation test |
+| Numeric min/max/clamp (`Inputs/FormNumeric.cs`) | `FormNumericView` ViewModel | `value < min`/`value > max` highlight + clamp; decimal/sign/backspace/clear; `InvariantCulture` for file/protocol I/O | numeric-entry validation test |
+| Steering safety bounds (`Settings/FormSteer.cs`, `FormSteerWiz.cs`) | `FormSteerView` / `FormSteerWizView` ViewModels | `maxSteerAngle=30°`, `maxAngularVelocity=0.64°/s`, min/max steer PWM, `maxPulseCounts`, min/max speed, snap distance; steer-config PGN `p_252` byte-for-byte | `GuidanceEquivalenceTests` + `PgnFrameGoldenTests` |
+| Profile filename sanitization + duplicate + job-state (`Profiles/FormNewProfile.cs`, `FormConvertProfiles.cs`, `FormLoadVehicleTool.cs`) | Profile ViewModels | `InvalidFileRegex` (`< > : " / \ ? *` + pipe) and `glm.fileRegex` strip; `File.Exists` → overwrite/duplicate block; `isJobStarted` close-gate; `Directory.Exists` guard | profile-validation test |
+| Guidance invalid-line / distance guards (`Guidance/FormHeadAche.cs`, `FormHeadLine.cs`, `FormTramLine.cs`) | Guidance ViewModels | `"Start Point = End Point"` abort; `distance == 0 && curve` → `"Nothing to Move"` abort; point-distance-too-big guard; tram spacing validation | guidance-validation test + `GuidanceEquivalenceTests` |
+| Flag-entry format guard (`Field/FormEnterFlag.cs`) | `FormEnterFlagView` ViewModel | `FlagsFiles.DeduplicateFlags`; `"Invalid line: {line}"` lat/lon format guard on import + abort; file read/write error handling | flag-import validation test |
+| Color parse (`Settings/FormColor.cs`, `FormColorSection.cs`) | `FormColorView` / `FormColorSectionView` ViewModels | 16 custom colors `int.Parse(…, InvariantCulture)` + ARGB packing; defaults match `App.axaml` `Aog*` keys | settings/color round-trip test |
+| ISOXML import/export semantics (`Field/FormFieldISOXML.cs`) | `FormFieldISOXMLView` ViewModel → `FieldIoService` | ISOXML V3/V4 semantics; name ≤248 bytes; AB+Curve export limit (behavior-frozen, AAP §0.2.2) | `IsoXmlEquivalenceTests` |
+| Field/job load gating (`Field/FormFieldExisting.cs`, `FormJob.cs`) | `FormFieldExistingView` / `FormJobView` ViewModels | `isJobStarted` close-gate; `File.Exists`/`Directory.Exists` validation; `InvariantCulture` path/area parse | `FieldRoundTripTests` |
+
+---
+
+## GPS — Dialog Catalog Part 2 UI / Design / Accessibility Parity (CP4)
+
+The CP4 deletions removed the WinForms *visual* surface of the Settings/Guidance/Inputs/Profiles/Field
+dialogs. Because their Avalonia replacements are **Deferred** (`SourceCode/GPS/Views/` absent), this
+section records the **design / interaction parity contract** each replacement View must meet, so visual
+and behavioral fidelity is tracked rather than silently lost. The acceptance bar is **1:1 parity with the
+current Windows Forms UI** (AAP §0.3.3); no Figma or design-system/token library was supplied, so the
+currently-rendered UI is the sole visual reference.
+
+- **Design-system / theme resources.** Every replacement View consumes the existing
+  `SourceCode/GPS/App.axaml` `FluentTheme` base plus the day/night `Aog*` theme resources via
+  `{DynamicResource}` — `AogFrameBrush` (panels/chrome), `AogTextBrush` (status/panel text),
+  `AogAccentBrush` (primary/section teal accent `#FF1B97A0`), `AogFieldBrush` (viewport chrome). Day/night
+  is driven by `Application.Current.RequestedThemeVariant` (Light=day, Dark=night), reproducing
+  `FormGPS.SwapDayNightMode()`. The Inter font is registered via `.WithInterFont()`. No hard-coded colors
+  — all fixed values map to the `Aog*` keys or live user `Settings`.
+- **Keyboard & focus.** Logical tab order matching the WinForms layout; `Enter` = default/accept button,
+  `Esc` = cancel (`IsCancel`); on-screen `Keypad.Keyboard`/`Keypad.NumKeypad` for touch text/number entry
+  (GPS `FormKeyboardView`/`FormNumericView`); hotkey character whitelist preserved where applicable.
+- **Responsive & touch.** Kiosk-style large, touch-friendly controls preserved 1:1 (button sizes, spacing,
+  min window/dialog dimensions); dialogs remain usable at the touch breakpoints the WinForms originals
+  targeted; `ScreenHelper.IsOnScreen` bounds-restore behavior reproduced.
+- **Interactive states.** `disabled` / `hover` / `pressed(active)` / `focus` visual treatments via the
+  Fluent control theme plus the `Aog*` accent; out-of-range numeric fields show the red error highlight
+  (FormNumeric parity); convert/save buttons enable only when validation passes.
+- **Accessibility.** `AutomationProperties.Name`/labeled inputs for screen-reader parity, visible focus
+  indicators, and contrast targets — noting that where the current product's colors and Avalonia Fluent
+  defaults differ, **parity to the current UI (AAP §0.3.3) takes precedence** since no Figma was supplied.
 
 ---
 
@@ -332,24 +515,42 @@ section). The G7 case-fix files (`FormYes.designer.cs`, `FormtimedMessage.resx`)
   project becomes buildable again once that conversion completes. AgIO, AgOpenGPS.Core, AgLibrary,
   and the three test projects build and pass throughout CP3.
 
-**CP3 project-metadata cleanup (F7).** `SourceCode/GPS/AgOpenGPS.csproj` had its eight stale
+**Project-metadata cleanup (F7).** In **CP3**, `SourceCode/GPS/AgOpenGPS.csproj` had its eight stale
 `<Compile Update>` entries for the deleted partials (`Controls`, `GUI`, `Position`, `SaveOpen`,
 `OpenGL`, `PGN`, `Sections`, `UDPComm` `.Designer.cs`, all `DependentUpon` the deleted `FormGPS.cs`)
-**removed** in this checkpoint; the `Forms\Settings\Config*.Designer.cs` entries (`DependentUpon`
-the retained `FormConfig.cs`) and the `Resources`/`BrandImages` resource metadata are preserved.
+**removed**; at that point the `Forms\Settings\Config*.Designer.cs` entries were still kept because
+`FormConfig.cs` was retained. **CP4 update:** because CP4 deletes `FormConfig.cs` **and** all six
+`Forms/Settings/Config*.Designer.cs` partial-designer files, their now-orphaned
+`<Compile Update … DependentUpon="FormConfig.cs">` entries are **removed** from `AgOpenGPS.csproj`
+in CP4, and the Windows-only `System.Windows.Forms.DataVisualization` `<Reference>` is **removed**
+alongside the charting-dialog deletions (no consumer remains; R10) — see `CHANGELOG.md` Build/CI. The
+`Resources.Designer.cs` / `BrandImages.Designer.cs` resource metadata remain preserved.
 
 ### Retained references to deleted CP3 types (F4) — resolved as callers migrate
 
-| Retained file (line) | Deleted CP3 type referenced | Resolution |
+> **CP4 reconciliation.** Six of the eight callers below were themselves **deleted in CP4** (the
+> Profiles, `FormJob`, `FormColor`/`FormColorSection`, and `FormConfig.Designer.cs` dialogs); their
+> dangling references to deleted CP3 types are therefore **resolved by deletion**, and each now has a
+> direct replacement row in the *GPS — Dialog Catalog Part 2 (CP4)* section above. Only the two
+> **non-dialog** callers (`Program.cs`, `RegistrySettings.cs`) genuinely remain retained after CP4.
+
+**(a) Still genuinely retained after CP4** (file still exists; reference resolves when the caller migrates):
+
+| Retained file (line) | Deleted type referenced | Resolution |
 |---|---|---|
 | `SourceCode/GPS/Program.cs` L32, L36–39 | `FormGPS`, `FormDialog` | Rewrite to Avalonia bootstrap; `FormDialog.Show` → Avalonia dialog (CP4/CP9). |
-| `SourceCode/GPS/Properties/RegistrySettings.cs` L216 | `FormDialog` | Route user-facing warning through the Avalonia dialog service (CP4). |
-| `SourceCode/GPS/Forms/Profiles/FormLoadProfile.cs` (L63, L74, L89, L113) | `FormDialog` | Migrated with `FormDialogView` when `FormLoadProfile` is re-platformed (CP4). |
-| `SourceCode/GPS/Forms/Profiles/FormLoadVehicleTool.cs` (L148, L152, L594–599) | `FormDialog`, `FormInputDialog` | Migrated with `FormDialogView`/`FormInputDialogView` (CP4). |
-| `SourceCode/GPS/Forms/Profiles/FormNewProfile.cs` L75–76 | `FormTimedMessage` | Migrated with `FormTimedMessageView` (CP4). |
-| `SourceCode/GPS/Forms/Field/FormJob.cs` L140, L219, L304, L328 | `FormFilePicker`, `FormDrivePicker`, `FormAgShareDownloader`, `FormAgShareUploader` | Migrated with the Pickers/Field Views (CP4). |
-| `SourceCode/GPS/Forms/Settings/FormColor.cs` (L64–164), `FormColorSection.cs` | `FormColorPicker` | Migrated to the Avalonia `ColorPicker` host (CP4). |
-| `SourceCode/GPS/Forms/Settings/FormConfig.Designer.cs` L64–66, L9220–9221 | `ConfigSummaryControl`, `ConfigVehicleControl` | Migrated with the Config Views when `FormConfig` is re-platformed (CP4). |
+| `SourceCode/GPS/Properties/RegistrySettings.cs` L216 | `FormDialog` | Route user-facing warning through the Avalonia dialog service (CP4/CP9). |
+
+**(b) Resolved by deletion in CP4** (caller deleted; replacement tracked in the CP4 catalog above):
+
+| Former retained caller (deleted in CP4) | Deleted CP3 type it referenced | Replacement row (CP4 catalog) |
+|---|---|---|
+| `SourceCode/GPS/Forms/Profiles/FormLoadProfile.cs` | `FormDialog` | *Profile Dialogs* → `FormLoadProfileView` (+ deferred `FormDialogView`). |
+| `SourceCode/GPS/Forms/Profiles/FormLoadVehicleTool.cs` | `FormDialog`, `FormInputDialog` | *Profile Dialogs* → `FormLoadVehicleToolView` (+ deferred `FormDialogView`/`FormInputDialogView`). |
+| `SourceCode/GPS/Forms/Profiles/FormNewProfile.cs` | `FormTimedMessage` | *Profile Dialogs* → `FormNewProfileView` (+ deferred `FormTimedMessageView`). |
+| `SourceCode/GPS/Forms/Field/FormJob.cs` | `FormFilePicker`, `FormDrivePicker`, `FormAgShareDownloader`, `FormAgShareUploader` | *Field Dialogs — Part 2* → `FormJobView` (hosts the deferred Picker/AgShare Views). |
+| `SourceCode/GPS/Forms/Settings/FormColor.cs`, `FormColorSection.cs` | `FormColorPicker` | *Settings Dialogs* → `FormColorView` / `FormColorSectionView` (Avalonia `ColorPicker`). |
+| `SourceCode/GPS/Forms/Settings/FormConfig.Designer.cs` | `ConfigSummaryControl`, `ConfigVehicleControl` | *Settings Dialogs* → `FormConfigView` (composes `ConfigSummaryView`/`ConfigVehicleView`). |
 
 ### GPS `Classes/*` still coupled to `FormGPS` (the `mf` god-object) (F5)
 

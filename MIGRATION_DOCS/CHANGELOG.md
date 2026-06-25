@@ -23,6 +23,105 @@ Settings · Build/CI · Docs**.
 
 ---
 
+## [CP4] — GPS WinForms Dialog Catalog Part 2 (Settings/Guidance/Inputs/Profiles/Field) + Charting Retirement — 2026-06-25
+
+**Theme:** Complete the retirement of the **entire** legacy GPS Windows Forms UI catalog. The
+**second and final** batch — **128 WinForms files (57,919 lines)** across **47 dialog/config
+groups** — was deleted under `SourceCode/GPS/Forms/{Field,Guidance,Inputs,Profiles,Settings}/` over
+six commits (`821e7b45`, `c32e2420`, `99b40cfd`, `d70988a8`, `38fb7dbb`, `deb53c67`). With this
+checkpoint `SourceCode/GPS/Forms/` is **absent**, and `Forms/Settings/FormButtonsRightPanel.*` was
+the **last legacy WinForms dialog** removed from the repository. File breakdown by family: Field 32,
+Guidance 36, Inputs 6, Profiles 12, Settings/Config/Charting 42. Their cross-platform replacements
+(Avalonia Views/ViewModels) are scheduled for later GPS checkpoints (CP4–CP9) and are recorded as
+**`Deferred`** — `SourceCode/GPS/Views/` and `SourceCode/GPS/Services/` do not exist yet — each with
+a named target file and a frozen-behavior contract in `TRANSITION_MAP.md` (new section *GPS — Dialog
+Catalog Part 2 (CP4)*). `// [XPLAT]` provenance is recorded for every deletion in that map and for
+the `csproj` changes below (R13/R14).
+
+### UI shell — dialog families removed (Avalonia Views deferred)
+Removed and recorded as `Deferred` → named Avalonia Views in `TRANSITION_MAP.md`:
+- **Field dialogs — Part 2 (11 groups):** `FormCopyTracks`, `FormEasyDrive`, `FormEnterFlag`,
+  `FormFieldData`, `FormFieldDir`, `FormFieldExisting`, `FormFieldISOXML`, `FormFieldKML`,
+  `FormFlags`, `FormJob`, `FormSaveOrNot`. (`FormSaveOrNot` was attributed to CP3 in the prior map
+  draft; its direct replacement row is **consolidated** into the CP4 Field Part 2 section.)
+- **Guidance dialogs (12 groups):** `FormABDraw`, `FormBuildTracks`, `FormGrid`, `FormHeadAche`,
+  `FormHeadLine`, `FormNudge`, `FormQuickAB`, `FormRecordName`, `FormRefNudge`, `FormSmoothAB`,
+  `FormTram`, `FormTramLine`.
+- **Input dialogs (2 groups):** `FormKeyboard`, `FormNumeric` (GPS on-screen keyboard/numeric keypad,
+  hosting the already-migrated Avalonia `Keypad.Keyboard`/`Keypad.NumKeypad` controls).
+- **Profile dialogs (4 groups):** `FormConvertProfiles`, `FormLoadProfile`, `FormLoadVehicleTool`,
+  `FormNewProfile`.
+- **Settings dialogs (9 groups):** `FormAllSettings`, `FormButtonsRightPanel` (final dialog),
+  `FormColor`, `FormColorSection`, `FormConfig` (the config shell), `FormCorrection`, `FormSimCoords`,
+  `FormSteer`, `FormSteerWiz`.
+- **Config controls — Part 2 (6 groups):** the `ConfigData`/`ConfigHelp`/`ConfigMenu`/`ConfigModule`/
+  `ConfigTool`/`ConfigVehicle` `.Designer.cs` partial tab-panels of `FormConfig` → Avalonia
+  `Config*View` user controls composed by `FormConfigView`.
+
+### Charting — Windows-only `DataVisualization` retired (R10)
+- The three live-graph dialogs `FormGraphSteer`, `FormGraphXTE`, and `FormGraphHeading` (which used
+  the **Windows-only** `System.Windows.Forms.DataVisualization` control) were deleted. Their
+  replacement is a **cross-platform Avalonia charting control** (custom Avalonia drawing or a
+  selected cross-platform chart package) preserving series, axes, zoom/autoscale, and the rolling
+  data buffer — **`Deferred`**, recorded in `TRANSITION_MAP.md` *GPS — Charting Dialogs (CP4)*.
+- Because no consumer remains, the Windows-only `<Reference Include="System.Windows.Forms.DataVisualization" />`
+  is **removed** from `SourceCode/GPS/AgOpenGPS.csproj` (see Build/CI below).
+
+### Settings / Guidance / Inputs / Profiles safety & validation — destinations recorded (no silent loss)
+Deletion removed *visible* validation/safety controls; to prevent silent loss (AAP §0.7.1 R1) each is
+mapped to its destination ViewModel/service and a parity test in `TRANSITION_MAP.md` *GPS — Security
+& Safety Control Destinations (CP4)*:
+- **Minimum button-count** (`FormButtonsRightPanel`: block save when `buttonOrder.Count < 2`,
+  `"Not Enough Buttons Added"`); **numeric min/max/clamp** (`FormNumeric`: out-of-range red highlight
+  + clamp, `InvariantCulture`); **steering safety bounds** (`FormSteer`/`FormSteerWiz`:
+  `maxSteerAngle=30°`, `maxAngularVelocity=0.64°/s`, PWM/pulse/snap limits, steer-config PGN `p_252`).
+- **Profile filename sanitization + duplicate + job-state guards** (`FormNewProfile`/
+  `FormConvertProfiles`/`FormLoadVehicleTool`: `InvalidFileRegex` + `glm.fileRegex`, `File.Exists`
+  duplicate block, `isJobStarted` close-gate, `Directory.Exists`); **guidance invalid-line/distance
+  guards** (`FormHeadAche` "Start = End", `FormHeadLine` "Nothing to Move", `FormTramLine` spacing);
+  **flag-entry format guard** (`FormEnterFlag`: `DeduplicateFlags`, `"Invalid line"`); **color parse**
+  (`FormColor`/`FormColorSection`: `int.Parse(InvariantCulture)` + ARGB); **ISOXML import/export**
+  (`FormFieldISOXML` → `FieldIoService`: V3/V4 semantics, name ≤248 bytes, AB+Curve export limit).
+
+### UI / Design / Accessibility parity — tracked for the deferred Views
+- `TRANSITION_MAP.md` gains a *GPS — Dialog Catalog Part 2 UI / Design / Accessibility Parity (CP4)*
+  section recording, for every replacement View: use of the existing `GPS/App.axaml` Fluent theme +
+  day/night `Aog*` brush resources via `{DynamicResource}` (no hard-coded colors), keyboard/focus
+  order (Enter/Esc, on-screen keypad), kiosk touch sizing, disabled/hover/pressed/focus states, and
+  accessibility — with 1:1 parity to the current Windows Forms UI as the acceptance bar (AAP §0.3.3;
+  no Figma supplied).
+
+### Build/CI — project metadata aligned to the deletion state
+- `SourceCode/GPS/AgOpenGPS.csproj`: **removed** the Windows-only
+  `<Reference Include="System.Windows.Forms.DataVisualization" />` (no consumer after the charting
+  deletions; R10) and the **six** now-orphaned `Forms\Settings\Config*.Designer.cs` `<Compile Update>`
+  entries (`ConfigData`/`ConfigHelp`/`ConfigMenu`/`ConfigModule`/`ConfigTool`/`ConfigVehicle`, which
+  were `DependentUpon` the **CP4-deleted** `FormConfig.cs`), replacing both with `[XPLAT]` explanatory
+  comments. The `Resources`/`BrandImages` resource metadata are intentionally **preserved**. Verified:
+  csproj XML well-formed; the GPS build still fails only at the pre-existing SDK target-resolution
+  stage (see below) with **no new errors** and **0 source-compile (`CS####`) errors**.
+
+### Docs
+- `TRANSITION_MAP.md` updated to the authoritative CP4 record: 47 direct old→new replacement rows,
+  the charting/safety/UI-parity sections above, and reconciliation of the now-stale CP3
+  retained-reference notes (six former retained callers were themselves deleted in CP4, so their
+  dangling references are *resolved by deletion*; only `Program.cs` and `RegistrySettings.cs` remain
+  genuinely retained).
+
+### ⚠ Build Sequencing & Temporary Non-Buildable State (unchanged from CP3)
+- The **GPS** project remains **intentionally non-buildable** at CP4. CP4 deletes only dialog sources
+  and updates documentation + the GPS `csproj` charting/metadata; it does **not** touch the
+  `UseWindowsForms=true` / `ImportWindowsDesktopTargets=true` / TFM blocker. The build therefore still
+  fails **identically** to CP3 — **NETSDK1100** without `EnableWindowsTargeting`, **NETSDK1136** with
+  it — at SDK target-resolution, **before any source is compiled**. The remaining dangling references
+  to deleted types (`Program.cs`, `Properties/RegistrySettings.cs`) and the 19 GPS `Classes/*` still
+  coupled to `FormGPS` are **not yet reachable as compiler errors** and are resolved as the GPS UI is
+  re-platformed (CP4–CP9: convert `AgOpenGPS.csproj` to the Avalonia stack, rewrite `Program.cs`, and
+  create the `Views/`/`Services/` trees). AgIO, AgOpenGPS.Core, AgLibrary, and the test projects build
+  and their tests pass throughout.
+
+---
+
 ## [CP3] — GPS WinForms Shell, FormGPS Partials & Dialog Catalog Part 1 — 2026-06-25
 
 **Theme:** Retire the GPS Windows Forms UI surface so the GPS project can be de-Windows-ified and
