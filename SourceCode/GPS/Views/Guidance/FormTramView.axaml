@@ -1,0 +1,326 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Tramline configuration dialog (Avalonia view).
+
+    1:1 visual + behavioural PARITY reimplementation of the WinForms
+    Forms/Guidance/FormTram (FormTram.cs + FormTram.Designer.cs), per AAP §0.3.3 — never a
+    redesign (no new colours, no relayout, no UX change). FormTram lets the operator configure
+    "simple" tramlines: the number of passes between trams (nudPasses), the tram-line opacity /
+    alpha (tbarTramAlpha), the generate mode — All(0) / Lines(1) / Outer(2), cycled on btnMode
+    whose glyph is swapped at runtime — and an A/B (or curve) point swap (btnSwapAB); it also
+    shows the live seed / tram / track widths.
+
+    WIRING CONTRACT — the partner code-behind (FormTramView.axaml.cs, a SEPARATE deliverable)
+    owns ALL behaviour. This view is IMPERATIVE, not MVVM: intentionally NO x:DataType, NO
+    DataContext, NO {Binding}. The x:Name'd controls below are the entire integration surface and
+    keep their ORIGINAL WinForms names — INCLUDING the source's `lblAplha` typo — so the migrated
+    code-behind addresses them exactly as FormTram.cs did. No Click= handlers are declared in this
+    markup: the code-behind subscribes by name, reproducing the WinForms handlers (btnMode_Click
+    cycles the mode + swaps imgMode.Source; btnSwapAB_Click; btnUpTrams_Click / btnDnTrams_Click
+    drive nudPasses up/down; nudPasses_Click opens FormNumeric(1,999,current); tbarTramAlpha Scroll
+    sets mf.tram.alpha = value*0.01 and lblAplha; btnExit saves [isSaving=true] & closes; btnCancel
+    just closes). On Load the code-behind localises every caption from gStr and sets the live
+    values (lblSeedWidth / lblTramWidth / lblTrack, nudPasses, tbarTramAlpha, imgMode glyph, Title).
+
+    WINDOW SHELL — mirrors FormTram.Designer.cs (lines 324-356):
+      Text "AB Line Tramline"            : Title (design-time caption; the code-behind sets the
+                                           localised runtime text from gStr.gsSimpleTramLines).
+      ClientSize 353 x 354               : reproduced as the root Canvas Width/Height together with
+                                           SizeToContent="WidthAndHeight", so the window's CLIENT
+                                           area is EXACTLY 353 x 354 regardless of the OS decorations
+                                           drawn around it. (Setting the Window Width/Height to
+                                           353/354 directly would shrink the client by the title-bar
+                                           height and CLIP the bottom buttons btnCancel/btnExit at
+                                           y=260..342 — so SizeToContent is the faithful mapping of
+                                           WinForms ClientSize, matching the sibling FormShiftPosView
+                                           convention.)
+      BackColor WhiteSmoke               : Background="WhiteSmoke" — a FIXED colour in the source.
+                                           This dialog is NOT part of the day/night
+                                           SwapDayNightMode chrome, so it is intentionally NOT bound
+                                           to App.axaml's AogFrameBrush.
+      FormBorderStyle.FixedDialog +      : SystemDecorations="Full" + CanResize="False"
+        Max/MinimizeBox = false            (a fixed, non-resizable dialog).
+      ControlBox = false / HelpButton    : no portable Avalonia equivalent — approximated by a
+        = true                             standard fixed title bar; the WinForms "?" HelpButton and
+                                           the suppression of the system control box are OMITTED
+                                           (closest portable behaviour, minor chrome variance).
+      ShowInTaskbar = false              : ShowInTaskbar="False".
+      StartPosition = CenterScreen       : WindowStartupLocation="CenterScreen".
+      Font Tahoma                        : FontFamily="Tahoma"; children carry their point sizes
+                                           converted to Avalonia DIP as (pt * 96 / 72):
+                                           12pt -> 16, 14.25pt -> 19, 24pt -> 32.
+
+    The WinForms `timer1` (declared in the designer but never enabled or wired — no Interval, no
+    Tick) is intentionally OMITTED. No System.Windows.Forms, no OpenTK.GLControl, no GMap, no
+    ColorPicker types are referenced. Avalonia 11.3.0.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormTramView"
+        Title="AB Line Tramline"
+        SizeToContent="WidthAndHeight"
+        SystemDecorations="Full"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        Background="WhiteSmoke"
+        FontFamily="Tahoma">
+
+    <Window.Styles>
+        <!-- Button.flat — the six WinForms buttons are FlatStyle.Flat + FlatAppearance.BorderSize=0
+             + BackColor.Transparent, carrying only a glyph. The template ContentPresenter overrides
+             stop the Fluent theme painting a hover/pressed fill over the glyph (the same technique
+             used by FormPanView / Keypad / FormYesView). -->
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.flat /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flat:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- Button.nud — the WinForms NudlessNumericUpDown was a White, ReadOnly, centred numeric
+             field driven by the external up/down buttons + the on-screen keypad. Reproduced as a
+             click-only Button styled as a STATIC white value box: white face with a 1px grey border
+             held constant across hover/pressed (no Fluent state fill), so it reads as a field rather
+             than a raised button. A click opens FormNumeric(1,999,current) in the code-behind. -->
+        <Style Selector="Button.nud">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.nud /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Gray" />
+        </Style>
+        <Style Selector="Button.nud:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Gray" />
+        </Style>
+        <Style Selector="Button.nud:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Gray" />
+        </Style>
+    </Window.Styles>
+
+    <!-- ClientSize 353 x 354 reproduced as an absolutely-positioned Canvas. Every
+         Canvas.Left/Top/Width/Height below is the EXACT FormTram.Designer.cs value, for
+         pixel-accurate 1:1 parity. The labels use transparent backgrounds + Foreground="Black"
+         over the WhiteSmoke window, reproducing the source's WhiteSmoke-backed black labels. -->
+    <Canvas Width="353" Height="354">
+
+        <!-- ============================= top captions ============================= -->
+
+        <!-- labelMode: "Mode" caption (designer 155,3; Tahoma 12pt -> 16 DIP; AutoSize, MiddleRight
+             -> sized to text with left origin at 155). Code-behind localises to gStr.gsMode. -->
+        <TextBlock x:Name="labelMode"
+                   Canvas.Left="155" Canvas.Top="3"
+                   FontSize="16" Foreground="Black"
+                   Text="Mode" />
+
+        <!-- labelAlpha: "Alpha" caption (designer 290,3; 16 DIP; AutoSize). Code-behind -> gStr.gsAlpha. -->
+        <TextBlock x:Name="labelAlpha"
+                   Canvas.Left="290" Canvas.Top="3"
+                   FontSize="16" Foreground="Black"
+                   Text="Alpha" />
+
+        <!-- ======================= generate-mode + AB swap ======================= -->
+
+        <!-- btnMode: cycles generate mode All(0)/Lines(1)/Outer(2); the code-behind swaps
+             imgMode.Source between TramAll / TramLines / TramOuter and disables the button when there
+             is no boundary. Designer (135,19) 86x88. WinForms BackgroundImage = TramAll with
+             ImageLayout.Stretch -> the glyph FILLS the button, so content alignment is Stretch and
+             imgMode uses Stretch="Fill" (the 80x55 asset stretched to 86x88, aspect-distortion
+             intended exactly as ImageLayout.Stretch did). -->
+        <Button x:Name="btnMode" Classes="flat"
+                Canvas.Left="135" Canvas.Top="19"
+                Width="86" Height="88"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch"
+                AutomationProperties.Name="Tram generate mode">
+            <Image x:Name="imgMode"
+                   Source="avares://AgOpenGPS/btnImages/TramAll.png"
+                   Stretch="Fill" />
+        </Button>
+
+        <!-- btnSwapAB: swap the A/B (or curve) points. Designer (1,32) 72x62, glyph ABSwapPoints
+             (64x64 foreground Image, centred). -->
+        <Button x:Name="btnSwapAB" Classes="flat"
+                Canvas.Left="1" Canvas.Top="32"
+                Width="72" Height="62"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                AutomationProperties.Name="Swap AB points">
+            <Image Source="avares://AgOpenGPS/btnImages/ABSwapPoints.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+        <!-- ============================== passes block ============================== -->
+
+        <!-- labelPasses: "Passes" caption above the spinner. Designer (61,144) 160x24 — this label is
+             NOT AutoSize, so the fixed 160x24 box with BottomCenter text is honoured. Canvas children
+             are never stretched, so a transparent Border supplies the explicit 160x24 box and the
+             inner TextBlock is bottom/centre-aligned within it. Tahoma 14.25pt Bold -> 19 DIP.
+             Code-behind localises to gStr.gsPasses. -->
+        <Border Canvas.Left="61" Canvas.Top="144" Width="160" Height="24" Background="Transparent">
+            <TextBlock x:Name="labelPasses"
+                       FontSize="19" FontWeight="Bold" Foreground="Black"
+                       HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                       TextAlignment="Center"
+                       Text="Passes" />
+        </Border>
+
+        <!-- btnDnTrams: fewer passes (nudPasses DownButton). Designer (-3,155) 72x62, glyph DnArrow64.
+             The negative Canvas.Left is preserved EXACTLY for parity; the 64x64 arrow centres fully
+             inside the visible client. -->
+        <Button x:Name="btnDnTrams" Classes="flat"
+                Canvas.Left="-3" Canvas.Top="155"
+                Width="72" Height="62"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                AutomationProperties.Name="Fewer passes">
+            <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+        <!-- nudPasses: passes-between-trams value (NudlessNumericUpDown -> click-only white field).
+             Designer (93,171) 92x46, White, Tahoma 24pt Bold -> 32 DIP, centred, Min 1 / Max 999,
+             ReadOnly. Content "1" is a placeholder overwritten on Load from Settings.setTram_passes;
+             a click opens the on-screen FormNumeric(1,999,current) in the code-behind. -->
+        <Button x:Name="nudPasses" Classes="nud"
+                Canvas.Left="93" Canvas.Top="171"
+                Width="92" Height="46"
+                FontSize="32" FontWeight="Bold"
+                Content="1" />
+
+        <!-- btnUpTrams: more passes (nudPasses UpButton). Designer (205,155) 72x62, glyph UpArrow64. -->
+        <Button x:Name="btnUpTrams" Classes="flat"
+                Canvas.Left="205" Canvas.Top="155"
+                Width="72" Height="62"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                AutomationProperties.Name="More passes">
+            <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+        <!-- ======================= alpha (opacity) trackbar ======================= -->
+
+        <!-- tbarTramAlpha: tram-line opacity. Designer (303,25) 45x216, vertical, Min 10 / Max 100 /
+             Value 60, Small/LargeChange 10. [XPLAT] DIRECTION: Avalonia 11.3.0's DEFAULT vertical
+             Slider already increases UPWARD (higher value = top) — verified empirically with an
+             Avalonia.Headless layout probe (Value=60 over [10,100] places the thumb in the TOP half,
+             matching the WinForms vertical TrackBar), so IsDirectionReversed is intentionally NOT set
+             (setting it True would invert the control). IsSnapToTickEnabled + TickFrequency=1
+             reproduce the integer-valued snapping of the WinForms TrackBar. -->
+        <Slider x:Name="tbarTramAlpha"
+                Canvas.Left="303" Canvas.Top="25"
+                Width="45" Height="216"
+                Orientation="Vertical"
+                Minimum="10" Maximum="100"
+                SmallChange="10" LargeChange="10"
+                TickFrequency="1" IsSnapToTickEnabled="True"
+                Value="60" />
+
+        <!-- lblAplha: live alpha percentage. The `lblAplha` typo is PRESERVED from the source so the
+             code-behind binds by the exact name. Designer (287,237) Tahoma 12pt -> 16 DIP, MiddleRight
+             (AutoSize). Declared AFTER the slider so its text wins the few-pixel z-overlap with the
+             slider's lower edge, exactly as the WinForms z-order did. Initial "100%" overwritten on
+             Load. -->
+        <TextBlock x:Name="lblAplha"
+                   Canvas.Left="287" Canvas.Top="237"
+                   FontSize="16" Foreground="Black"
+                   Text="100%" />
+
+        <!-- ======================= seed / tram / track widths ======================= -->
+
+        <!-- labelSeed: "Seed" caption (designer 87,267; 16 DIP; AutoSize, MiddleRight). Code-behind
+             localises to gStr.gsWorkWidth. -->
+        <TextBlock x:Name="labelSeed"
+                   Canvas.Left="87" Canvas.Top="267"
+                   FontSize="16" Foreground="Black"
+                   Text="Seed" />
+
+        <!-- lblSeedWidth: live seeding/tool width (designer 191,264; Tahoma 14.25pt Bold -> 19 DIP).
+             Initial "10 cm" overwritten on Load from mf.tool.width. -->
+        <TextBlock x:Name="lblSeedWidth"
+                   Canvas.Left="191" Canvas.Top="264"
+                   FontSize="19" FontWeight="Bold" Foreground="Black"
+                   Text="10 cm" />
+
+        <!-- labelSprayWidth: "Spray" caption (designer 87,298; 16 DIP; AutoSize, MiddleRight — the
+             designer's design-time Width=49 is overridden by AutoSize at runtime, so the box is sized
+             to text with left origin at 87). Code-behind localises to gStr.gsTramWidth. -->
+        <TextBlock x:Name="labelSprayWidth"
+                   Canvas.Left="87" Canvas.Top="298"
+                   FontSize="16" Foreground="Black"
+                   Text="Spray" />
+
+        <!-- lblTramWidth: live tram width (designer 191,295; Tahoma 14.25pt Bold -> 19 DIP).
+             Initial "10 cm" overwritten on Load from mf.tram.tramWidth. -->
+        <TextBlock x:Name="lblTramWidth"
+                   Canvas.Left="191" Canvas.Top="295"
+                   FontSize="19" FontWeight="Bold" Foreground="Black"
+                   Text="10 cm" />
+
+        <!-- labelTrack: "Track" caption (designer 86,328; 16 DIP; AutoSize, MiddleRight). Code-behind
+             localises to gStr.gsTrack. -->
+        <TextBlock x:Name="labelTrack"
+                   Canvas.Left="86" Canvas.Top="328"
+                   FontSize="16" Foreground="Black"
+                   Text="Track" />
+
+        <!-- lblTrack: live track width (designer 191,325; Tahoma 14.25pt Bold -> 19 DIP).
+             Initial "10 cm" overwritten on Load. -->
+        <TextBlock x:Name="lblTrack"
+                   Canvas.Left="191" Canvas.Top="325"
+                   FontSize="19" FontWeight="Bold" Foreground="Black"
+                   Text="10 cm" />
+
+        <!-- ============================= command buttons ============================= -->
+
+        <!-- btnCancel: discard & close (WinForms DialogResult.Cancel; the code-behind just closes).
+             Designer (3,260) 78x67, glyph SwitchOff (64x64), ImageAlign=MiddleLeft -> content aligned
+             Left. -->
+        <Button x:Name="btnCancel" Classes="flat"
+                Canvas.Left="3" Canvas.Top="260"
+                Width="78" Height="67"
+                HorizontalContentAlignment="Left"
+                VerticalContentAlignment="Center"
+                AutomationProperties.Name="Cancel">
+            <Image Source="avares://AgOpenGPS/btnImages/SwitchOff.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+        <!-- btnExit: save & close (the code-behind sets isSaving=true then closes; FormClosing then
+             persists the tram settings). Designer (256,275) 98x67, glyph FileSave (64x64),
+             ImageAlign=MiddleRight -> content aligned Right. IsDefault is intentionally NOT set: the
+             source declares no form.AcceptButton (and btnExit's DialogResult is Cancel), so Enter must
+             not auto-trigger the save — strict parity. -->
+        <Button x:Name="btnExit" Classes="flat"
+                Canvas.Left="256" Canvas.Top="275"
+                Width="98" Height="67"
+                HorizontalContentAlignment="Right"
+                VerticalContentAlignment="Center"
+                AutomationProperties.Name="Save and close">
+            <Image Source="avares://AgOpenGPS/btnImages/FileSave.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

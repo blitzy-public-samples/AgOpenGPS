@@ -1,0 +1,313 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Import / Copy Tracks From Another Field" dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Field/FormCopyTracks`
+    (FormCopyTracks.cs + FormCopyTracks.Designer.cs + FormCopyTracks.resx). The operator picks a
+    SOURCE field on the left (only fields that have both Field.txt and TrackLines.txt, excluding the
+    current field), the dialog lists that field's tracks on the right, the operator multi-selects one
+    or more tracks and imports (copies) them into the currently-open field. Per AAP §0.3.3 this is a
+    faithful re-platform of the currently rendered Windows Forms surface — never a redesign: no new
+    colours, no relayout, no UX changes.
+
+    WIRING CONTRACT — the partner code-behind FormCopyTracksView.axaml.cs owns ALL behaviour:
+      * Code-behind dialog: NO x:DataType, NO DataContext, NO {Binding} / MVVM. Every control is
+        addressed imperatively by its x:Name, exactly like the sibling code-behind dialogs
+        (FormFieldDirView / FormSaveOrNotView / FormFilePickerView). The x:Names below are the
+        integration contract and MUST stay byte-identical to the originals:
+            lbFields  lvTracks  lblStatus
+            btnSelectAllTracks  btnDeselectAllTracks  btnCopyToCurrentField  btnClose
+      * Event handlers keep the ORIGINAL WinForms method names so the code-behind is a faithful port
+        (mirrors FormSaveOrNotView, which kept btnOk_Click etc.): the field-selection handler
+        lbFields_SelectedIndexChanged loads the chosen field's tracks; btnSelectAllTracks_Click /
+        btnDeselectAllTracks_Click select/clear the track list; btnCopyToCurrentField_Click performs
+        the copy; btnClose_Click closes. In WinForms the event WIRING lived in the Designer (which
+        this .axaml replaces); the handler bodies live in the .cs (which the .axaml.cs replaces).
+      * lvTracks is MULTI-select. This deliberately REPLACES the WinForms per-item colour-toggle
+        (lvTracks_MouseClick flipping BackColor between white and green #009600) with a real
+        multi-selection list — so there is NO lvTracks click handler; btnCopyToCurrentField_Click
+        reads lvTracks.SelectedItems directly. The green selection accent is preserved as a style.
+      * Window initialisation (the WinForms FormCopyTracks_Load that populated the field list) is
+        owned by the code-behind (constructor / OnOpened), so no Loaded handler is declared here.
+
+    WINDOW SHELL — mirrors FormCopyTracks.Designer.cs:
+      Text "Import Tracks From Another Field"  -> Title="Import Tracks" (per the assigned file spec;
+                                                  the code-behind may localise via gStr at runtime).
+      ClientSize 1000 x 700                    -> Width / Height (fixed, matching the WinForms client).
+      FormBorderStyle.Fixed3D + ControlBox=false -> CanResize="False": a fixed, bordered dialog. The
+                                                  spec does NOT request a borderless shell, so the
+                                                  standard window chrome / Title bar is kept (unlike
+                                                  the borderless sibling dialogs).
+      ShowInTaskbar=false                      -> ShowInTaskbar="False".
+      StartPosition.CenterScreen (shown modally over FormGPS) -> WindowStartupLocation="CenterOwner".
+      BackColor Gainsboro / panel1 LightGray   -> Background="{DynamicResource AogFrameBrush}": the
+                                                  neutral chrome is themed to the App.axaml day/night
+                                                  palette rather than hard-coding a WinForms colour.
+      Font Tahoma                              -> FontFamily="Tahoma". WinForms points are converted to
+                                                  Avalonia device-independent pixels (pt x 96/72):
+                                                  14.25->19 (headers), 16->21 (lists), 11.25->15
+                                                  (status), 10->13 (button captions).
+
+    A responsive Grid (NOT an absolute Canvas) reproduces the layout: because the standard Title bar
+    is kept, it consumes height, so absolute WinForms coordinates would not line up — the Grid lets the
+    two lists fill the available height while preserving the original two-column proportions.
+
+    Colours: the window chrome and all caption / status text use App.axaml's {DynamicResource}
+    day/night brushes (AogFrameBrush / AogTextBrush) so the live Light<->Dark switch is observed. The
+    two lists keep their distinctive fixed WinForms input backgrounds (lbFields WhiteSmoke, lvTracks
+    AliceBlue) with an explicit dark item foreground so the rows stay readable in BOTH themes (the
+    WinForms lists were never day/night themed). No WinForms / System.Drawing / OpenTK / GMap
+    namespaces are referenced — Avalonia 11.3 markup only. Button glyphs are served from the GPS
+    assembly (assembly name "AgOpenGPS") via avares:// URIs, mapped from the Designer's Resources
+    images: SelectAll / DeselectAll / FileNew (Import) / OK64 (Close).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormCopyTracksView"
+        Title="Import Tracks"
+        Width="1000"
+        Height="700"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <Window.Styles>
+        <!-- Flat, chrome-less image+caption buttons: reproduce the WinForms FlatStyle.Flat +
+             FlatAppearance.BorderSize=0 + BackColor=Transparent carried by every button in
+             FormCopyTracks.Designer.cs. The :pointerover / :pressed / :disabled template overrides
+             suppress the Fluent hover / press / disabled fill so only the glyph + caption show — the
+             same technique used by the sibling FormFieldDirView / FormSaveOrNotView. -->
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- Touch-friendly list rows. The WinForms lists forced a 40px row height via an ImageList
+             hack; reproduce it with MinHeight, full-width content (FullRowSelect) and a small indent. -->
+        <Style Selector="ListBox#lbFields ListBoxItem">
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="ListBox#lvTracks ListBoxItem">
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Row text colour is forced DARK on the fixed light list backgrounds so unselected rows stay
+             readable in BOTH day and night themes. This is set on the item's ContentPresenter
+             (PART_ContentPresenter) rather than the item's inherited Foreground, because the Fluent
+             ListBoxItem ControlTheme assigns the presenter foreground DIRECTLY per visual state; a
+             directly-set presenter value beats an inherited item value, so an item-level Foreground
+             setter never reaches the rendered text. A Window-style presenter setter outranks the
+             ControlTheme, so this is the level that actually wins. -->
+        <Style Selector="ListBox#lbFields ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+        <Style Selector="ListBox#lvTracks ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+
+        <!-- lbFields selected row: WinForms highlighted the chosen field DarkOrange (255,140,0) with
+             WHITE text (lbFields_SelectedIndexChanged). Reproduced as a selection-triggered style
+             (NOT per-item colour code) per the file spec. Both background AND foreground are set on the
+             presenter so they override the Fluent selected-state theme values; the :selected:pointerover
+             variant keeps the colours while hovering a selected row. -->
+        <Style Selector="ListBox#lbFields ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFFF8C00" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="ListBox#lbFields ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFFF8C00" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+
+        <!-- lvTracks selected rows: WinForms marked selected tracks green #009600 (0,150,0) with WHITE
+             text. With multi-select this becomes the standard selection highlight, themed to that
+             accent for parity. -->
+        <Style Selector="ListBox#lvTracks ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FF009600" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="ListBox#lvTracks ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FF009600" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Outer 5px frame reproduces the WinForms Padding(5) / panel1 inset. Three bands: column headers
+         (Auto), the two lists (fill the remaining height), and the status + command-button bar (Auto). -->
+    <Grid Margin="5" RowDefinitions="Auto,*,Auto">
+
+        <!-- ===================== Row 0 — column headers ===================== -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,15,*" Margin="6,2,6,4">
+            <!-- lblFieldsHeader: WinForms Label "Available Fields", Tahoma 14.25 Bold (-> 19). -->
+            <TextBlock x:Name="lblFieldsHeader"
+                       Grid.Column="0"
+                       Text="Available Fields"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}" />
+            <!-- lblTracksHeader: WinForms Label "Available Tracks", Tahoma 14.25 Bold (-> 19). -->
+            <TextBlock x:Name="lblTracksHeader"
+                       Grid.Column="2"
+                       Text="Available Tracks"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}" />
+        </Grid>
+
+        <!-- ===================== Row 1 — the two lists ===================== -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,15,*" Margin="6,0,6,0">
+
+            <!-- lbFields: SOURCE field list. WinForms ListView(Details), BackColor WhiteSmoke,
+                 Tahoma 16 Regular (-> 21), single-select. Avalonia ListBox, SelectionMode="Single".
+                 SelectionChanged loads the selected field's tracks (lbFields_SelectedIndexChanged).
+                 Field-name items are supplied by the code-behind; no ItemTemplate / bindings. -->
+            <ListBox x:Name="lbFields"
+                     Grid.Column="0"
+                     SelectionMode="Single"
+                     Background="#FFF5F5F5"
+                     BorderBrush="#FFB0B8C0"
+                     BorderThickness="1"
+                     FontSize="21"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     SelectionChanged="lbFields_SelectedIndexChanged" />
+
+            <!-- lvTracks: tracks available in the selected field, each shown as
+                 "<name> (AB Line|Curve|<mode>)" (built by the code-behind). WinForms ListView(Details),
+                 BackColor AliceBlue, Tahoma 16 Bold (-> 21). MULTI-select replaces the WinForms colour
+                 toggle. Selected rows use the green accent style above. No selection handler — the copy
+                 button reads SelectedItems directly. -->
+            <ListBox x:Name="lvTracks"
+                     Grid.Column="2"
+                     SelectionMode="Multiple"
+                     Background="#FFF0F8FF"
+                     BorderBrush="#FFB0B8C0"
+                     BorderThickness="1"
+                     FontSize="21"
+                     FontWeight="Bold"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+        </Grid>
+
+        <!-- ================= Row 2 — status line + command buttons ================= -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="6,6,6,2">
+
+            <!-- lblStatus: bottom-left status line (WinForms Label, Tahoma 11.25 -> 15). The default
+                 text is the Designer placeholder; the code-behind overwrites it at runtime
+                 ("Found N field(s) with tracks", progress messages, errors). -->
+            <TextBlock x:Name="lblStatus"
+                       Grid.Column="0"
+                       Text="Select a field from the left, then select tracks to copy"
+                       FontSize="15"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource AogTextBrush}" />
+
+            <!-- Command buttons, right-aligned. Two visual groups mirror the WinForms spacing:
+                 {Select All, Deselect All} then a gap then {Import, Close}. Each is a 100 x 90 flat
+                 image-above-caption button (WinForms TextImageRelation.ImageAboveText). Native glyphs
+                 are 64 x 64; shown at 48 x 48 (Uniform) per the sibling convention. -->
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="32"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom">
+
+                <!-- group A: select / deselect all tracks -->
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <!-- btnSelectAllTracks: image SelectAll, caption "Select All". -->
+                    <Button x:Name="btnSelectAllTracks"
+                            Classes="flatImage"
+                            Width="100" Height="90"
+                            AutomationProperties.Name="Select All"
+                            Click="btnSelectAllTracks_Click">
+                        <StackPanel Orientation="Vertical" Spacing="2"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Image Source="avares://AgOpenGPS/btnImages/SelectAll.png"
+                                   Width="48" Height="48" Stretch="Uniform" />
+                            <TextBlock Text="Select All" FontSize="13" FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource AogTextBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <!-- btnDeselectAllTracks: image DeselectAll, caption "Deselect All". -->
+                    <Button x:Name="btnDeselectAllTracks"
+                            Classes="flatImage"
+                            Width="100" Height="90"
+                            AutomationProperties.Name="Deselect All"
+                            Click="btnDeselectAllTracks_Click">
+                        <StackPanel Orientation="Vertical" Spacing="2"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Image Source="avares://AgOpenGPS/btnImages/DeselectAll.png"
+                                   Width="48" Height="48" Stretch="Uniform" />
+                            <TextBlock Text="Deselect All" FontSize="13" FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource AogTextBrush}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- group B: import (copy) / close -->
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <!-- btnCopyToCurrentField: the copy / import action. WinForms image FileNew,
+                         caption "Import". Reads lvTracks.SelectedItems and copies them to the
+                         current field (btnCopyToCurrentField_Click). -->
+                    <Button x:Name="btnCopyToCurrentField"
+                            Classes="flatImage"
+                            Width="100" Height="90"
+                            AutomationProperties.Name="Import"
+                            Click="btnCopyToCurrentField_Click">
+                        <StackPanel Orientation="Vertical" Spacing="2"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Image Source="avares://AgOpenGPS/btnImages/FileNew.png"
+                                   Width="48" Height="48" Stretch="Uniform" />
+                            <TextBlock Text="Import" FontSize="13" FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource AogTextBrush}" />
+                        </StackPanel>
+                    </Button>
+                    <!-- btnClose: closes the dialog (btnClose_Click). WinForms image OK64,
+                         caption "Close". -->
+                    <Button x:Name="btnClose"
+                            Classes="flatImage"
+                            Width="100" Height="90"
+                            AutomationProperties.Name="Close"
+                            Click="btnClose_Click">
+                        <StackPanel Orientation="Vertical" Spacing="2"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                                   Width="48" Height="48" Stretch="Uniform" />
+                            <TextBlock Text="Close" FontSize="13" FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource AogTextBrush}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

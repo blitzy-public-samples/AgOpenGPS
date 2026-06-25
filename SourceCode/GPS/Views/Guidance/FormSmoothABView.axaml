@@ -1,0 +1,263 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Smooth AB Curve dialog (Avalonia view).
+
+    1:1 visual + behavioural PARITY reimplementation of the WinForms
+    `Forms/Guidance/FormSmoothAB` (source: FormSmoothAB.cs + FormSmoothAB.Designer.cs). Per
+    AAP §0.3.3 this is a faithful re-platform of the currently rendered Windows Forms surface,
+    never a redesign: every size, position and font below is taken verbatim from
+    FormSmoothAB.Designer.cs (WinForms pixels map 1:1 to Avalonia device-independent pixels at
+    96 dpi; point font sizes are converted pt × 96/72 → DIP).
+
+    The dialog lets the operator tune how strongly the active AB curve is smoothed. Holding the
+    Up arrow raises a "smooth count" (clamped 2..100) and holding the Down arrow lowers it; each
+    adjustment re-runs curve.SmoothAB(count × 2) and repaints the field. "For Now" applies the
+    smoothing for the current session, "To File" also persists the tracks, and Cancel discards.
+
+    CODE-BEHIND CONTRACT — FormSmoothABView.axaml.cs (partial class AgOpenGPS.Views.FormSmoothABView : Window):
+      * This view is IMPERATIVE, not MVVM: there is intentionally NO x:DataType, no DataContext
+        and no {Binding}. The x:Name'd controls below are the entire integration surface and keep
+        their ORIGINAL WinForms names so the migrated code-behind addresses them exactly as
+        FormSmoothAB.cs / FormSmoothAB.Designer.cs did. No event handlers are wired in this markup
+        — the code-behind attaches them by name (reproducing the WinForms handlers), so the view
+        compiles independently of whatever handler names the code-behind chooses:
+          - btnNorth / btnSouth : RepeatButton (hold-to-repeat). The originals raised repeated
+                                  MouseDown while held via AgLibrary.Controls.RepeatButton; the
+                                  Avalonia built-in RepeatButton repeats Click while held (the
+                                  parity match). btnNorth (Up) raises the count, btnSouth (Dn)
+                                  lowers it; the code-behind calls curve.SmoothAB and updates
+                                  lblSmooth + the main GL view per adjustment.
+          - lblSmooth           : the large smooth-count readout. The WinForms Load handler set
+                                  this to "**" (the design-time "99" is replaced at load); the
+                                  code-behind reproduces that and writes the live count each nudge.
+          - bntOK               : "For Now" — apply smoothing for the session and close.
+          - btnSave             : "To File" — apply, persist tracks, and close.
+          - btnCancel           : discard and close.
+      * Caption text is assigned at runtime from gStr by the code-behind, exactly as the WinForms
+        constructor did (this.Text = gStr.gsSmoothABCurve; bntOK.Text = gStr.gsForNow;
+        btnSave.Text = gStr.gsToFile;). The literals below ("Smooth AB Curve" / "For Now" /
+        "To File") are the Designer placeholders the code-behind overrides; because an Avalonia
+        Button's caption lives inside its Content (here an Image-over-text stack, not a .Text
+        property), the localisable captions are exposed as their own named TextBlocks
+        (bntOKText / btnSaveText) following the sibling convention (see Pickers/* btnOpenText).
+
+    WINDOW SHELL — mirrors FormSmoothAB.Designer.cs:
+      Text "Smooth AB Curve"      -> Title (design-time literal; code-behind sets gStr.gsSmoothABCurve).
+      ClientSize 231 x 393        -> root Canvas Width/Height 231 x 393 (absolute layout).
+      BackColor WhiteSmoke        -> Background="WhiteSmoke". This dialog is a FIXED light surface,
+                                     theme-independent (it was never part of FormGPS day/night
+                                     SwapDayNightMode chrome), so it is NOT bound to AogFrameBrush
+                                     and its text Foreground is hard-coded Black for legibility.
+      ControlBox = false          -> [XPLAT] MINOR DEVIATION: Avalonia cannot hide only the
+                                     close/min/max caption buttons. The no-control-box look is
+                                     approximated by keeping the normal title bar
+                                     (SystemDecorations="Full"); the dialog is dismissed via its own
+                                     For Now / To File / Cancel buttons exactly as the WinForms form.
+      FormBorderStyle (default)   -> the source did not set it (default Sizable), so the system
+                                     decorations + caption are KEPT and CanResize="True".
+      Width / Height 231 x 393    -> set explicitly per the assigned spec (same shell shape as the
+                                     sibling FormEventViewerView: Full + resizable + explicit W/H).
+                                     On platforms that draw native decorations outside the client
+                                     (e.g. Windows), the client is exactly 231 x 393; where
+                                     client-side decorations are used the title bar takes a few
+                                     pixels — the documented minor deviation above, mitigated by
+                                     CanResize="True".
+      ShowInTaskbar = false       -> ShowInTaskbar="False".
+      StartPosition CenterParent  -> WindowStartupLocation="CenterOwner" (shown over FormGPS;
+                                     replaces the WinForms ScreenHelper.IsOnScreen reposition, which
+                                     CenterOwner makes unnecessary).
+      Font Tahoma                 -> FontFamily="Tahoma"; children carry their point sizes converted
+                                     to DIP (36pt -> 48, 14.25pt -> 19).
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs,
+    mapped from the Designer's Image assignments (each asset confirmed native 64 x 64):
+      btnSouth.Image = Resources.DnArrow64     -> btnImages/DnArrow64.png
+      btnNorth.Image = Resources.UpArrow64     -> btnImages/UpArrow64.png
+      bntOK.Image    = Resources.FileDontSave  -> btnImages/FileDontSave.png
+      btnSave.Image  = Resources.FileSave      -> btnImages/FileSave.png
+      btnCancel.Image= Resources.Cancel64      -> btnImages/Cancel64.png
+
+    No System.Windows.Forms, no OpenTK.GLControl, no GMap, no ColorPicker types are referenced —
+    Avalonia 11.3 markup only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormSmoothABView"
+        Title="Smooth AB Curve"
+        Width="231"
+        Height="393"
+        Background="WhiteSmoke"
+        SystemDecorations="Full"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma">
+
+    <!--
+        Flat, chrome-less push buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + UseVisualStyleBackColor face: just the scaled glyph (and,
+        for bntOK / btnSave, a caption beneath it), with no button surface in any interaction
+        state. Because Avalonia type selectors match the EXACT type (a RepeatButton is NOT matched
+        by a "Button" selector), the style is declared once for Button and once for RepeatButton —
+        the proven sibling convention (see Settings/FormSteerView.axaml). The :pointerover /
+        :pressed template overrides suppress the Fluent hover/press fill that would otherwise box
+        the glyph (the same technique used by FormYesView / FormPanView / FormSaveOrNotView).
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <Style Selector="RepeatButton.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="RepeatButton.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="RepeatButton.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root Canvas == the WinForms client area (231 x 393). The six direct children are placed at
+        their exact WinForms designer Location/Size via Canvas.Left / Canvas.Top, giving true pixel
+        parity for this fixed-layout dialog.
+    -->
+    <Canvas Width="231" Height="393">
+
+        <!-- ============================ adjust arrows ============================ -->
+
+        <!-- btnSouth: WinForms AgLibrary.Controls.RepeatButton @ (33,12) 72 x 72, Image DnArrow64,
+             FlatStyle.Flat + BorderSize 0. The Down arrow LOWERS the smooth count (btnSouth_MouseDown
+             decrements smoothCount, clamped to a minimum of 2). Hold-to-repeat: Delay before the first auto-repeat and
+             Interval between repeats are set to comfortable values so a press-and-hold steps the value,
+             reproducing the source RepeatButton behaviour. The 64 x 64 glyph is centred in the 72 x 72
+             button (≈ 4 px inset each side), matching the WinForms native-size Image draw. -->
+        <RepeatButton x:Name="btnSouth"
+                      Classes="flatImage"
+                      Canvas.Left="33" Canvas.Top="12"
+                      Width="72" Height="72"
+                      Delay="300" Interval="100"
+                      AutomationProperties.Name="Decrease smoothing">
+            <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </RepeatButton>
+
+        <!-- btnNorth: WinForms RepeatButton @ (130,12) 72 x 72, Image UpArrow64, FlatStyle.Flat +
+             BorderSize 0. The Up arrow RAISES the smooth count (btnNorth_MouseDown: smoothCount++
+             clamped to <= 100). Same hold-to-repeat cadence as btnSouth. -->
+        <RepeatButton x:Name="btnNorth"
+                      Classes="flatImage"
+                      Canvas.Left="130" Canvas.Top="12"
+                      Width="72" Height="72"
+                      Delay="300" Interval="100"
+                      AutomationProperties.Name="Increase smoothing">
+            <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </RepeatButton>
+
+        <!-- lblSmooth: WinForms Label @ (73,96), Tahoma 36pt Bold (-> 48 DIP), AutoSize, BackColor
+             Transparent. The large smooth-count readout. Initial text "**" matches FormSmoothAB_Load
+             (the designer's "99" was only a design-time placeholder). Foreground hard-coded Black for
+             legibility on the fixed WhiteSmoke surface (theme-independent). Left auto-sized (no fixed
+             Width) so it grows with the digit count exactly like the WinForms AutoSize label. -->
+        <TextBlock x:Name="lblSmooth"
+                   Canvas.Left="73" Canvas.Top="96"
+                   FontFamily="Tahoma"
+                   FontSize="48"
+                   FontWeight="Bold"
+                   Foreground="Black"
+                   Text="**" />
+
+        <!-- ============================ command buttons ============================ -->
+
+        <!-- bntOK: WinForms Button @ (12,179) 93 x 93, FlatStyle.Flat + BorderSize 0, Image
+             FileDontSave with ImageAlign TopCenter and Text "For Now" with TextAlign BottomCenter.
+             "For Now" applies smoothing for the session and closes (bntOK_Click). The Image-over-text
+             layout is reproduced with a centred vertical StackPanel (Image on top, caption beneath) —
+             the sibling convention for in-button captions (see FormAgShareSettingsView). The caption
+             is its own named TextBlock (bntOKText) so the code-behind can set gStr.gsForNow at runtime
+             (an Avalonia Button has no .Text; the caption lives in Content). -->
+        <Button x:Name="bntOK"
+                Classes="flatImage"
+                Canvas.Left="12" Canvas.Top="179"
+                Width="93" Height="93"
+                AutomationProperties.Name="For Now">
+            <StackPanel Orientation="Vertical"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                <Image Source="avares://AgOpenGPS/btnImages/FileDontSave.png"
+                       Width="64" Height="64" Stretch="Uniform"
+                       HorizontalAlignment="Center" />
+                <TextBlock x:Name="bntOKText"
+                           Text="For Now"
+                           FontFamily="Tahoma"
+                           FontSize="19"
+                           Foreground="Black"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+        <!-- btnSave: WinForms Button @ (130,179) 93 x 93, FlatStyle.Flat + BorderSize 0, Image
+             FileSave (ImageAlign TopCenter) + Text "To File" (TextAlign BottomCenter). "To File"
+             applies smoothing, persists the tracks, and closes (btnSave_Click). Same Image-over-caption
+             layout as bntOK; caption exposed as btnSaveText for gStr.gsToFile localisation. -->
+        <Button x:Name="btnSave"
+                Classes="flatImage"
+                Canvas.Left="130" Canvas.Top="179"
+                Width="93" Height="93"
+                AutomationProperties.Name="To File">
+            <StackPanel Orientation="Vertical"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                <Image Source="avares://AgOpenGPS/btnImages/FileSave.png"
+                       Width="64" Height="64" Stretch="Uniform"
+                       HorizontalAlignment="Center" />
+                <TextBlock x:Name="btnSaveText"
+                           Text="To File"
+                           FontFamily="Tahoma"
+                           FontSize="19"
+                           Foreground="Black"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+        <!-- btnCancel: WinForms Button @ (130,298) 93 x 82, FlatStyle.Flat + BorderSize 0, Image
+             Cancel64. Image-ONLY (the source assigns no .Text to btnCancel). Discards the smoothing
+             and closes (btnCancel_Click). The 64 x 64 glyph is centred in the 93 x 82 button. -->
+        <Button x:Name="btnCancel"
+                Classes="flatImage"
+                Canvas.Left="130" Canvas.Top="298"
+                Width="93" Height="82"
+                AutomationProperties.Name="Cancel">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

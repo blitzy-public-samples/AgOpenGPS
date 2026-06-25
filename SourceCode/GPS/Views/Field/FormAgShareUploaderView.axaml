@@ -1,0 +1,305 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — AgShare bulk-upload dialog (Avalonia view).
+
+    1:1 visual + behavioural PARITY reimplementation of the WinForms
+    `Forms/Field/FormAgShareUploader` (source: FormAgShareUploader.cs +
+    FormAgShareUploader.Designer.cs + FormAgShareUploader.resx). Per AAP §0.3.3 this is a
+    faithful re-platform of the currently rendered Windows Forms surface — never a redesign:
+    no new colours, no relayout, no UX changes. NO OpenGL is involved.
+
+    The dialog lists every local field as a checkbox in a scrolling panel, lets the operator
+    Select-All / Deselect-All, then uploads the ticked fields to the AgShare cloud while a
+    progress bar advances and a status line reports each field. The cloud-status pass prefixes
+    already-uploaded fields with a ☁ glyph.
+
+    CODE-BEHIND CONTRACT — FormAgShareUploaderView.axaml.cs
+    (partial class AgOpenGPS.Views.FormAgShareUploaderView : Window, constructed with an injected
+    AgShareClient — mirroring the WinForms ctor FormAgShareUploader(AgShareClient)):
+      * This is an IMPERATIVE, code-behind dialog — exactly like the WinForms partial that used
+        direct field access — so there is intentionally NO x:DataType, NO DataContext and NO
+        {Binding}. Every control is addressed by its x:Name; the x:Names below are the integration
+        contract and MUST stay byte-identical to the originals the code-behind references:
+            flpFieldList  lblStatus  progressBar
+            btnSelectAll  btnDeselectAll  btnUpload  btnClose
+      * NO event handlers are wired in this markup (the established AgShare-sibling convention —
+        see FormAgShareSettingsView.axaml). The code-behind attaches the Click handlers BY NAME
+        (flpFieldList children, btnSelectAll/btnDeselectAll/btnUpload/btnClose), reproducing the
+        WinForms btnSelectAll_Click / btnDeselectAll_Click / btnUpload_Click / btnClose_Click.
+        Keeping the wiring out of the markup also keeps this .axaml self-contained: it compiles
+        without coupling to a specific handler signature in the partner code-behind file.
+      * flpFieldList is populated AT RUNTIME: LoadAvailableFields() adds one CheckBox per field
+        (Tag = the field's FieldInfo) to flpFieldList.Children; CheckCloudStatusAsync() then
+        recolours / re-captions them. The markup therefore leaves flpFieldList EMPTY.
+      * During PerformBulkUpload the code-behind disables btnUpload / btnClose / btnSelectAll /
+        btnDeselectAll (WinForms .Enabled = false); the Button.imageButton:disabled style below
+        dims the glyph to reproduce the greyed WinForms look. progressBar.Maximum is set to the
+        selected-field count and Value is advanced per field. lblStatus carries the live status
+        text (default "Ready").
+
+    WINDOW SHELL — mirrors FormAgShareUploader.Designer.cs:
+      Text "AgShare Upload"        -> Title.
+      ClientSize 1000 x 760        -> Width / Height (sensible defaults; the dialog is resizable).
+      FormBorderStyle.Fixed3D
+        + ControlBox = false       -> standard OS frame. The list can be long, so per the file spec
+                                      the dialog is RESIZABLE (CanResize="True"), unlike the fixed
+                                      borderless sibling dialogs. Avalonia cannot hide only the close
+                                      button while keeping a titled, resizable frame, so the standard
+                                      frame is kept and the dialog's own Close button is the primary
+                                      close affordance (a minor, documented deviation — same rationale
+                                      as the sibling FormEventViewerView).
+      ShowInTaskbar = false        -> ShowInTaskbar="False".
+      StartPosition.CenterScreen   -> WindowStartupLocation="CenterOwner" (shown owned over FormGPS,
+                                      matching every sibling dialog in this migration).
+      Padding(10)                  -> reproduced as the root container Margin (the WinForms form
+                                      Padding around the docked panel1).
+      BackColor Gainsboro / panel1 -> Background="{DynamicResource AogFrameBrush}" — per this file's
+        BackColor LightGray           spec the neutral chrome is themed to the App.axaml day/night
+                                      palette (AogFrameBrush) rather than hard-coding a WinForms
+                                      colour; panel1 is preserved as a transparent grouping Border so
+                                      the themed frame shows through (same approach as FormSaveOrNotView).
+      Font Tahoma                  -> FontFamily="Tahoma"; WinForms points are converted to Avalonia
+                                      device-independent pixels (pt x 96/72): Tahoma 12 -> 16.
+
+    THEME — neutral chrome tracks the App.axaml day/night ThemeDictionaries via {DynamicResource}
+    (so the live Light<->Dark switch is observed): window Background = AogFrameBrush, status text =
+    AogTextBrush. The flpFieldList surface keeps the WinForms LightGreen (#FF90EE90) as a literal,
+    theme-independent functional colour cue for the field list (the same way the sibling
+    FormEventViewerView hard-codes its White log surface for parity); the runtime checkbox text stays
+    legible on it in both day and night.
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs,
+    mapped verbatim from the Designer's Button.Image assignments (TextImageRelation.ImageAboveText ->
+    a vertical Image-over-TextBlock stack, BackColor.Transparent + FlatStyle.Flat + BorderSize 0 ->
+    the Button.imageButton style):
+      btnSelectAll.Image   = Resources.SelectAll    -> btnImages/SelectAll.png
+      btnDeselectAll.Image = Resources.DeselectAll  -> btnImages/DeselectAll.png
+      btnUpload.Image      = Resources.SaveToCloud  -> btnImages/SaveToCloud.png
+      btnClose.Image       = Resources.OK64         -> btnImages/OK64.png
+
+    No WinForms, no GMap, no System.Drawing, no OpenTK namespaces are referenced — Avalonia 11.3 only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormAgShareUploaderView"
+        Title="AgShare Upload"
+        Width="1000"
+        Height="760"
+        MinWidth="640"
+        MinHeight="480"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="16"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Flat, chrome-less image buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor = Transparent: only the glyph + label show, with no
+        button fill in any visual state. The :pointerover / :pressed template overrides suppress the
+        Fluent hover/press background that would otherwise box the content (the same technique used by
+        the siblings FormSaveOrNotView / FormAgShareSettingsView). The :disabled Opacity dim reproduces
+        the greyed WinForms look while the code-behind has the buttons disabled during an upload.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        panel1: the WinForms Panel (Dock = Fill, originally BackColor LightGray) that hosted every
+        control. Preserved as a transparent grouping Border so the themed AogFrameBrush window frame
+        shows through. The outer Margin reproduces the WinForms form Padding(10); the inner Grid's
+        Margin reproduces the ~20 px inset at which flpFieldList sat inside the panel.
+    -->
+    <Border x:Name="panel1" Background="Transparent" Margin="10">
+
+        <!--
+            Responsive layout. The field list takes all remaining height (* row); the bottom command
+            area sizes to its content (Auto row). This mirrors the WinForms stacking — the long,
+            scrolling list on top with the buttons + status + progress beneath — while flexing with
+            the resizable window (the same Grid "*,Auto" pattern as the sibling FormEventViewerView).
+        -->
+        <Grid Margin="10" RowDefinitions="*,Auto" RowSpacing="10">
+
+            <!--
+                flpFieldList area — WinForms FlowLayoutPanel: BackColor LightGreen, BorderStyle Fixed3D,
+                FlowDirection TopDown, WrapContents = false, AutoScroll = true. Reproduced as a bordered
+                LightGreen Border wrapping a vertical-scrolling ScrollViewer over the named StackPanel
+                the code-behind populates with one CheckBox per field. HorizontalScrollBarVisibility is
+                Disabled (TopDown flow never scrolled horizontally); the 2 px gray border stands in for
+                the Fixed3D sunken edge.
+            -->
+            <Border Grid.Row="0"
+                    Background="#FF90EE90"
+                    BorderBrush="#FF7F7F7F"
+                    BorderThickness="2">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <!-- Populated at runtime by LoadAvailableFields() — intentionally empty here. -->
+                    <StackPanel x:Name="flpFieldList"
+                                Orientation="Vertical"
+                                Margin="4"
+                                Spacing="2" />
+                </ScrollViewer>
+            </Border>
+
+            <!--
+                Bottom command area. Three stacked rows reproduce the WinForms vertical order: the
+                button row on top (Select-All / Deselect-All on the left, Upload-Selected / Close on
+                the right, mirroring the Designer's left/right X positions), then the status line, then
+                the progress bar spanning the width.
+            -->
+            <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+
+                <!-- Button row: left group + spacer + right group. -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+
+                    <!-- Left group — Select All / Deselect All. -->
+                    <StackPanel Grid.Column="0"
+                                Orientation="Horizontal"
+                                Spacing="20">
+
+                        <!-- btnSelectAll: WinForms Button 118 x 91, Resources.SelectAll above "Select All". -->
+                        <Button x:Name="btnSelectAll"
+                                Classes="imageButton"
+                                Width="118"
+                                Height="91"
+                                AutomationProperties.Name="Select All">
+                            <StackPanel Orientation="Vertical"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                <Image Width="52" Height="52"
+                                       Source="avares://AgOpenGPS/btnImages/SelectAll.png"
+                                       Stretch="Uniform"
+                                       HorizontalAlignment="Center" />
+                                <TextBlock Text="Select All"
+                                           FontSize="16"
+                                           FontWeight="Bold"
+                                           Foreground="{DynamicResource AogTextBrush}"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <!-- btnDeselectAll: WinForms Button 118 x 91, Resources.DeselectAll above "Deselect All". -->
+                        <Button x:Name="btnDeselectAll"
+                                Classes="imageButton"
+                                Width="118"
+                                Height="91"
+                                AutomationProperties.Name="Deselect All">
+                            <StackPanel Orientation="Vertical"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                <Image Width="52" Height="52"
+                                       Source="avares://AgOpenGPS/btnImages/DeselectAll.png"
+                                       Stretch="Uniform"
+                                       HorizontalAlignment="Center" />
+                                <TextBlock Text="Deselect All"
+                                           FontSize="16"
+                                           FontWeight="Bold"
+                                           Foreground="{DynamicResource AogTextBrush}"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Right group — Upload Selected / Close. -->
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="12">
+
+                        <!-- btnUpload: WinForms Button 180 x 92, Resources.SaveToCloud above "Upload Selected". -->
+                        <Button x:Name="btnUpload"
+                                Classes="imageButton"
+                                Width="180"
+                                Height="92"
+                                AutomationProperties.Name="Upload Selected">
+                            <StackPanel Orientation="Vertical"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                <Image Width="52" Height="52"
+                                       Source="avares://AgOpenGPS/btnImages/SaveToCloud.png"
+                                       Stretch="Uniform"
+                                       HorizontalAlignment="Center" />
+                                <TextBlock Text="Upload Selected"
+                                           FontSize="16"
+                                           FontWeight="Bold"
+                                           Foreground="{DynamicResource AogTextBrush}"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <!-- btnClose: WinForms Button 170 x 92, Resources.OK64 above "Close". -->
+                        <Button x:Name="btnClose"
+                                Classes="imageButton"
+                                Width="170"
+                                Height="92"
+                                AutomationProperties.Name="Close">
+                            <StackPanel Orientation="Vertical"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                <Image Width="52" Height="52"
+                                       Source="avares://AgOpenGPS/btnImages/OK64.png"
+                                       Stretch="Uniform"
+                                       HorizontalAlignment="Center" />
+                                <TextBlock Text="Close"
+                                           FontSize="16"
+                                           FontWeight="Bold"
+                                           Foreground="{DynamicResource AogTextBrush}"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- lblStatus: WinForms Label, Tahoma 12, MiddleLeft, default text "Ready". The
+                     code-behind rewrites it ("Found N fields", "Uploading: X...", etc.). -->
+                <TextBlock x:Name="lblStatus"
+                           Grid.Row="1"
+                           Text="Ready"
+                           FontSize="16"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           TextAlignment="Left" />
+
+                <!-- progressBar: WinForms ProgressBar (740 x 40). Stretches the width; the code-behind
+                     sets Maximum = selected-field count and advances Value per field. -->
+                <ProgressBar x:Name="progressBar"
+                             Grid.Row="2"
+                             Height="34"
+                             HorizontalAlignment="Stretch"
+                             Minimum="0"
+                             Value="0" />
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

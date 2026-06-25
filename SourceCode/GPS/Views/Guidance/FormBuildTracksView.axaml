@@ -1,0 +1,1119 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Tracks" Track-Manager dialog (Avalonia view).
+
+    1:1 visual + behavioural PARITY reimplementation of the deleted WinForms
+    `Forms/Guidance/FormBuildTracks` (FormBuildTracks.cs + FormBuildTracks.Designer.cs). This is the
+    full Track Manager: a track LIST (panelMain) plus a multi-mode track BUILDER reached through a
+    chooser (panelChoose) — Curve, AB line, A+, Lat/Lon+Heading, Lat/Lon Lat/Lon, Pivot, and KML
+    import. It is the largest dialog in the Guidance folder: eleven overlapping sub-panels share the
+    same top-left origin (3,3) and the code-behind shows exactly one at a time, resizing the window
+    per active panel. Per AAP §0.3.3 this is a faithful parity reimplementation of the current
+    Windows Forms look — never a redesign: no new fields, no relayout, no UX changes.
+
+    WIRING CONTRACT — this view is a CODE-BEHIND dialog, NOT MVVM (exactly like the sibling
+    FormRecordPickerView / FormSimCoordsView):
+      * There is intentionally NO x:DataType and NO DataContext on the view. The partner code-behind
+        (FormBuildTracksView.axaml.cs) owns ALL behaviour and addresses every control imperatively
+        BY x:Name. Consequently NO Click handlers are declared in this markup (the schema/agent
+        prompt mandates "Wire handlers in code-behind (not XAML)"); every named control below MUST
+        keep its EXACT x:Name so the code-behind compiles and binds against it. This also lets the
+        markup compile without depending on the (separately authored) handler method names.
+      * Panel switching + window resize: FormBuildTracks_Load repositions every sub-panel to (3,3)
+        and shows only panelMain; entering a builder mode swaps the visible panel and resizes the
+        window (650x480 main/choose, 270x360, 370x460, 370x360). The code-behind owns that logic;
+        here all panels are pre-positioned at (3,3) with only panelMain IsVisible="True".
+      * Title: the WinForms designer Text was "Tracks"; the code-behind overrides it at runtime with
+        the localized gStr.gsTracks — the same Title-in-code-behind convention used by the sibling
+        FormRecordPickerView / FormSimCoordsView. The design-time Title below is the literal default.
+      * Localised captions: the label Text values below are the WinForms designer defaults; the
+        code-behind (re)assigns the translated strings (gStr.*) at runtime.
+
+    THE TRACK LIST (flp): the WinForms FlowLayoutPanel built THREE controls per track in add-order
+    b (mode icon) -> t (name) -> a (visible toggle). It is reimplemented here as an
+    <ItemsControl x:Name="flp"> inside a <ScrollViewer> (white, 450 x 399). The ItemTemplate renders
+    that exact three-control row left-to-right. The code-behind owns a backing collection of a small
+    row view-type and the selection/visibility logic (WinForms UpdateTable / A_Click /
+    LineSelected_Click): name Click selects (highlight LightBlue when visible), visible Click toggles
+    isVisible (Green/Red + name fg Black/Gray), the mode icon has no click (drag only). Touch-drag
+    scrolling (WinForms StartDrag/DoDrag) is reproduced in code-behind by adjusting the ScrollViewer
+    (flpScroll) offset on pointer drag. Because no x:DataType is declared and the root sets
+    x:CompileBindings="False", every {Binding} in the row template is a reflection binding — the row
+    view-type's PROPERTY NAMES are the contract:
+        Name (string)             -> the name button caption
+        NameBackground (IBrush)   -> LightBlue when selected else AliceBlue
+        NameForeground (IBrush)   -> Black when visible else Gray
+        ModeImage (IImage)        -> TrackLine (AB) / TrackPivot (pivot) / TrackCurve (curve)
+        VisibleBackground (IBrush)-> Green when visible else Red
+    The three row buttons carry marker Classes (trackMode / trackName / trackVisible) so the
+    code-behind can attach the bubbled Click handlers without per-row markup wiring.
+
+    WINDOW SHELL — mirrors FormBuildTracks.Designer.cs:
+      BackColor WhiteSmoke        -> Background="WhiteSmoke" (the designer's literal control colour;
+                                     this dialog is a plain control-coloured surface, not day/night
+                                     chrome, so it is NOT themed with AogFrameBrush).
+      FormBorderStyle FixedSingle -> SystemDecorations="Full" + CanResize="False".
+      ControlBox / Max / Min = false : there is no portable way to hide ONLY the close/min/max
+                                     buttons while keeping a system title bar, so the standard
+                                     decorations are kept (CanResize="False" makes it fixed-size).
+      ShowInTaskbar = false       -> ShowInTaskbar="False".
+      StartPosition CenterParent  -> WindowStartupLocation="CenterOwner".
+      Load size 650 x 480         -> initial Width="650" Height="480" (panelMain default; the
+                                     code-behind resizes per active panel).
+      Font Tahoma                 -> FontFamily="Tahoma".
+
+    Button glyphs are served from the GPS assembly via avares://AgOpenGPS/btnImages/<name>.png,
+    matching the on-disk file casing and the avares:// convention already used by every sibling GPS
+    view. Two non-obvious assets: the A+ chooser tile uses btnImages/ABTrackA+.png (the literal '+'
+    is part of the file name and is a valid, undecoded character in an avares URI path), and the
+    three "fill from antenna" buttons use the sub-foldered btnImages/Config/ConS_ImplementAntenna.png
+    (sub-folder glyphs are referenced the same way by the sibling FormSteerView).
+
+    WinForms font pt -> Avalonia DIP = pt * 96/72: 9.75->13, 11.25->15, 14.25->19, 18->24,
+    21.75->29, 24->32, 27.75->37.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormBuildTracksView"
+        Title="Tracks"
+        Width="650"
+        Height="480"
+        Background="WhiteSmoke"
+        SystemDecorations="Full"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        x:CompileBindings="False">
+
+    <Window.Styles>
+
+        <!-- WinForms labels were Black / ControlText on the light panels. -->
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+
+        <!-- Flat, transparent, image-only command buttons: reproduce WinForms FlatStyle.Flat +
+             FlatAppearance.BorderSize=0 + BackColor.Transparent, and keep that face through
+             hover/pressed (the Fluent template otherwise paints a hover/pressed fill). The
+             pointerover/pressed setters target the template content presenter — the same technique
+             used by the sibling FormRecordPickerView / FormSimCoordsView. -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- panelChoose mode tiles: WinForms BackColor White + FlatStyle.Flat +
+             FlatAppearance.BorderColor Black + Tahoma 12pt Bold. A ControlTemplate binds the face to
+             the control's own Background so the White stays stable across pointerover/pressed (no
+             Fluent recolor); the tile holds an image-only glyph (captions are separate TextBlocks). -->
+        <Style Selector="Button.whiteButton">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="Black" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="6" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Center"
+                                      VerticalContentAlignment="Center" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- nud* numeric DISPLAY buttons: reproduce the WinForms NudlessNumericUpDown (a read-only
+             numeric up/down that pops a keypad on click). A ControlTemplate binds the face to the
+             control's own Background so each instance's colour (LightCyan / AliceBlue) stays stable
+             across hover/pressed. The code-behind assigns the value text (formatted with
+             CultureInfo.InvariantCulture) and opens the keypad on click; per-button Background and
+             FontSize are set inline below. -->
+        <Style Selector="Button.nud">
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Center"
+                                      VerticalContentAlignment="Center" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- Track-row cells (the three controls UpdateTable built per track). A ControlTemplate binds
+             the face + text colour to each cell's own Background/Foreground (set by the row binding)
+             so the selection/visibility colours stay stable across hover/pressed — reproducing the
+             WinForms FlatStyle.Flat buttons whose BackColor/ForeColor are driven entirely by code. -->
+        <Style Selector="Button.trackCell">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      Content="{TemplateBinding Content}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+    </Window.Styles>
+
+    <!--
+        Root Canvas. Every sub-panel is itself a <Canvas> pinned at (3,3) (FormBuildTracks_Load moves
+        ALL panels to that origin); the code-behind toggles IsVisible to show exactly one at a time,
+        and resizes the window to suit. Only panelMain starts visible. Children within each panel use
+        within-panel Canvas.Left/Canvas.Top equal to their WinForms Designer Location.
+    -->
+    <Canvas>
+
+        <!-- ============================================================================
+             panelMain — the track LIST (630 x 425, WhiteSmoke). The only panel visible at
+             startup. Left column = list-management buttons; the white flp list fills the
+             centre; right column = move/visibility/new/use buttons.
+             ============================================================================ -->
+        <Canvas x:Name="panelMain"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="630"
+                Height="425"
+                Background="WhiteSmoke"
+                IsVisible="True">
+
+            <!-- btnListDelete — delete the selected track (Resources.Trash). (16,6) 54 x 54. -->
+            <Button x:Name="btnListDelete"
+                    Classes="imageButton"
+                    Canvas.Left="16"
+                    Canvas.Top="6"
+                    Width="54"
+                    Height="54"
+                    AutomationProperties.Name="Delete Track">
+                <Image Source="avares://AgOpenGPS/btnImages/Trash.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnEditName — rename the selected track (Resources.FileEditName). (4,102) 71 x 63. -->
+            <Button x:Name="btnEditName"
+                    Classes="imageButton"
+                    Canvas.Left="4"
+                    Canvas.Top="102"
+                    Width="71"
+                    Height="63"
+                    AutomationProperties.Name="Edit Name">
+                <Image Source="avares://AgOpenGPS/btnImages/FileEditName.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnDuplicate — duplicate the selected track (Resources.FileCopy). (4,186) 71 x 63. -->
+            <Button x:Name="btnDuplicate"
+                    Classes="imageButton"
+                    Canvas.Left="4"
+                    Canvas.Top="186"
+                    Width="71"
+                    Height="63"
+                    AutomationProperties.Name="Duplicate">
+                <Image Source="avares://AgOpenGPS/btnImages/FileCopy.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnSwapAB — swap the A/B ends of the selected track (Resources.ABSwapPoints).
+                 (4,270) 71 x 63. -->
+            <Button x:Name="btnSwapAB"
+                    Classes="imageButton"
+                    Canvas.Left="4"
+                    Canvas.Top="270"
+                    Width="71"
+                    Height="63"
+                    AutomationProperties.Name="Swap A B">
+                <Image Source="avares://AgOpenGPS/btnImages/ABSwapPoints.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnCancelMain — close the dialog (Resources.Cancel64). (4,354) 78 x 57. -->
+            <Button x:Name="btnCancelMain"
+                    Classes="imageButton"
+                    Canvas.Left="4"
+                    Canvas.Top="354"
+                    Width="78"
+                    Height="57"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- flp — the track list. WinForms FlowLayoutPanel at (88,8) 450 x 399, white. Here a
+                 ScrollViewer (flpScroll, named so the code-behind can adjust its offset for
+                 touch-drag scrolling) hosts the ItemsControl flp. The code-behind assigns flp.Items
+                 / ItemsSource (the row view-type collection) and attaches the bubbled row handlers. -->
+            <ScrollViewer x:Name="flpScroll"
+                          Canvas.Left="88"
+                          Canvas.Top="8"
+                          Width="450"
+                          Height="399"
+                          Background="White"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="flp">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <!-- One track row = mode icon (b) -> name (t) -> visible toggle (a),
+                                 the exact WinForms flp.Controls.Add order. -->
+                            <StackPanel Orientation="Horizontal">
+
+                                <!-- b: mode icon. 35 x 25, Margin(1,10,3,10), FlatStyle.Flat,
+                                     no click (drag only). ModeImage = TrackLine/TrackPivot/TrackCurve. -->
+                                <Button Classes="trackMode imageButton"
+                                        Width="35"
+                                        Height="25"
+                                        Margin="1,10,3,10"
+                                        IsTabStop="False">
+                                    <Image Source="{Binding ModeImage}" Stretch="Uniform" />
+                                </Button>
+
+                                <!-- t: name button. 330 x 40, Margin(3), Tahoma 18pt (24 DIP),
+                                     MiddleLeft. Click selects (code-behind). BackColor LightBlue when
+                                     selected else AliceBlue; ForeColor Black when visible else Gray. -->
+                                <Button Classes="trackName trackCell"
+                                        Width="330"
+                                        Height="40"
+                                        Margin="3"
+                                        FontSize="24"
+                                        HorizontalContentAlignment="Left"
+                                        VerticalContentAlignment="Center"
+                                        Content="{Binding Name}"
+                                        Background="{Binding NameBackground}"
+                                        Foreground="{Binding NameForeground}" />
+
+                                <!-- a: visible toggle. 40 x 25, Margin(20,10,2,10). Click toggles
+                                     visibility (code-behind). BackColor Green when visible else Red. -->
+                                <Button Classes="trackVisible trackCell"
+                                        Width="40"
+                                        Height="25"
+                                        Margin="20,10,2,10"
+                                        Background="{Binding VisibleBackground}" />
+
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <!-- btnMoveUp — move the selected track up the list (Resources.UpArrow64). (545,6) 78 x 57. -->
+            <Button x:Name="btnMoveUp"
+                    Classes="imageButton"
+                    Canvas.Left="545"
+                    Canvas.Top="6"
+                    Width="78"
+                    Height="57"
+                    AutomationProperties.Name="Move Up">
+                <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnMoveDn — move the selected track down the list (Resources.DnArrow64). (545,79) 78 x 57. -->
+            <Button x:Name="btnMoveDn"
+                    Classes="imageButton"
+                    Canvas.Left="545"
+                    Canvas.Top="79"
+                    Width="78"
+                    Height="57"
+                    AutomationProperties.Name="Move Down">
+                <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnHideShow — toggle hide/show of all tracks (Resources.ABLinesHideShow). (545,160) 78 x 57. -->
+            <Button x:Name="btnHideShow"
+                    Classes="imageButton"
+                    Canvas.Left="545"
+                    Canvas.Top="160"
+                    Width="78"
+                    Height="57"
+                    AutomationProperties.Name="Hide Show">
+                <Image Source="avares://AgOpenGPS/btnImages/ABLinesHideShow.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnNewTrack — start the new-track chooser (Resources.AddNew). (545,258) 78 x 57. -->
+            <Button x:Name="btnNewTrack"
+                    Classes="imageButton"
+                    Canvas.Left="545"
+                    Canvas.Top="258"
+                    Width="78"
+                    Height="57"
+                    AutomationProperties.Name="New Track">
+                <Image Source="avares://AgOpenGPS/btnImages/AddNew.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnListUse — accept / use the selected track (Resources.OK64). (545,356) 78 x 57. -->
+            <Button x:Name="btnListUse"
+                    Classes="imageButton"
+                    Canvas.Left="545"
+                    Canvas.Top="356"
+                    Width="78"
+                    Height="57"
+                    AutomationProperties.Name="Use">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelChoose — the new-track MODE chooser (630 x 425, Gainsboro). Eight white
+             mode tiles (each with a caption TextBlock) plus Cancel. Reached from
+             panelMain btnNewTrack.
+             ============================================================================ -->
+        <Canvas x:Name="panelChoose"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="630"
+                Height="425"
+                Background="Gainsboro"
+                IsVisible="False">
+
+            <!-- btnLatLonPivotCircle — Lat/Lon pivot circle (Resources.ABPivotCircle). (89,10) 100 x 107. -->
+            <Button x:Name="btnLatLonPivotCircle"
+                    Classes="whiteButton"
+                    Canvas.Left="89"
+                    Canvas.Top="10"
+                    Width="100"
+                    Height="107"
+                    AutomationProperties.Name="Lat Lon Pivot Circle">
+                <Image Source="avares://AgOpenGPS/btnImages/ABPivotCircle.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnLoadABFromKML — import a track from KML (Resources.BoundaryLoadFromGE). (89,152) 100 x 107. -->
+            <Button x:Name="btnLoadABFromKML"
+                    Classes="whiteButton"
+                    Canvas.Left="89"
+                    Canvas.Top="152"
+                    Width="100"
+                    Height="107"
+                    AutomationProperties.Name="Load AB From KML">
+                <Image Source="avares://AgOpenGPS/btnImages/BoundaryLoadFromGE.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnzLatLon — Lat/Lon + Lat/Lon (Resources.ABLatLonLatLon). (265,10) 100 x 107. -->
+            <Button x:Name="btnzLatLon"
+                    Classes="whiteButton"
+                    Canvas.Left="265"
+                    Canvas.Top="10"
+                    Width="100"
+                    Height="107"
+                    AutomationProperties.Name="Lat Lon Lat Lon">
+                <Image Source="avares://AgOpenGPS/btnImages/ABLatLonLatLon.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnzLatLonPlusHeading — Lat/Lon + heading (Resources.ABLatLonHeading). (265,153) 100 x 107. -->
+            <Button x:Name="btnzLatLonPlusHeading"
+                    Classes="whiteButton"
+                    Canvas.Left="265"
+                    Canvas.Top="153"
+                    Width="100"
+                    Height="107"
+                    AutomationProperties.Name="Lat Lon Plus Heading">
+                <Image Source="avares://AgOpenGPS/btnImages/ABLatLonHeading.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnLatLonPivot — Lat/Lon pivot (Resources.ABPivot). (265,296) 100 x 107. -->
+            <Button x:Name="btnLatLonPivot"
+                    Classes="whiteButton"
+                    Canvas.Left="265"
+                    Canvas.Top="296"
+                    Width="100"
+                    Height="107"
+                    AutomationProperties.Name="Lat Lon Pivot">
+                <Image Source="avares://AgOpenGPS/btnImages/ABPivot.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnzAPlus — A+ track (Resources.ABTrackA+ -> btnImages/ABTrackA+.png; literal '+'). (468,10) 100 x 107. -->
+            <Button x:Name="btnzAPlus"
+                    Classes="whiteButton"
+                    Canvas.Left="468"
+                    Canvas.Top="10"
+                    Width="100"
+                    Height="107"
+                    AutomationProperties.Name="A Plus">
+                <Image Source="avares://AgOpenGPS/btnImages/ABTrackA+.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnzABLine — AB line (Resources.ABTrackAB). (468,153) 100 x 107. -->
+            <Button x:Name="btnzABLine"
+                    Classes="whiteButton"
+                    Canvas.Left="468"
+                    Canvas.Top="153"
+                    Width="100"
+                    Height="107"
+                    AutomationProperties.Name="AB Line">
+                <Image Source="avares://AgOpenGPS/btnImages/ABTrackAB.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnzABCurve — AB curve (Resources.ABTrackCurve). (468,296) 100 x 107. -->
+            <Button x:Name="btnzABCurve"
+                    Classes="whiteButton"
+                    Canvas.Left="468"
+                    Canvas.Top="296"
+                    Width="100"
+                    Height="107"
+                    AutomationProperties.Name="AB Curve">
+                <Image Source="avares://AgOpenGPS/btnImages/ABTrackCurve.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnCancelChoose — back/cancel out of the chooser (Resources.Cancel64), transparent flat.
+                 (5,338) 90 x 80. -->
+            <Button x:Name="btnCancelChoose"
+                    Classes="imageButton"
+                    Canvas.Left="5"
+                    Canvas.Top="338"
+                    Width="90"
+                    Height="80"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- Caption labels (Tahoma 9.75pt = 13 DIP). Text = WinForms designer defaults; the
+                 code-behind (re)assigns the translated gStr captions at runtime. -->
+            <TextBlock x:Name="label2" Canvas.Left="122" Canvas.Top="121" FontSize="13" Text="Pivot" />
+            <TextBlock x:Name="labelABCurve" Canvas.Left="107" Canvas.Top="265" FontSize="13" Text="AB + Curve" />
+            <TextBlock x:Name="labelLatLon" Canvas.Left="294" Canvas.Top="120" FontSize="13" Text="Lat/Lon" />
+            <TextBlock x:Name="labelLatLonHeading" Canvas.Left="290" Canvas.Top="263" FontSize="13" Text="Lat/Lon +" />
+            <TextBlock x:Name="labelAPlus" Canvas.Left="506" Canvas.Top="121" FontSize="13" Text="A+" />
+            <TextBlock x:Name="labelABLine" Canvas.Left="496" Canvas.Top="264" FontSize="13" Text="AB Line" />
+            <TextBlock x:Name="labelPivot" Canvas.Left="288" Canvas.Top="406" FontSize="13" Text="Pivot" />
+            <TextBlock x:Name="labelCurve2" Canvas.Left="499" Canvas.Top="406" FontSize="13" Text="Curve" />
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelCurve — record/build an AB CURVE track (241 x 310, White). btnRefSideCurve,
+             btnACurve and btnPausePlay swap their glyph at runtime, so each carries a NAMED
+             child <Image> the code-behind retargets.
+             ============================================================================ -->
+        <Canvas x:Name="panelCurve"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="241"
+                Height="310"
+                Background="White"
+                IsVisible="False">
+
+            <TextBlock x:Name="labelCurve" Canvas.Left="4" Canvas.Top="4" FontSize="13" Text="Curve" />
+
+            <!-- btnRefSideCurve — reference side toggle. Default Resources.BoundaryRight; the
+                 code-behind swaps imgRefSideCurve.Source to BoundaryLeft when the ref side flips. -->
+            <Button x:Name="btnRefSideCurve"
+                    Classes="imageButton"
+                    Canvas.Left="88"
+                    Canvas.Top="2"
+                    Width="70"
+                    Height="60"
+                    AutomationProperties.Name="Reference Side">
+                <Image x:Name="imgRefSideCurve" Source="avares://AgOpenGPS/btnImages/BoundaryRight.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnACurve — mark point A / add point. Default Resources.LetterABlue; the code-behind
+                 swaps imgACurve.Source to PointAdd while recording. -->
+            <Button x:Name="btnACurve"
+                    Classes="imageButton"
+                    Canvas.Left="7"
+                    Canvas.Top="97"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="A">
+                <Image x:Name="imgACurve" Source="avares://AgOpenGPS/btnImages/LetterABlue.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnPausePlay — pause/resume recording. Default Resources.boundaryPause; the
+                 code-behind swaps imgPausePlay.Source to PointDelete / BoundaryRecord per state. -->
+            <Button x:Name="btnPausePlay"
+                    Classes="imageButton"
+                    Canvas.Left="146"
+                    Canvas.Top="97"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Pause Play">
+                <Image x:Name="imgPausePlay" Source="avares://AgOpenGPS/btnImages/boundaryPause.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- labelStatus / lblCurveExists — recording status readout (Tahoma 14.25pt Bold = 19 DIP).
+                 lblCurveExists default "> OFF <"; the code-behind sets gStr.gsDriving etc. -->
+            <TextBlock x:Name="labelStatus" Canvas.Left="36" Canvas.Top="195" Width="84" Height="23"
+                       FontSize="19" FontWeight="Bold" Text="Status: " />
+            <TextBlock x:Name="lblCurveExists" Canvas.Left="111" Canvas.Top="195" Width="91" Height="23"
+                       FontSize="19" FontWeight="Bold" Text="&gt; OFF &lt;" />
+
+            <!-- btnCancel_Curve — cancel (Resources.Cancel64). (7,235) 88 x 70. -->
+            <Button x:Name="btnCancel_Curve"
+                    Classes="imageButton"
+                    Canvas.Left="7"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnBCurve — accept point B / finish (Resources.OK64). (146,235) 88 x 70. -->
+            <Button x:Name="btnBCurve"
+                    Classes="imageButton"
+                    Canvas.Left="146"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="B">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelABLine — build a straight AB line (241 x 310, White). btnRefSideAB swaps its
+             glyph; btnBLine carries a named child <Image> (the code-behind also sets the button
+             BackColor to Teal once B is captured).
+             ============================================================================ -->
+        <Canvas x:Name="panelABLine"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="241"
+                Height="310"
+                Background="White"
+                IsVisible="False">
+
+            <TextBlock x:Name="labelABLine2" Canvas.Left="5" Canvas.Top="4" FontSize="13" Text="AB Line" />
+
+            <!-- btnRefSideAB — reference side toggle. Default BoundaryRight; code-behind swaps
+                 imgRefSideAB.Source to BoundaryLeft. -->
+            <Button x:Name="btnRefSideAB"
+                    Classes="imageButton"
+                    Canvas.Left="90"
+                    Canvas.Top="3"
+                    Width="70"
+                    Height="60"
+                    AutomationProperties.Name="Reference Side">
+                <Image x:Name="imgRefSideAB" Source="avares://AgOpenGPS/btnImages/BoundaryRight.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnALine — mark point A (Resources.LetterABlue). (4,110) 88 x 70. -->
+            <Button x:Name="btnALine"
+                    Classes="imageButton"
+                    Canvas.Left="4"
+                    Canvas.Top="110"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="A">
+                <Image Source="avares://AgOpenGPS/btnImages/LetterABlue.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnBLine — mark point B (Resources.LetterBBlue). (147,110) 88 x 70. The code-behind
+                 sets this button's Background to Teal once B is captured; imgBLine is the named
+                 glyph so the code-behind can adjust it if needed. -->
+            <Button x:Name="btnBLine"
+                    Classes="imageButton"
+                    Canvas.Left="147"
+                    Canvas.Top="110"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="B">
+                <Image x:Name="imgBLine" Source="avares://AgOpenGPS/btnImages/LetterBBlue.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnCancel_ABLine — cancel (Resources.Cancel64). (8,235) 88 x 70. -->
+            <Button x:Name="btnCancel_ABLine"
+                    Classes="imageButton"
+                    Canvas.Left="8"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnEnter_AB — accept (Resources.OK64). (142,235) 88 x 70. -->
+            <Button x:Name="btnEnter_AB"
+                    Classes="imageButton"
+                    Canvas.Left="142"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Enter">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelAPlus — build an A+ track (A point plus a typed heading) (241 x 310, White).
+             btnRefSideAPlus swaps its glyph; nudHeading is a keypad-backed numeric display.
+             ============================================================================ -->
+        <Canvas x:Name="panelAPlus"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="241"
+                Height="310"
+                Background="White"
+                IsVisible="False">
+
+            <TextBlock x:Name="labelAPlus2" Canvas.Left="6" Canvas.Top="4" FontSize="13" Text="A+" />
+
+            <!-- btnRefSideAPlus — reference side toggle. Default BoundaryRight; code-behind swaps
+                 imgRefSideAPlus.Source to BoundaryLeft. -->
+            <Button x:Name="btnRefSideAPlus"
+                    Classes="imageButton"
+                    Canvas.Left="26"
+                    Canvas.Top="35"
+                    Width="70"
+                    Height="60"
+                    AutomationProperties.Name="Reference Side">
+                <Image x:Name="imgRefSideAPlus" Source="avares://AgOpenGPS/btnImages/BoundaryRight.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnAPlus — mark point A (Resources.LetterABlue). (140,26) 80 x 78. -->
+            <Button x:Name="btnAPlus"
+                    Classes="imageButton"
+                    Canvas.Left="140"
+                    Canvas.Top="26"
+                    Width="80"
+                    Height="78"
+                    AutomationProperties.Name="A">
+                <Image Source="avares://AgOpenGPS/btnImages/LetterABlue.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- nudHeading — typed heading (NudlessNumericUpDown, DecimalPlaces 4). (9,146) 221 x 52,
+                 LightCyan, Tahoma 27.75pt Bold (37 DIP), design value "0". Code-behind opens the
+                 keypad on click and assigns the value (CultureInfo.InvariantCulture). -->
+            <Button x:Name="nudHeading"
+                    Classes="nud"
+                    Canvas.Left="9"
+                    Canvas.Top="146"
+                    Width="221"
+                    Height="52"
+                    Background="LightCyan"
+                    FontSize="37"
+                    Content="0"
+                    AutomationProperties.Name="Heading" />
+
+            <!-- btnCancel_APlus — cancel (Resources.Cancel64). (8,235) 88 x 70. -->
+            <Button x:Name="btnCancel_APlus"
+                    Classes="imageButton"
+                    Canvas.Left="8"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnEnter_APlus — accept (Resources.OK64). (142,235) 88 x 70. -->
+            <Button x:Name="btnEnter_APlus"
+                    Classes="imageButton"
+                    Canvas.Left="142"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Enter">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelName — name a NEW track (241 x 310, White). A multiline name entry, a
+             "+ time-stamp" helper, plus accept/cancel.
+             ============================================================================ -->
+        <Canvas x:Name="panelName"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="241"
+                Height="310"
+                Background="White"
+                IsVisible="False">
+
+            <TextBlock x:Name="labelEnterName" Canvas.Left="16" Canvas.Top="14" FontSize="13" Text="Add Name" />
+
+            <!-- textBox1 — track name entry. WinForms BackColor LightCyan, BorderStyle FixedSingle,
+                 Multiline, Tahoma 14.25pt (19 DIP). (17,37) 204 x 77. -->
+            <TextBox x:Name="textBox1"
+                     Canvas.Left="17"
+                     Canvas.Top="37"
+                     Width="204"
+                     Height="77"
+                     Background="LightCyan"
+                     BorderBrush="Gray"
+                     BorderThickness="1"
+                     FontSize="19"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap" />
+
+            <!-- label1 — the "+" between the name box and the time-stamp button. (48,154) 33 x 29,
+                 Tahoma 18pt Bold (24 DIP). -->
+            <TextBlock x:Name="label1" Canvas.Left="48" Canvas.Top="154" Width="33" Height="29"
+                       FontSize="24" FontWeight="Bold" Text="+" />
+
+            <!-- btnAddTime — append a time stamp to the name (Resources.JobNameTime). (87,133) 68 x 69. -->
+            <Button x:Name="btnAddTime"
+                    Classes="imageButton"
+                    Canvas.Left="87"
+                    Canvas.Top="133"
+                    Width="68"
+                    Height="69"
+                    AutomationProperties.Name="Add Time">
+                <Image Source="avares://AgOpenGPS/btnImages/JobNameTime.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnCancel_Name — cancel (Resources.Cancel64). (5,235) 88 x 70. -->
+            <Button x:Name="btnCancel_Name"
+                    Classes="imageButton"
+                    Canvas.Left="5"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnAdd — accept the name (Resources.OK64). (141,235) 88 x 70. -->
+            <Button x:Name="btnAdd"
+                    Classes="imageButton"
+                    Canvas.Left="141"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Add">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelEditName — rename an EXISTING track (241 x 310, White). Mirrors panelName with
+             its own multiline entry and accept/cancel.
+             ============================================================================ -->
+        <Canvas x:Name="panelEditName"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="241"
+                Height="310"
+                Background="White"
+                IsVisible="False">
+
+            <TextBlock x:Name="labelEditName" Canvas.Left="22" Canvas.Top="14" FontSize="13" Text="Edit Name" />
+
+            <!-- textBox2 — track name editor. WinForms BackColor LightCyan, BorderStyle FixedSingle,
+                 Multiline, Tahoma 14.25pt (19 DIP). (17,37) 204 x 77. -->
+            <TextBox x:Name="textBox2"
+                     Canvas.Left="17"
+                     Canvas.Top="37"
+                     Width="204"
+                     Height="77"
+                     Background="LightCyan"
+                     BorderBrush="Gray"
+                     BorderThickness="1"
+                     FontSize="19"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap" />
+
+            <!-- label3 — the "+" between the name box and the time-stamp button. (48,154) Tahoma 18pt
+                 Bold (24 DIP). -->
+            <TextBlock x:Name="label3" Canvas.Left="48" Canvas.Top="154" Width="33" Height="29"
+                       FontSize="24" FontWeight="Bold" Text="+" />
+
+            <!-- btnAddTimeEdit — append a time stamp (Resources.JobNameTime). (87,133) 68 x 69. -->
+            <Button x:Name="btnAddTimeEdit"
+                    Classes="imageButton"
+                    Canvas.Left="87"
+                    Canvas.Top="133"
+                    Width="68"
+                    Height="69"
+                    AutomationProperties.Name="Add Time">
+                <Image Source="avares://AgOpenGPS/btnImages/JobNameTime.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnCancel_EditName — cancel (Resources.Cancel64). (5,235) 88 x 70. -->
+            <Button x:Name="btnCancel_EditName"
+                    Classes="imageButton"
+                    Canvas.Left="5"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnSaveEditName — save the edited name (Resources.OK64). (141,235) 88 x 70. -->
+            <Button x:Name="btnSaveEditName"
+                    Classes="imageButton"
+                    Canvas.Left="141"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Save">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelKML — KML import (241 x 310, White). Entering this panel immediately opens a file
+             picker (code-behind); the only control is Cancel.
+             ============================================================================ -->
+        <Canvas x:Name="panelKML"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="241"
+                Height="310"
+                Background="White"
+                IsVisible="False">
+
+            <!-- btnCancel_KML — cancel (Resources.Cancel64). (5,235) 88 x 70. -->
+            <Button x:Name="btnCancel_KML"
+                    Classes="imageButton"
+                    Canvas.Left="5"
+                    Canvas.Top="235"
+                    Width="88"
+                    Height="70"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelLatLonPlus — build a track from a typed Lat/Lon plus a heading (341 x 425,
+             Gainsboro). Three keypad-backed numeric displays, captions, a "fill from antenna"
+             button, plus accept/cancel.
+             ============================================================================ -->
+        <Canvas x:Name="panelLatLonPlus"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="341"
+                Height="425"
+                Background="Gainsboro"
+                IsVisible="False">
+
+            <!-- Captions (Tahoma 11.25pt = 15 DIP). The WinForms "Lattitude" spelling is preserved. -->
+            <TextBlock x:Name="labelLatitude" Canvas.Left="90" Canvas.Top="38" FontSize="15" Text="Lattitude (+- 90)" />
+            <TextBlock x:Name="labelLongtitude" Canvas.Left="90" Canvas.Top="118" FontSize="15" Text="Longitude ( +- 180)" />
+            <TextBlock x:Name="labelHeading" Canvas.Left="90" Canvas.Top="230" FontSize="15" Text="Heading" />
+
+            <!-- nudLatitudePlus — DecimalPlaces 7, Tahoma 21.75pt (29 DIP), AliceBlue. (90,58) 228 x 43. -->
+            <Button x:Name="nudLatitudePlus" Classes="nud" Canvas.Left="90" Canvas.Top="58"
+                    Width="228" Height="43" Background="AliceBlue" FontSize="29"
+                    AutomationProperties.Name="Latitude" />
+
+            <!-- nudLongitudePlus — DecimalPlaces 7, 29 DIP, AliceBlue. (90,138) 228 x 43. -->
+            <Button x:Name="nudLongitudePlus" Classes="nud" Canvas.Left="90" Canvas.Top="138"
+                    Width="228" Height="43" Background="AliceBlue" FontSize="29"
+                    AutomationProperties.Name="Longitude" />
+
+            <!-- nudHeadingLatLonPlus — DecimalPlaces 4, Tahoma 24pt (32 DIP), AliceBlue. (90,250) 207 x 46. -->
+            <Button x:Name="nudHeadingLatLonPlus" Classes="nud" Canvas.Left="90" Canvas.Top="250"
+                    Width="207" Height="46" Background="AliceBlue" FontSize="32"
+                    AutomationProperties.Name="Heading" />
+
+            <!-- btnFillLatLonPlus — fill from the current antenna position
+                 (Resources.ConS_ImplementAntenna, btnImages/Config/). (6,97) 60 x 49. -->
+            <Button x:Name="btnFillLatLonPlus"
+                    Classes="imageButton"
+                    Canvas.Left="6"
+                    Canvas.Top="97"
+                    Width="60"
+                    Height="49"
+                    AutomationProperties.Name="Fill From Antenna">
+                <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementAntenna.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnCancel_LatLonPlus — cancel (Resources.Cancel64). (13,358) 63 x 60. -->
+            <Button x:Name="btnCancel_LatLonPlus"
+                    Classes="imageButton"
+                    Canvas.Left="13"
+                    Canvas.Top="358"
+                    Width="63"
+                    Height="60"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnEnter_LatLonPlus — accept (Resources.OK64). (239,358) 88 x 60. -->
+            <Button x:Name="btnEnter_LatLonPlus"
+                    Classes="imageButton"
+                    Canvas.Left="239"
+                    Canvas.Top="358"
+                    Width="88"
+                    Height="60"
+                    AutomationProperties.Name="Enter">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelLatLonLatLon — build an AB track from two typed Lat/Lon points (341 x 425,
+             Gainsboro). Four numeric displays (A then B), captions, two "fill from antenna"
+             buttons (A/B), big "A"/"B" markers, plus accept/cancel.
+             ============================================================================ -->
+        <Canvas x:Name="panelLatLonLatLon"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="341"
+                Height="425"
+                Background="Gainsboro"
+                IsVisible="False">
+
+            <TextBlock x:Name="labelLatitudeA" Canvas.Left="81" Canvas.Top="7" FontSize="15" Text="Lattitude (+- 90)" />
+            <TextBlock x:Name="labelLongtitudeA" Canvas.Left="81" Canvas.Top="87" FontSize="15" Text="Longitude ( +- 180)" />
+            <TextBlock x:Name="labelLatitudeB" Canvas.Left="81" Canvas.Top="174" FontSize="15" Text="Lattitude (+- 90)" />
+            <TextBlock x:Name="labelLongtitudeB" Canvas.Left="81" Canvas.Top="253" FontSize="15" Text="Longitude ( +- 180)" />
+
+            <!-- label23 / label24 — the big "A" / "B" point markers (Tahoma 18pt Bold = 24 DIP). -->
+            <TextBlock x:Name="label23" Canvas.Left="247" Canvas.Top="74" FontSize="24" FontWeight="Bold" Text="A" />
+            <TextBlock x:Name="label24" Canvas.Left="247" Canvas.Top="240" FontSize="24" FontWeight="Bold" Text="B" />
+
+            <!-- Point A coordinates (DecimalPlaces 7, 29 DIP, AliceBlue). -->
+            <Button x:Name="nudLatitudeA" Classes="nud" Canvas.Left="81" Canvas.Top="27"
+                    Width="228" Height="43" Background="AliceBlue" FontSize="29"
+                    AutomationProperties.Name="Latitude A" />
+            <Button x:Name="nudLongitudeA" Classes="nud" Canvas.Left="81" Canvas.Top="107"
+                    Width="228" Height="43" Background="AliceBlue" FontSize="29"
+                    AutomationProperties.Name="Longitude A" />
+
+            <!-- Point B coordinates (DecimalPlaces 7, 29 DIP, AliceBlue). -->
+            <Button x:Name="nudLatitudeB" Classes="nud" Canvas.Left="81" Canvas.Top="194"
+                    Width="228" Height="43" Background="AliceBlue" FontSize="29"
+                    AutomationProperties.Name="Latitude B" />
+            <Button x:Name="nudLongitudeB" Classes="nud" Canvas.Left="81" Canvas.Top="273"
+                    Width="228" Height="43" Background="AliceBlue" FontSize="29"
+                    AutomationProperties.Name="Longitude B" />
+
+            <!-- btnFillLatLonLatLonA — fill point A from the antenna (Config/ConS_ImplementAntenna).
+                 (6,66) 60 x 49. -->
+            <Button x:Name="btnFillLatLonLatLonA"
+                    Classes="imageButton"
+                    Canvas.Left="6"
+                    Canvas.Top="66"
+                    Width="60"
+                    Height="49"
+                    AutomationProperties.Name="Fill A From Antenna">
+                <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementAntenna.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnFillLatLonLatLonB — fill point B from the antenna (Config/ConS_ImplementAntenna).
+                 (6,232) 60 x 49. -->
+            <Button x:Name="btnFillLatLonLatLonB"
+                    Classes="imageButton"
+                    Canvas.Left="6"
+                    Canvas.Top="232"
+                    Width="60"
+                    Height="49"
+                    AutomationProperties.Name="Fill B From Antenna">
+                <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementAntenna.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnCancelLatLonLatLon — cancel (Resources.Cancel64). (13,358) 63 x 60. -->
+            <Button x:Name="btnCancelLatLonLatLon"
+                    Classes="imageButton"
+                    Canvas.Left="13"
+                    Canvas.Top="358"
+                    Width="63"
+                    Height="60"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnEnter_LatLonLatLon — accept (Resources.OK64). (235,358) 88 x 60. -->
+            <Button x:Name="btnEnter_LatLonLatLon"
+                    Classes="imageButton"
+                    Canvas.Left="235"
+                    Canvas.Top="358"
+                    Width="88"
+                    Height="60"
+                    AutomationProperties.Name="Enter">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- ============================================================================
+             panelPivot — build a pivot track from a typed Lat/Lon (341 x 308, Gainsboro). Two
+             numeric displays, captions, a "fill from antenna" button, plus accept/cancel.
+             ============================================================================ -->
+        <Canvas x:Name="panelPivot"
+                Canvas.Left="3"
+                Canvas.Top="3"
+                Width="341"
+                Height="308"
+                Background="Gainsboro"
+                IsVisible="False">
+
+            <TextBlock x:Name="labelLatitudePivot" Canvas.Left="101" Canvas.Top="38" FontSize="15" Text="Lattitude (+- 90)" />
+            <TextBlock x:Name="labelLongtitudePivot" Canvas.Left="101" Canvas.Top="118" FontSize="15" Text="Longitude ( +- 180)" />
+
+            <!-- nudLatitudePivot / nudLongitudePivot — DecimalPlaces 7, Tahoma 24pt (32 DIP), AliceBlue. -->
+            <Button x:Name="nudLatitudePivot" Classes="nud" Canvas.Left="72" Canvas.Top="58"
+                    Width="253" Height="46" Background="AliceBlue" FontSize="32"
+                    AutomationProperties.Name="Latitude" />
+            <Button x:Name="nudLongitudePivot" Classes="nud" Canvas.Left="72" Canvas.Top="138"
+                    Width="253" Height="46" Background="AliceBlue" FontSize="32"
+                    AutomationProperties.Name="Longitude" />
+
+            <!-- btnFillLAtLonPivot — fill from the antenna (Config/ConS_ImplementAntenna). (6,95) 60 x 49. -->
+            <Button x:Name="btnFillLAtLonPivot"
+                    Classes="imageButton"
+                    Canvas.Left="6"
+                    Canvas.Top="95"
+                    Width="60"
+                    Height="49"
+                    AutomationProperties.Name="Fill From Antenna">
+                <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementAntenna.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnCancel_Pivot — cancel (Resources.Cancel64). (10,245) 63 x 60. -->
+            <Button x:Name="btnCancel_Pivot"
+                    Classes="imageButton"
+                    Canvas.Left="10"
+                    Canvas.Top="245"
+                    Width="63"
+                    Height="60"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnEnter_Pivot — accept (Resources.OK64). (236,245) 88 x 60. -->
+            <Button x:Name="btnEnter_Pivot"
+                    Classes="imageButton"
+                    Canvas.Left="236"
+                    Canvas.Top="245"
+                    Width="88"
+                    Height="60"
+                    AutomationProperties.Name="Enter">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Canvas>
+
+        <!-- End of the eleven overlapping sub-panels (panelMain, panelChoose, panelCurve, panelABLine,
+             panelAPlus, panelName, panelEditName, panelKML, panelLatLonPlus, panelLatLonLatLon,
+             panelPivot). All pinned at (3,3); the code-behind shows exactly one at a time. -->
+
+    </Canvas>
+</Window>

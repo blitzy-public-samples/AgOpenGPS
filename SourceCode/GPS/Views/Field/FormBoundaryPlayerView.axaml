@@ -1,0 +1,348 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Record Driven Boundary" dialog (Avalonia view).
+
+    1:1 visual + behavioural PARITY reimplementation of the WinForms `Forms/Field/FormBoundaryPlayer`
+    (source: FormBoundaryPlayer.cs + FormBoundaryPlayer.Designer.cs + FormBoundaryPlayer.resx). Per
+    AAP §0.3.3 this is a faithful re-platform of the currently rendered Windows Forms surface — never
+    a redesign: every size, position and font below is taken verbatim from FormBoundaryPlayer.Designer.cs.
+
+    The dialog is a compact boundary-recording toolbar shown while the operator drives the field
+    perimeter. It lets them set a left/right tool/antenna offset, record / pause / add / delete /
+    restart the driven points, flip the recording side and the pivot/tool reference, optionally
+    record only while sections are on, and finish (Stop) — with a live Area and Points readout
+    updated once a second.
+
+    WINDOW SHELL — mirrors FormBoundaryPlayer.Designer.cs exactly:
+      Text "Stop Record Pause Boundary"  -> Title. This is the WinForms designer's literal Text; the
+                                            code-behind overrides it at runtime with the localised
+                                            gStr.gsStopRecordPauseBoundary (reproducing the ctor) — the
+                                            same Title-in-code-behind convention used by the sibling
+                                            FormYesView / FormSimCoordsView, which keeps the markup free
+                                            of any compiled-binding dependency.
+      ClientSize 249 x 483               -> the root Canvas Width/Height. SizeToContent="WidthAndHeight"
+                                            makes the window's CLIENT area exactly 249 x 483 regardless
+                                            of the OS decorations drawn around it (so nothing clips).
+      FixedSingle / Max=Min=false        -> CanResize="False" (a fixed, non-resizable dialog).
+      ShowInTaskbar = false              -> ShowInTaskbar="False".
+      StartPosition = CenterParent       -> WindowStartupLocation="CenterOwner".
+      BackColor WhiteSmoke               -> the chrome uses the day/night theme frame brush
+                                            {DynamicResource AogFrameBrush} (defined in App.axaml) so
+                                            the dialog tracks SwapDayNightMode(); the label ForeColors
+                                            (SystemColors.ActiveCaptionText) map to AogTextBrush.
+      Font Tahoma                        -> FontFamily="Tahoma"; children carry their point sizes,
+                                            converted to Avalonia DIP as (pt * 96 / 72):
+                                            14.25pt -> 19, 15.75pt -> 21, 24pt -> 32.
+
+    WIRING CONTRACT — the partner code-behind (FormBoundaryPlayerView.axaml.cs,
+    partial class AgOpenGPS.Views.FormBoundaryPlayerView : Window) owns ALL behaviour:
+      * This view is IMPERATIVE, not MVVM: intentionally NO x:DataType, NO DataContext, NO {Binding}.
+        The x:Name'd controls below are the entire integration surface and keep their ORIGINAL WinForms
+        names so the migrated code-behind addresses them exactly as FormBoundaryPlayer.cs did. No event
+        handlers are wired in this markup — the code-behind attaches them by name (reproducing the
+        WinForms Click/Tick handlers) — so the view compiles independently of the handler names chosen.
+      * The WinForms `timer1` (System.Windows.Forms.Timer, 1000 ms) is a NON-VISUAL component, so it
+        has no markup here; the code-behind reproduces it with a 1 s DispatcherTimer that updates
+        lblArea + lblPoints (FormBoundaryPlayer.timer1_Tick).
+      * nudOffset is the WinForms `NudlessNumericUpDown` — a read-only numeric up/down whose embedded
+        textbox is disabled and which pops the on-screen keypad on click. It is declared here as a
+        read-only numeric DISPLAY Button (Classes="numericDisplay"); the code-behind assigns its value
+        text (createBndOffset in cm or ft-in, CultureInfo.InvariantCulture) and wires the click to open
+        FormNumeric — the same code-behind wiring used by the sibling FormSimCoordsView nud* displays.
+        It is NOT an editable spinner.
+      * The three TOGGLE buttons whose glyph changes at runtime carry an inner <Image x:Name="..."> with
+        NO Source set here; the code-behind swaps the Source from avares://AgOpenGPS/btnImages/* exactly
+        as FormBoundaryPlayer.cs swapped Button.Image:
+          - btnPausePlay  (imgPausePlay)  : BoundaryRecord (idle) <-> boundaryPause (recording).
+          - btnLeftRight  (imgLeftRight)  : BoundaryRight (right side) <-> BoundaryLeft (left side).
+          - btnAntennaTool(imgAntennaTool): BoundaryRecordPivot (pivot) <-> BoundaryRecordTool (tool).
+        Each Image is ALSO the Button's Content, so the code-behind can swap via either imgX.Source or
+        (Image)btnX.Content — maximum compatibility, no hard-coded glyph here (per the agent spec).
+      * The remaining glyphs are STATIC (never swapped at runtime), so they are served directly from
+        the GPS assembly via avares:// URIs, the same convention as the sibling GPS views:
+          - btnStop      OK64,  btnAddPoint PointAdd,  btnDeleteLast PointDelete,  btnRestart Trash,
+          - cboxIsRecBoundaryWhenSectionOn  BoundarySectionControlOnOff.
+
+    No WinForms, no OpenTK, no GMap, no System.Drawing types are referenced. Avalonia 11.3.0. Glyphs
+    are native 64 x 64 PNG assets under SourceCode/GPS/btnImages/ in the AgOpenGPS assembly.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormBoundaryPlayerView"
+        Title="Stop Record Pause Boundary"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogFrameBrush}"
+        FontFamily="Tahoma">
+
+    <Window.Styles>
+        <!-- Flat, transparent, image-only command buttons: reproduce the WinForms FlatStyle.Flat +
+             FlatAppearance.BorderSize=0 + BackColor.Transparent and keep that face in every interaction
+             state (the Fluent Button template otherwise paints a hover/pressed fill). Targets the
+             template content presenter — the same technique used by the sibling FormSimCoordsView. -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- Read-only numeric DISPLAY field (nudOffset): reproduce the NudlessNumericUpDown's static
+             AliceBlue face + big bold number (WinForms BackColor AliceBlue, Tahoma 24pt -> 32 DIP Bold,
+             centred). The fill stays stable across pointerover/pressed (the WinForms control had no
+             hover recolor). The code-behind assigns the value text and opens FormNumeric on click. The
+             palette is FIXED (theme-independent) exactly as the WinForms control hard-coded it. -->
+        <Style Selector="Button.numericDisplay">
+            <Setter Property="Background" Value="AliceBlue" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2,0" />
+            <Setter Property="FontSize" Value="32" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.numericDisplay:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="AliceBlue" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+        <Style Selector="Button.numericDisplay:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="AliceBlue" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Absolute layout. Canvas.Left/Canvas.Top == WinForms Location, Width/Height == Size, so the
+        dialog is pixel-faithful to FormBoundaryPlayer.Designer.cs at its fixed 249 x 483 client size
+        (the same Canvas strategy used by the sibling absolute-layout ports FormShiftPosView /
+        FormSimCoordsView). Children render in document order.
+    -->
+    <Canvas Width="249" Height="483">
+
+        <!-- nudOffset: read-only offset display (NudlessNumericUpDown). Designer (11,5) 125 x 46,
+             BackColor AliceBlue, Tahoma 24pt -> 32 DIP Bold, centred, ReadOnly. Code-behind loads
+             createBndOffset (cm: tool.width*0.5*100, max 4999 / inch: *39.3701, max 1968) and opens
+             FormNumeric on tap. -->
+        <Button x:Name="nudOffset"
+                Classes="numericDisplay"
+                Canvas.Left="11"
+                Canvas.Top="5"
+                Width="125"
+                Height="46"
+                AutomationProperties.Name="Offset" />
+
+        <!-- lblMetersInches: units / ft-in caption right of nudOffset. Designer (137,14) 102 x 23,
+             Tahoma 14.25pt -> 19 DIP Bold, BottomLeft. Code-behind sets gsCentimeters ("cm") in metric
+             or the formatted feet-inches string in imperial. -->
+        <TextBlock x:Name="lblMetersInches"
+                   Canvas.Left="137"
+                   Canvas.Top="14"
+                   Width="102"
+                   Height="23"
+                   FontSize="19"
+                   FontWeight="Bold"
+                   VerticalAlignment="Bottom"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="cm" />
+
+        <!-- cboxIsRecBoundaryWhenSectionOn: WinForms CheckBox with Appearance=Button (a filled toggle
+             button) showing the BoundarySectionControlOnOff glyph. Designer (155,54) 80 x 84, FlatStyle
+             Flat + DarkGray 2px border, CheckedBackColor PaleTurquoise. Reproduced by retemplating the
+             CheckBox as a Border + centred ContentPresenter; the :checked style swaps the fill to
+             PaleTurquoise (the WinForms palette is FIXED / theme-independent). Code-behind mirrors
+             bnd.isRecBoundaryWhenSectionOn. -->
+        <CheckBox x:Name="cboxIsRecBoundaryWhenSectionOn"
+                  Canvas.Left="155"
+                  Canvas.Top="54"
+                  Width="80"
+                  Height="84"
+                  AutomationProperties.Name="Record boundary when section on">
+            <CheckBox.Template>
+                <ControlTemplate TargetType="CheckBox">
+                    <Border x:Name="border"
+                            Background="Transparent"
+                            BorderBrush="DarkGray"
+                            BorderThickness="2">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          HorizontalContentAlignment="Center"
+                                          VerticalContentAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </CheckBox.Template>
+            <CheckBox.Styles>
+                <!-- FlatAppearance.CheckedBackColor = PaleTurquoise. -->
+                <Style Selector="CheckBox:checked /template/ Border#border">
+                    <Setter Property="Background" Value="PaleTurquoise" />
+                </Style>
+            </CheckBox.Styles>
+            <Image Source="avares://AgOpenGPS/btnImages/BoundarySectionControlOnOff.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </CheckBox>
+
+        <!-- btnRestart: completely delete the drawn points (Trash). Designer (21,77) 52 x 52. The 52px
+             button is smaller than the native 64px glyph, so the image is shown at 48 x 48 (centred,
+             Uniform) to sit inside the button — matching the WinForms centred-image appearance. -->
+        <Button x:Name="btnRestart"
+                Classes="imageButton"
+                Canvas.Left="21"
+                Canvas.Top="77"
+                Width="52"
+                Height="52"
+                AutomationProperties.Name="Restart">
+            <Image Source="avares://AgOpenGPS/btnImages/Trash.png"
+                   Width="48"
+                   Height="48"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- btnLeftRight: flip the recording side (left/right of the line). Designer (5,175) 80 x 64.
+             DYNAMIC glyph — code-behind swaps imgLeftRight between BoundaryRight and BoundaryLeft, so
+             NO Source is set here. -->
+        <Button x:Name="btnLeftRight"
+                Classes="imageButton"
+                Canvas.Left="5"
+                Canvas.Top="175"
+                Width="80"
+                Height="64"
+                AutomationProperties.Name="Left Right side">
+            <Image x:Name="imgLeftRight"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- btnDeleteLast: remove the last recorded point (PointDelete). Designer (155,172) 80 x 64. -->
+        <Button x:Name="btnDeleteLast"
+                Classes="imageButton"
+                Canvas.Left="155"
+                Canvas.Top="172"
+                Width="80"
+                Height="64"
+                AutomationProperties.Name="Delete last point">
+            <Image Source="avares://AgOpenGPS/btnImages/PointDelete.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- btnAntennaTool: record at antenna/pivot vs at tool. Designer (16,291) 80 x 64. DYNAMIC
+             glyph — code-behind swaps imgAntennaTool between BoundaryRecordPivot and BoundaryRecordTool,
+             so NO Source is set here. -->
+        <Button x:Name="btnAntennaTool"
+                Classes="imageButton"
+                Canvas.Left="16"
+                Canvas.Top="291"
+                Width="80"
+                Height="64"
+                AutomationProperties.Name="Antenna or tool reference">
+            <Image x:Name="imgAntennaTool"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- btnAddPoint: manually add a single boundary point (PointAdd). Designer (155,290) 80 x 64. -->
+        <Button x:Name="btnAddPoint"
+                Classes="imageButton"
+                Canvas.Left="155"
+                Canvas.Top="290"
+                Width="80"
+                Height="64"
+                AutomationProperties.Name="Add point">
+            <Image Source="avares://AgOpenGPS/btnImages/PointAdd.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- label2: "Points:" caption. Designer (1,369) AutoSize, Tahoma 14.25pt -> 19 DIP Regular.
+             AutoSize -> no fixed Width (natural content sizing). -->
+        <TextBlock x:Name="label2"
+                   Canvas.Left="1"
+                   Canvas.Top="369"
+                   FontSize="19"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="Points:" />
+
+        <!-- lblPoints: live recorded-point count. Designer (62,370) AutoSize, Tahoma 14.25pt -> 19 DIP
+             Bold, centred. Code-behind sets bnd.bndBeingMadePts.Count each timer tick. -->
+        <TextBlock x:Name="lblPoints"
+                   Canvas.Left="62"
+                   Canvas.Top="370"
+                   FontSize="19"
+                   FontWeight="Bold"
+                   TextAlignment="Center"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="999" />
+
+        <!-- btnStop: finish the boundary (OK64). Designer (5,395) 80 x 78. Code-behind asks "Done?"
+             then builds the boundary and closes. -->
+        <Button x:Name="btnStop"
+                Classes="imageButton"
+                Canvas.Left="5"
+                Canvas.Top="395"
+                Width="80"
+                Height="78"
+                AutomationProperties.Name="Stop and finish boundary">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- btnPausePlay: the record / pause toggle (the actual record button). Designer (155,409)
+             80 x 64. DYNAMIC glyph — code-behind sets imgPausePlay to BoundaryRecord on Load and swaps
+             to boundaryPause while recording, so NO Source is set here. -->
+        <Button x:Name="btnPausePlay"
+                Classes="imageButton"
+                Canvas.Left="155"
+                Canvas.Top="409"
+                Width="80"
+                Height="64"
+                AutomationProperties.Name="Record or pause">
+            <Image x:Name="imgPausePlay"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- label1: "Area:" caption. Designer (2,458) AutoSize, Tahoma 14.25pt -> 19 DIP Regular.
+             Code-behind sets it to gStr.gsArea + ":". -->
+        <TextBlock x:Name="label1"
+                   Canvas.Left="2"
+                   Canvas.Top="458"
+                   FontSize="19"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="Area:" />
+
+        <!-- lblArea: live computed area (ha in metric, ac in imperial). Designer (56,458) AutoSize,
+             Tahoma 14.25pt -> 19 DIP Bold, centred. Code-behind sets it each timer tick. -->
+        <TextBlock x:Name="lblArea"
+                   Canvas.Left="56"
+                   Canvas.Top="458"
+                   FontSize="19"
+                   FontWeight="Bold"
+                   TextAlignment="Center"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="999" />
+
+    </Canvas>
+</Window>

@@ -1,0 +1,331 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Build Boundary From Tracks" GL-hosting dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Field/FormBuildBoundaryFromTracks`
+    (FormBuildBoundaryFromTracks.cs + .Designer.cs + .resx, 831 lines). The operator (de)selects the
+    field's saved tracks in a scrollable list beside a live OpenGL preview, nudges the active track's
+    A/B ends (extend / shrink), auto-finds intersections, builds the trimmed boundary, then saves it.
+    Per AAP §0.3.3 this is a faithful parity reimplementation of the current Windows Forms look, never
+    a redesign: no new colours, no relayout, no UX changes.
+
+    WINDOW SHELL — mirrors FormBuildBoundaryFromTracks.Designer.cs:
+      Text "Build Boundary From Tracks" -> Title (design-time; the code-behind assigns the localised
+                                           gStr string at runtime, matching the sibling views).
+      ClientSize 1008 x 729             -> Width="1008" Height="729" (1:1 WinForms-px -> Avalonia DIP,
+                                           the convention used by every sibling GPS view).
+      FormBorderStyle.None + custom 15px DarkGray OnPaint border, ControlBox=false
+                                        -> a normal decorated, RESIZABLE window. The WinForms form was
+                                           borderless ONLY so it could paint its own frame; with a
+                                           decorated Avalonia window the OS supplies the frame and resize
+                                           grips, so the custom border is intentionally NOT reproduced
+                                           (it would double-frame). This matches the analogous resizable
+                                           host dialog FormWebCamView, which is likewise decorated.
+      (resizable preview)               -> CanResize="True" — the glControlPreview was Anchor
+                                           Top|Bottom|Left|Right (it stretched), so the Avalonia GL host
+                                           fills the left column and grows with the window.
+      StartPosition CenterScreen, shown owned by FormGPS -> WindowStartupLocation="CenterOwner".
+      ShowInTaskbar = false             -> ShowInTaskbar="False".
+      BackColor Gainsboro               -> Background="{DynamicResource AogFrameBrush}" — the neutral
+                                           chrome is themed to the App.axaml day/night palette (this
+                                           file's only dependency) rather than hard-coding a WinForms
+                                           colour, exactly like the sibling FormFieldDirView.
+
+    GL-HOSTING (markup side only):
+      The WinForms `glControlPreview` (OpenTK.GLControl, BackColor Black) is REPLACED by an empty host
+      container `oglHost` (a Border). The code-behind constructs the cross-platform
+      AvaloniaGeoViewport and inserts its exposed Control (`_viewport.View`) into oglHost at runtime.
+      There is deliberately NO OpenTK.GLControl, NO Avalonia OpenGlControlBase, and NO AgOpenGPS.Controls
+      reference in this markup — the GL control type is purely a code-behind concern (Pure Avalonia rule).
+      oglHost keeps the source's Black backdrop so the surface reads correctly before/while the viewport
+      attaches.
+
+    TRACK LIST:
+      The WinForms `flpTrackList` (a FlowLayoutPanel, FlowDirection TopDown, AutoScroll, Fixed3D border)
+      of per-track CheckBoxes becomes a native `ScrollViewer` wrapping an `ItemsControl x:Name="flpTrackList"`.
+      The code-behind populates it with one CheckBox per track (CreateTrackCheckbox in the source) and
+      recolours them (green / gold-active / orange-deselected) exactly as before. The default ItemsControl
+      panel is a vertical StackPanel, reproducing the TopDown flow. The ScrollViewer gives native
+      touch/wheel scrolling, so the WinForms manual drag-scroll plumbing (StartDrag / DoDrag /
+      FlpTrackList_Mouse* and the _lastDragEndTime debounce) is intentionally NOT ported. `lblList`
+      (a TextBlock) is the list caption above it.
+
+    WIRING CONTRACT — the partner code-behind (FormBuildBoundaryFromTracksView.axaml.cs,
+    partial class AgOpenGPS.Views.FormBuildBoundaryFromTracksView : Window) owns ALL behaviour:
+      * Code-behind dialog: NO DataContext, NO x:DataType, NO MVVM bindings — exactly like the sibling
+        FormWebCamView / FormFieldDirView / FormInputDialogView. Every control is addressed imperatively
+        by its x:Name.
+      * Click handlers are NOT declared as XAML attributes here. They are attached PROGRAMMATICALLY in
+        the code-behind to the named button fields (the faithful port of the WinForms designer's
+        `this.btnX.Click += ...`), so this markup never depends on a specific handler-method name — the
+        same convention documented on the sibling FormWebCamView.
+      * The x:Names below MUST stay exactly as written; the code-behind references each by name:
+        oglHost, flpTrackList, lblList, btnAutoFind, btnSelectPrevious, btnSelectNext, btnExtendBackward,
+        btnShrinkA, btnShrinkB, btnExtendForward, btnResetPreview, btnBuildBoundary, btnSave, btnClose.
+      * btnSave starts IsEnabled="False" (WinForms InitializeForm: btnSave.Enabled = false); the
+        code-behind enables it once a boundary has been built (btnBuildBoundary_Click / BuildBoundary).
+
+    THEME & ASSETS:
+      All colours come from App.axaml's day/night ThemeDictionaries via {DynamicResource ...} so the live
+      Light<->Dark switch is observed — no WinForms colours, no GDI namespaces. Button glyphs are served
+      from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs — the same btnImages/ assets
+      the other GPS Avalonia views consume. btnClose uses Cancel64.png and btnSave uses OK64.png (per this
+      file's spec); the remaining buttons keep their original glyphs and text labels.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormBuildBoundaryFromTracksView"
+        Title="Build Boundary From Tracks"
+        Width="1008"
+        Height="729"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Flat, chrome-less image-above-text command buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor = Transparent + TextImageRelation.ImageAboveText
+        carried by every button in the designer: a centred 64px glyph with its caption beneath, and no
+        button surface in any interaction state. The :pointerover / :pressed / :disabled template
+        overrides suppress the Fluent hover / press / disabled fill that would otherwise box the glyph;
+        the :disabled Opacity reproduces the greyed look WinForms gives a disabled Button.Image (e.g. the
+        initially-disabled btnSave). The descendant TextBlock setter themes every caption to the day/night
+        text brush and centres it under the glyph.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.trackButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Width" Value="95" />
+            <Setter Property="Height" Value="95" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.trackButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.trackButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.trackButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.trackButton:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+        <Style Selector="Button.trackButton TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AogTextBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Two columns reproduce the designer: the GL preview fills the left (glControlPreview was anchored
+        on all four sides, so it stretches), the command panel occupies a fixed-width right column. An
+        outer margin stands in for the WinForms 8px client inset.
+    -->
+    <Grid ColumnDefinitions="*,Auto" Margin="10">
+
+        <!--
+            Col 0 — GL preview host. EMPTY by design: the code-behind injects the AvaloniaGeoViewport's
+            Control (`_viewport.View`) here at runtime. Black backdrop matches the WinForms
+            glControlPreview.BackColor = Black and the GL ClearColor(Black) clear in the source.
+        -->
+        <Border x:Name="oglHost"
+                Grid.Column="0"
+                MinWidth="400"
+                Background="Black" />
+
+        <!--
+            Col 1 — the command panel. Five rows mirror the designer's right-hand stack: list caption,
+            the scrollable track list (fills the remaining height), then three button bands — track
+            navigation, A/B end adjustment, and the final actions.
+        -->
+        <Grid Grid.Column="1"
+              Width="430"
+              Margin="12,0,0,0"
+              RowDefinitions="Auto,*,Auto,Auto,Auto">
+
+            <!-- lblList — list caption (WinForms Label, MS Sans Serif 15.75pt Bold -> ~21 DIP). Runtime
+                 text is assigned by the code-behind; the design-time text mirrors the designer. -->
+            <TextBlock x:Name="lblList"
+                       Grid.Row="0"
+                       Text="(De)Select Tracks to use"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       FontSize="21"
+                       FontWeight="Bold"
+                       Margin="0,0,0,8" />
+
+            <!--
+                Track list — the FlowLayoutPanel (TopDown, AutoScroll, Fixed3D) becomes a bordered
+                ScrollViewer over an ItemsControl. The Fixed3D sunken edge is approximated by a 1px
+                neutral border (the literal-hex approach used by the sibling FormFilePickerView). Native
+                vertical scrolling replaces the WinForms manual drag-scroll. The code-behind fills
+                flpTrackList with one CheckBox per track; the default vertical StackPanel item layout
+                reproduces the TopDown flow, with a small inter-item gap.
+            -->
+            <Border Grid.Row="1"
+                    BorderBrush="#FF7F7F7F"
+                    BorderThickness="1"
+                    Margin="0,0,0,8">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl x:Name="flpTrackList" Margin="4">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Vertical" Spacing="4" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <!--
+                Row 2 — track navigation band: Auto Find (find intersections), Previous / Next (cycle the
+                active track). Designer: btnAutoFind (ABDraw), btnSelectPrevious (ArrowLeft),
+                btnSelectNext (ArrowRight).
+            -->
+            <StackPanel Grid.Row="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Spacing="6"
+                        Margin="0,0,0,8">
+                <Button x:Name="btnAutoFind"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Auto Find">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/ABDraw.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Auto Find" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnSelectPrevious"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Previous track">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/ArrowLeft.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Previous" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnSelectNext"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Next track">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/ArrowRight.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Next" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <!--
+                Row 3 — A/B end adjustment band. Designer order (left to right): btnExtendBackward
+                ("Extend A", APlusPlusA), btnShrinkA ("Shrink A", APlusMinusA), btnShrinkB ("Shrink B",
+                APlusMinusB), btnExtendForward ("Extend B", APlusPlusB).
+            -->
+            <StackPanel Grid.Row="3"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Spacing="6"
+                        Margin="0,0,0,8">
+                <Button x:Name="btnExtendBackward"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Extend A">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/APlusPlusA.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Extend A" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnShrinkA"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Shrink A">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/APlusMinusA.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Shrink A" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnShrinkB"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Shrink B">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/APlusMinusB.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Shrink B" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnExtendForward"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Extend B">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/APlusPlusB.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Extend B" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <!--
+                Row 4 — final action band. Designer order (left to right): btnResetPreview ("Reset",
+                Reset_Default), btnBuildBoundary ("Build", Boundary), btnSave ("Save", OK64 — starts
+                disabled), btnClose ("Close", Cancel64). btnSave / btnClose use the OK64 / Cancel64 glyphs
+                per this file's spec.
+            -->
+            <StackPanel Grid.Row="4"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Spacing="6">
+                <Button x:Name="btnResetPreview"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Reset preview">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/Reset_Default.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Reset" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnBuildBoundary"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Build boundary">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/Boundary.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Build" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnSave"
+                        Classes="trackButton"
+                        IsEnabled="False"
+                        AutomationProperties.Name="Save boundary">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Save" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnClose"
+                        Classes="trackButton"
+                        AutomationProperties.Name="Close">
+                    <StackPanel Orientation="Vertical">
+                        <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                               Width="50" Height="50" Stretch="Uniform" />
+                        <TextBlock Text="Close" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+        </Grid>
+    </Grid>
+</Window>

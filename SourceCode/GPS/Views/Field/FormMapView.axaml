@@ -1,0 +1,369 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — background-imagery dialog (Avalonia view), FEATURE-GATED.
+
+    Parity SHELL of the WinForms `Forms/Field/FormMap` (FormMap.cs + FormMap.Designer.cs, 422 lines).
+    Per AAP §0.3.3 this is a 1:1 visual-parity reimplementation of the current Windows Forms look,
+    never a redesign: same window, same right-hand command panel, same control arrangement, same
+    fonts. The operator originally used this dialog to pull online satellite imagery in behind the
+    field and (optionally) trace a boundary over it.
+
+    FEATURE-GATE (AAP §0.5.1 / §0.6.3 — F-021 "Replace or feature-gate"):
+      The WinForms FormMap was built entirely on a Windows-only / abandoned online-imagery control and
+      a Windows-only imaging stack (both removed types are named in MIGRATION_DOCS/TRANSITION_MAP.md).
+      Those are out of the cross-platform path and are REMOVED. This markup intentionally contains NO
+      reference to any online-imagery type, NO Windows-only imaging type and NO online-imagery provider
+      name — it is pure Avalonia. For first release the imagery feature is
+      gated OFF: the large map surface (the WinForms `gMapControl`) is replaced by `mapPlaceholder`,
+      a dark panel carrying a graceful "Background imagery unavailable on this platform" message — the
+      established no-op graceful-degradation pattern (the field still renders fine without imagery and
+      the cross-platform SQLite tile cache is unaffected elsewhere). The dialog still OPENS and shows
+      its full control shell; it must NEVER throw and NEVER break startup. Because every operational
+      control depends on the (now absent) imagery, they are shown but DISABLED (IsEnabled="False");
+      only `btnExit` stays enabled so the dialog can always be closed.
+
+    WINDOW SHELL — mirrors FormMap.Designer.cs:
+      Text (online-imagery caption)    : Title. The runtime text is assigned by the code-behind to
+                                          gStr.gsMapForBackground; the DESIGN-TIME literal here is kept
+                                          deliberately provider-neutral ("Add Map as Background") to
+                                          honour the "no online-imagery-provider references in this
+                                          file" rule — the localised string lives in the frozen
+                                          translation resources, not in this markup.
+      ClientSize 1130 x 780            : Width / Height (initial client size; resizable).
+      MinimumSize 1016 x 753           : MinWidth / MinHeight.
+      FormBorderStyle (Sizable) + anchors : CanResize="True" (the map surface fills and the 241-wide
+                                          command panel stays pinned to the right on resize, exactly
+                                          reproducing the WinForms Anchor layout).
+      ControlBox/Maximize/Minimize = false : the borderless title-bar-button toggles have no direct
+                                          Avalonia equivalent; CanResize="True" preserves the resize
+                                          behaviour that the WinForms MinimumSize + anchors implied.
+      ShowInTaskbar = false            : ShowInTaskbar="False".
+      StartPosition (CenterParent intent) : WindowStartupLocation="CenterOwner" (shown owned/modal over
+                                          FormGPS, per the AAP Avalonia wiring; this replaces the
+                                          WinForms ScreenHelper on-screen reposition).
+      BackColor WhiteSmoke             : Background="{DynamicResource AogFrameBrush}" — per this file's
+                                          spec the neutral chrome is themed to the App.axaml day/night
+                                          palette (the only dependency of this file) rather than
+                                          hard-coding a WinForms colour.
+      Font Tahoma                      : FontFamily="Tahoma"; children carry their point sizes converted
+                                          to Avalonia device-independent pixels (pt × 96/72):
+                                          14.25pt -> 19, 15.75pt -> 21.
+
+    WIRING CONTRACT — the partner code-behind (FormMapView.axaml.cs) owns ALL behaviour:
+      * This view is IMPERATIVE, not MVVM — there is intentionally NO x:DataType, NO DataContext and
+        NO {Binding}, exactly like the sibling code-behind dialogs (FormWebCamView / FormPanView /
+        FormFieldDirView). The x:Name'd controls below are the entire integration surface and keep
+        their ORIGINAL WinForms names so the migrated code-behind addresses them exactly as
+        FormMap.cs did.
+      * No Click= / event attributes are declared here on purpose: the handler method names are owned
+        by the code-behind (which subscribes via the named fields, e.g. btnExit.Click += ...), so this
+        markup never depends on a specific handler-method name (the FormWebCamView / FormPanView
+        convention). The original FormMap_Load / btnExit_Click / btn*_Click / cbox*_Click /
+        timer1_Tick logic is reproduced there.
+      * Control-name contract (MUST stay spelled exactly): mapPlaceholder, btnZoomIn, btnZoomOut,
+        btnAddFence, btnDeletePoint, btnDeleteAll, btnGo, btnExit, cboxDrawMap, cboxEnableLineDraw,
+        labelBackground, labelBoundary, labelNewBoundary, lblBnds, lblPoints. (The WinForms designer
+        had no find/search TextBox, so none is added.)
+      * Design-time label texts below ("New Bnd", "Points: 12", "Boundary", "2", "Background") are the
+        WinForms designer placeholders; at runtime the code-behind localises them via gStr
+        (gsNewFromDefault+gsBoundary / gsPoints / gsBoundary / computed / gsBackground), mirroring
+        FormMap.cs and the once-per-second timer1_Tick.
+
+    Button / toggle glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares://
+    URIs — the same btnImages/ assets every other GPS Avalonia view consumes, and the exact images the
+    WinForms designer used (ZoomOGL / ZoomOut / AddNew / PointDelete / Trash / FlagGrn / OK64 /
+    BoundaryOuter / MappingOff). No WinForms, no GL-host, no online-imagery, and no other Windows-only
+    UI-toolkit types are referenced — pure Avalonia 11.3.x.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormMapView"
+        Title="Add Map as Background"
+        Width="1130"
+        Height="780"
+        MinWidth="1016"
+        MinHeight="753"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Shared control styles.
+
+        Button.flatImage — the cross-platform equivalent of the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor = Transparent carried by every Button in
+        FormMap.Designer.cs: just the centred glyph, no button surface in any interaction state. The
+        :pointerover / :pressed / :disabled template overrides suppress the Fluent hover / press /
+        disabled fill that would otherwise box the glyph; :disabled also dims the glyph via Opacity to
+        reproduce the greyed look WinForms applies to a disabled Button.Image (the gated controls render
+        disabled at first show). Same technique as the sibling FormFieldDirView.
+
+        CheckBox.imageToggle — reproduces the two WinForms `Appearance = Button` image check-boxes
+        (cboxEnableLineDraw / cboxDrawMap): a flat image button that fills MediumAquamarine when checked
+        (FlatAppearance.CheckedBackColor). This reuses the established imageToggle template from
+        Views/Config/ConfigVehicleControl.axaml (a ContentPresenter root bound to Background /
+        BorderBrush / BorderThickness / Padding via TemplateBinding) so per-instance border values flow
+        through — cboxEnableLineDraw keeps its 1px Gray border (FlatAppearance.BorderColor = Gray),
+        cboxDrawMap has none (FlatAppearance.BorderSize = 0). :checked swaps the fill to MediumAquamarine
+        and :disabled dims it, matching the flatImage gated look.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <Style Selector="CheckBox.imageToggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Stretch" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="CheckBox.imageToggle:checked">
+            <Setter Property="Background" Value="MediumAquamarine" />
+        </Style>
+        <Style Selector="CheckBox.imageToggle:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root layout reproduces the WinForms anchoring: the map surface fills the remaining space on the
+        left ( gMapControl: Anchor Top|Bottom|Left|Right => the "*" column ) and the 241-wide command
+        panel is pinned to the right ( tableLayoutPanel1: Anchor Top|Bottom|Right => the "Auto" column,
+        fixed Width 241 ). Margin "3" + the map's 3px right margin reproduce the designer's 3px gutters.
+    -->
+    <Grid Margin="3" ColumnDefinitions="*,Auto">
+
+        <!--
+            mapPlaceholder — replaces the WinForms `gMapControl` (the removed map-imagery surface). A
+            dark panel (fixed, deliberately NOT themed) carrying the centred graceful-degradation
+            message. Light text on the dark fill ( #FFE6E6E6 on #FF2B2B2B ≈ 11.5:1, WCAG AAA ). The
+            code-behind never needs to touch it beyond addressing it by name, so the message is static.
+        -->
+        <Border x:Name="mapPlaceholder"
+                Grid.Column="0"
+                Margin="0,0,3,0"
+                Background="#FF2B2B2B">
+            <TextBlock Text="Background imagery unavailable on this platform"
+                       Foreground="#FFE6E6E6"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Margin="24" />
+        </Border>
+
+        <!--
+            Right-hand command panel — reproduces the WinForms tableLayoutPanel1 (241 wide, anchored
+            Top|Bottom|Right). 3 columns (43.57% / 19.64% / 36.79% of 241) and 10 rows (row 3 is the
+            designer's fixed 37px row; the rest are the designer's percentages). Each control is placed
+            in the SAME (column,row) cell — and with the SAME ColumnSpan — as FormMap.Designer.cs.
+            Row 5 is the designer's empty spacer row.
+        -->
+        <Grid Grid.Column="1"
+              Width="241"
+              ColumnDefinitions="43.57*,19.64*,36.79*"
+              RowDefinitions="11.12*,7.35*,12.38*,37,13.54*,11.12*,11.12*,11.12*,11.12*,11.12*">
+
+            <!-- Row 0, Col 0 — cboxEnableLineDraw: enter "trace boundary on the map" mode. WinForms
+                 (Appearance.Button) 83x72, image BoundaryOuter, 1px Gray border, MediumAquamarine when
+                 checked. Imagery-dependent => disabled (gated). -->
+            <CheckBox x:Name="cboxEnableLineDraw"
+                      Classes="imageToggle"
+                      Grid.Row="0" Grid.Column="0"
+                      Width="83" Height="72"
+                      BorderThickness="1"
+                      IsEnabled="False"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                      AutomationProperties.Name="Trace boundary on map">
+                <Image Source="avares://AgOpenGPS/btnImages/BoundaryOuter.png" Stretch="Uniform" />
+            </CheckBox>
+
+            <!-- Row 0, Col 2 — btnDeleteAll: delete the last field boundary / clear the traced line.
+                 WinForms 61x59, image Trash. Imagery-/boundary-workflow control => disabled (gated). -->
+            <Button x:Name="btnDeleteAll"
+                    Classes="flatImage"
+                    Grid.Row="0" Grid.Column="2"
+                    Width="61" Height="59"
+                    IsEnabled="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Delete all">
+                <Image Source="avares://AgOpenGPS/btnImages/Trash.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- Row 1, Col 0 — labelNewBoundary: "New Bnd" caption (Anchor Top, centred). 14.25pt -> 19.
+                 Runtime: gStr.gsNewFromDefault + " " + gStr.gsBoundary. -->
+            <TextBlock x:Name="labelNewBoundary"
+                       Grid.Row="1" Grid.Column="0"
+                       Text="New Bnd"
+                       FontSize="19" FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center" VerticalAlignment="Top" />
+
+            <!-- Row 2, Col 0 — btnDeletePoint: remove the last traced point. WinForms 87x78, image
+                 PointDelete. WinForms starts Enabled=false; imagery-dependent => disabled (gated). -->
+            <Button x:Name="btnDeletePoint"
+                    Classes="flatImage"
+                    Grid.Row="2" Grid.Column="0"
+                    Width="87" Height="78"
+                    IsEnabled="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Delete last point">
+                <Image Source="avares://AgOpenGPS/btnImages/PointDelete.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- Row 2, Col 1 (span 2) — lblPoints: "Points: n" readout (Anchor Left, MiddleLeft).
+                 14.25pt -> 19. Runtime updated by the code-behind timer. -->
+            <TextBlock x:Name="lblPoints"
+                       Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                       Text="Points: 12"
+                       FontSize="19" FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Left"
+                       HorizontalAlignment="Left" VerticalAlignment="Center" />
+
+            <!-- Row 3, Col 1 (span 2) — labelBoundary: "Boundary" caption (centred). 14.25pt -> 19.
+                 This is the designer's fixed 37px row. Runtime: gStr.gsBoundary. -->
+            <TextBlock x:Name="labelBoundary"
+                       Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2"
+                       Text="Boundary"
+                       FontSize="19" FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+            <!-- Row 4, Col 0 — btnAddFence: commit the traced points as a new field boundary. WinForms
+                 61x61, image AddNew. WinForms starts Enabled=false; imagery-dependent => disabled. -->
+            <Button x:Name="btnAddFence"
+                    Classes="flatImage"
+                    Grid.Row="4" Grid.Column="0"
+                    Width="61" Height="61"
+                    IsEnabled="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Add fence boundary">
+                <Image Source="avares://AgOpenGPS/btnImages/AddNew.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- Row 4, Col 1 (span 2) — lblBnds: boundary count readout (Anchor None, TopCenter).
+                 15.75pt -> 21. Runtime updated by the code-behind timer. -->
+            <TextBlock x:Name="lblBnds"
+                       Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2"
+                       Text="2"
+                       FontSize="21" FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center" VerticalAlignment="Top" />
+
+            <!-- Row 6, Col 0 (span 3) — cboxDrawMap: capture the displayed imagery as the field
+                 background. WinForms (Appearance.Button) 78x76, image MappingOff (toggles to MappingOn),
+                 no border (BorderSize 0), MediumAquamarine when checked, Anchor Bottom. Imagery-dependent
+                 => disabled (gated). -->
+            <CheckBox x:Name="cboxDrawMap"
+                      Classes="imageToggle"
+                      Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3"
+                      Width="78" Height="76"
+                      BorderThickness="0"
+                      IsEnabled="False"
+                      HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                      AutomationProperties.Name="Use imagery as field background">
+                <Image Source="avares://AgOpenGPS/btnImages/MappingOff.png" Stretch="Uniform" />
+            </CheckBox>
+
+            <!-- Row 7, Col 0 (span 3) — labelBackground: "Background" section caption (Anchor Top,
+                 centred). 15.75pt -> 21. Runtime: gStr.gsBackground. -->
+            <TextBlock x:Name="labelBackground"
+                       Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="3"
+                       Text="Background"
+                       FontSize="21" FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center" VerticalAlignment="Top" />
+
+            <!-- Row 8, Col 0 — btnZoomOut: zoom the map out. WinForms 64x63, image ZoomOut (52x52).
+                 Imagery-dependent => disabled (gated). -->
+            <Button x:Name="btnZoomOut"
+                    Classes="flatImage"
+                    Grid.Row="8" Grid.Column="0"
+                    Width="64" Height="63"
+                    IsEnabled="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Zoom out">
+                <Image Source="avares://AgOpenGPS/btnImages/ZoomOut.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- Row 8, Col 2 — btnZoomIn: zoom the map in. WinForms 69x56, image ZoomOGL (52x52).
+                 Imagery-dependent => disabled (gated). -->
+            <Button x:Name="btnZoomIn"
+                    Classes="flatImage"
+                    Grid.Row="8" Grid.Column="2"
+                    Width="69" Height="56"
+                    IsEnabled="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Zoom in">
+                <Image Source="avares://AgOpenGPS/btnImages/ZoomOGL.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- Row 9, Col 0 — btnGo: recentre the map on the current GPS position. WinForms 63x57,
+                 image FlagGrn. Imagery-dependent => disabled (gated). -->
+            <Button x:Name="btnGo"
+                    Classes="flatImage"
+                    Grid.Row="9" Grid.Column="0"
+                    Width="63" Height="57"
+                    IsEnabled="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Go to current position">
+                <Image Source="avares://AgOpenGPS/btnImages/FlagGrn.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- Row 9, Col 2 — btnExit: close the dialog. WinForms 61x63, image OK64. This is the ONLY
+                 control that does not depend on imagery, so it stays ENABLED (the dialog can always be
+                 closed). IsDefault routes Enter to it for keyboard operability. -->
+            <Button x:Name="btnExit"
+                    Classes="flatImage"
+                    Grid.Row="9" Grid.Column="2"
+                    Width="61" Height="63"
+                    IsDefault="True"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Exit">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Grid>
+    </Grid>
+</Window>
