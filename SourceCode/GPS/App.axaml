@@ -1,0 +1,107 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    AgOpenGPS (GPS program) — Avalonia Application definition.
+
+    Pairs with the code-behind App.axaml.cs (partial class AgOpenGPS.App : Application);
+    x:Class below MUST stay "AgOpenGPS.App" to match it. There was no WinForms "App"
+    equivalent in the source — the original Program.cs called Application.Run(new FormGPS())
+    directly — so this is net-new Avalonia scaffolding. Per AAP §0.3.3 this is a 1:1 visual
+    PARITY reimplementation of the current Windows Forms look, never a redesign: no new
+    colors, no relayout, no UX changes.
+
+    Theme:
+      The Avalonia Fluent theme (Avalonia.Themes.Fluent, referenced in AgOpenGPS.csproj) is
+      the app-wide base design system. RequestedThemeVariant="Default" lets the application
+      pick the variant at startup; the GPS program drives it explicitly at runtime from the
+      Core view-model's day/night state (FormGPS.isDay -> AppViewModel.IsDay) by setting
+      Application.Current.RequestedThemeVariant to ThemeVariant.Light (day) or
+      ThemeVariant.Dark (night). That single switch flips the whole palette below.
+
+    Fonts:
+      The Inter font family is registered programmatically via .WithInterFont() in
+      Program.BuildAvaloniaApp(), so no font include is required here.
+
+    Day/Night palette (Application.Resources -> ThemeDictionaries):
+      The EXACT default ARGB values verified from Forms/Settings/FormColor.cs btnReset_Click
+      (the product's documented default colors) are mapped to Avalonia brushes. Day == the
+      "Light" theme dictionary, Night == the "Dark" theme dictionary, so toggling
+      RequestedThemeVariant reproduces the WinForms FormGPS.SwapDayNightMode() behavior
+      (GUI.Designer.cs: this.BackColor = frame*Color; child ForeColor = textColor*).
+
+      These brushes are the design-time / default chrome only. At runtime the live values
+      come from user Settings (GUI.Designer.cs loads setDisplay_colorDayFrame / NightFrame /
+      TextDay / TextNight / FieldDay / FieldNight), and the OpenGL field clear-color is set
+      separately by the renderer (RenderCoordinator / AvaloniaGeoViewport) — not from the
+      AogFieldColor brush here.
+
+    Resource key convention (STABLE — the Views/ layer depends on these names):
+      Colors : AogFrameColor  AogFieldColor  AogTextColor  AogAccentColor
+      Brushes: AogFrameBrush   AogFieldBrush  AogTextBrush  AogAccentBrush
+        - AogFrameBrush  -> MainView side/bottom command panels & window chrome
+        - AogTextBrush   -> status readouts / panel text
+        - AogAccentBrush -> primary action buttons (the section/teal accent)
+        - AogFieldBrush  -> design-time background behind the GL viewport
+      IMPORTANT for consumers: because these live in ThemeDictionaries, reference them with
+      {DynamicResource AogFrameBrush} (NOT {StaticResource ...}) so the Light<->Dark switch
+      is observed live. {StaticResource} is used INTERNALLY below only to derive each brush
+      from a color key defined earlier in the SAME theme dictionary, which resolves locally.
+-->
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AgOpenGPS.App"
+             RequestedThemeVariant="Default">
+
+    <!-- App-wide base theme. The active light/dark variant is governed by
+         RequestedThemeVariant above and toggled at runtime from the day/night view-model. -->
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+    <!--
+        Day/night palette as theme dictionaries. A single RequestedThemeVariant change
+        (Light = day, Dark = night) flips every brush below, mirroring SwapDayNightMode().
+        Avalonia color syntax is #AARRGGBB — no WinForms/GDI color types are referenced.
+    -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+
+                <!-- ============================ DAY (Light) ============================ -->
+                <ResourceDictionary x:Key="Light">
+                    <!-- Color.FromArgb(210,210,230) — frameDayColor (window chrome / BackColor). -->
+                    <Color x:Key="AogFrameColor">#FFD2D2E6</Color>
+                    <!-- Color.FromArgb(100,100,125) — fieldColorDay (design-time viewport chrome). -->
+                    <Color x:Key="AogFieldColor">#FF64647D</Color>
+                    <!-- Color.FromArgb(10,10,20) — textColorDay (panel/status text). -->
+                    <Color x:Key="AogTextColor">#FF0A0A14</Color>
+                    <!-- Color.FromArgb(27,151,160) — sectionColorDay (primary teal accent). -->
+                    <Color x:Key="AogAccentColor">#FF1B97A0</Color>
+
+                    <SolidColorBrush x:Key="AogFrameBrush" Color="{StaticResource AogFrameColor}" />
+                    <SolidColorBrush x:Key="AogFieldBrush" Color="{StaticResource AogFieldColor}" />
+                    <SolidColorBrush x:Key="AogTextBrush" Color="{StaticResource AogTextColor}" />
+                    <SolidColorBrush x:Key="AogAccentBrush" Color="{StaticResource AogAccentColor}" />
+                </ResourceDictionary>
+
+                <!-- =========================== NIGHT (Dark) =========================== -->
+                <ResourceDictionary x:Key="Dark">
+                    <!-- Color.FromArgb(50,50,65) — frameNightColor (window chrome / BackColor). -->
+                    <Color x:Key="AogFrameColor">#FF323241</Color>
+                    <!-- Color.FromArgb(60,60,60) — fieldColorNight (design-time viewport chrome). -->
+                    <Color x:Key="AogFieldColor">#FF3C3C3C</Color>
+                    <!-- Color.FromArgb(230,230,230) — textColorNight (panel/status text). -->
+                    <Color x:Key="AogTextColor">#FFE6E6E6</Color>
+                    <!-- Color.FromArgb(27,151,160) — section/teal accent (identical in both modes). -->
+                    <Color x:Key="AogAccentColor">#FF1B97A0</Color>
+
+                    <SolidColorBrush x:Key="AogFrameBrush" Color="{StaticResource AogFrameColor}" />
+                    <SolidColorBrush x:Key="AogFieldBrush" Color="{StaticResource AogFieldColor}" />
+                    <SolidColorBrush x:Key="AogTextBrush" Color="{StaticResource AogTextColor}" />
+                    <SolidColorBrush x:Key="AogAccentBrush" Color="{StaticResource AogAccentColor}" />
+                </ResourceDictionary>
+
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+</Application>
