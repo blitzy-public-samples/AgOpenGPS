@@ -1,38 +1,53 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <!-- [XPLAT] Exe (not WinExe) so the Avalonia app launches as a normal cross-platform
+         process; Avalonia owns its windowing/message loop. -->
+    <OutputType>Exe</OutputType>
     <PublishDir>..\..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>satellite.ico</ApplicationIcon>
-    <UseWindowsForms>true</UseWindowsForms>
-    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <EmbeddedResourceUseDependentUponConvention>true</EmbeddedResourceUseDependentUponConvention>
-    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+    <!-- [XPLAT] compiled XAML + generated typed x:Name fields for the Views/*.axaml code-behind -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- [XPLAT] per-OS self-contained publish targets for the tri-OS CI matrix (Windows/Linux/macOS) -->
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Memory" Version="4.6.0" />
-    <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
+    <!-- [XPLAT] Avalonia cross-platform UI stack (replaces WinForms); all packages share one version -->
+    <PackageReference Include="Avalonia" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.18" />
+    <!-- [XPLAT] developer diagnostics overlay; Debug builds only -->
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.18" Condition="'$(Configuration)' == 'Debug'" />
+    <!-- [XPLAT] cross-platform serial communication (COMx on Windows; /dev/ttyUSB*, /dev/ttyACM*
+         on Linux; /dev/cu.* on macOS). In-box on net48; supplied by this package on net8.0.
+         Port-name enumeration is wrapped by the internal SerialPortHelper. -->
+    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+    <!-- [XPLAT] cross-platform backing for the retained ApplicationSettingsBase persistence
+         (Properties/Settings.Designer.cs). In-box on net48; supplied by this package on net8.0.
+         The WinForms-only Properties/Resources.resx (System.Drawing.Bitmap-typed On/Off/ScanPorts
+         entries) was removed; those images are now served as AvaloniaResource (avares://). -->
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="Properties\Resources.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
+    <!-- [XPLAT] port-light + rescan glyphs served to Avalonia Image controls via avares:// URIs -->
+    <AvaloniaResource Include="Resources\*.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Update="Properties\Settings.Designer.cs">
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Update="Properties\Resources.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <None Update="Properties\Settings.settings">

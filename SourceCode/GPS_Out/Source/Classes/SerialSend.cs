@@ -1,17 +1,22 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.IO.Ports;
+using Avalonia.Threading;   // [XPLAT] DispatcherTimer replaces System.Windows.Forms.Timer
+using GPS_Out.Views;        // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
 
 namespace GPS_Out
 {
     public class SerialSend
     {
-        private readonly frmStart mf;
+        private readonly MainWindow mf;
         private bool cWriteTimeOut = false;
         private SerialPort Sport;
-        private System.Windows.Forms.Timer Timer1 = new System.Windows.Forms.Timer();
+        // [XPLAT] WinForms System.Windows.Forms.Timer -> Avalonia DispatcherTimer (UI-thread, 1 s
+        // watchdog). Interval is a TimeSpan; Start()/Stop() replace the Enabled flag.
+        private readonly DispatcherTimer Timer1 = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1000) };
         private int WriteErrorCount;
 
-        public SerialSend(frmStart CalledFrom)
+        public SerialSend(MainWindow CalledFrom)
         {
             this.mf = CalledFrom;
             Sport = new SerialPort(Properties.Settings.Default.Port, Properties.Settings.Default.Baud);
@@ -19,8 +24,7 @@ namespace GPS_Out
             Sport.Parity = Parity.None;
             Sport.DataBits = 8;
             Sport.StopBits = StopBits.One;
-            Timer1.Interval = 1000;
-            Timer1.Tick += new EventHandler(CheckConnection);
+            Timer1.Tick += CheckConnection;
 
             if (Properties.Settings.Default.AutoConnect && Properties.Settings.Default.SerialSuccessful) Open();
         }
@@ -124,7 +128,9 @@ namespace GPS_Out
                 {
                     mf.Tls.ShowHelp(Sport.PortName + " is not sending correctly. It will be closed.", "Serial Port", 5000, true, false, true);
                     Close();
-                    mf.SetPortButtons1();
+                    // [XPLAT] refresh the port indicator via the internal ISerialStatusSink contract
+                    // (MainWindow implements it) instead of the old direct mf.SetPortButtons1() call.
+                    mf.OnPortStateChanged();
                 }
             }
             else
@@ -136,7 +142,9 @@ namespace GPS_Out
         private bool SerialPortExists(string Name)
         {
             bool Result = false;
-            foreach (string s in SerialPort.GetPortNames())
+            // [XPLAT] route OS port enumeration through the internal SerialPortHelper (wraps the
+            // cross-platform SerialPort.GetPortNames(): COMx / /dev/ttyUSB* / /dev/cu.*).
+            foreach (string s in SerialPortHelper.GetPortNames())
             {
                 if (s == Name)
                 {

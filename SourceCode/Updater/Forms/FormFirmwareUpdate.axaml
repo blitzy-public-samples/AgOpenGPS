@@ -1,0 +1,47 @@
+<!-- [XPLAT] migrated from net48/WinForms (Forms/FormFirmwareUpdate.{cs,Designer.cs}) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="AgOpenGPS.Updater.Forms.FormFirmwareUpdate"
+        Title="Firmware Update"
+        Width="600" Height="500"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
+        FontFamily="Segoe UI">
+    <!--
+        Placeholder window for future firmware-update functionality (TeensyLoaderCLI integration).
+        1:1 layout port of the WinForms FormFirmwareUpdate: dark-blue header, info body, Close button.
+    -->
+    <DockPanel LastChildFill="True">
+        <!-- panelHeader (Dock=Top, 60h, BackColor 40,96,144) -->
+        <Border DockPanel.Dock="Top" Height="60" Background="#286090">
+            <TextBlock x:Name="lblTitle"
+                       Text="AgOpenGPS Firmware Update"
+                       Foreground="White"
+                       FontSize="18" FontWeight="Bold"
+                       VerticalAlignment="Center"
+                       Margin="20,0,0,0" />
+        </Border>
+
+        <!-- panelButtons (Dock=Bottom, 60h, Padding 20) -->
+        <Border DockPanel.Dock="Bottom" Height="60" Padding="20">
+            <Button x:Name="btnClose"
+                    Content="Close"
+                    Width="100" Height="35"
+                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Click="OnCloseClick"
+                    AutomationProperties.Name="Close firmware update window" />
+        </Border>
+
+        <!-- panelMain (Fill, Padding 20) -->
+        <Border Padding="20">
+            <TextBlock x:Name="lblInfo"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Text="Firmware Update Feature&#x0A;&#x0A;This feature is under development.&#x0A;&#x0A;Future capabilities will include:&#x0A;&#x0A;&#x2022; Select firmware .hex file&#x0A;&#x2022; Select communication port (from AgIO settings)&#x0A;&#x2022; Start TeensyLoaderCLI with parameters&#x0A;&#x2022; Upload firmware to Teensy device&#x0A;&#x2022; Progress indicator&#x0A;&#x0A;TeensyLoader integration:&#x0A;teensy_loader_cli --mcu=TEENSY40 --port=COM3 firmware.hex" />
+        </Border>
+    </DockPanel>
+</Window>

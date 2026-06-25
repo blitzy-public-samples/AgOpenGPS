@@ -50,9 +50,13 @@ namespace GPS_Out.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("210, 220, 230")]
-        public global::System.Drawing.Color DayColour {
+        // [XPLAT] DayColour stored as an "R, G, B" string (Settings.settings: Type="System.String")
+        // instead of the WinForms-only System.Drawing.Color, which would require the Windows-only
+        // System.Drawing.ColorConverter at runtime. App.axaml.cs parses this string into an
+        // Avalonia.Media.Color at startup. Persisted value/format is unchanged ("210, 220, 230").
+        public string DayColour {
             get {
-                return ((global::System.Drawing.Color)(this["DayColour"]));
+                return ((string)(this["DayColour"]));
             }
             set {
                 this["DayColour"] = value;

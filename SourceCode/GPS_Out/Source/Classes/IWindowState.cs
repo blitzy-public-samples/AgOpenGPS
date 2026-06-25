@@ -10,7 +10,10 @@ namespace GPS_Out
     /// Implemented by the GPS_Out Avalonia windows (e.g. MainWindow). The persisted keys
     /// remain <c>Name + ".Left"</c> / <c>Name + ".Top"</c> so saved geometry round-trips.
     /// </summary>
-    public interface IWindowState
+    // [XPLAT] internal (not public): R7 limits new public architectural surface to
+    // AgOpenGPS.Core.IPlatformServices + the OpenGL host adapter. This GPS_Out-local
+    // window-geometry contract is an internal implementation detail of the standalone app.
+    internal interface IWindowState
     {
         /// <summary>Stable name used as the settings-key prefix (matches the old WinForms Form.Name).</summary>
         string Name { get; }

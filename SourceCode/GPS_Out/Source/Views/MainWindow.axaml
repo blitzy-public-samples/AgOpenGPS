@@ -53,6 +53,38 @@
         <Style Selector="ToggleButton.optionButton:checked, RadioButton.optionButton:checked">
             <Setter Property="Background" Value="#C0FFC0" />
         </Style>
+
+        <!--
+            [XPLAT] m1: the flat ControlTemplate above suppressed the Fluent default visuals, so the
+            interactive-state cues (hover / pressed / keyboard focus / disabled) are restored
+            explicitly here. Order matters: the combined :checked:* selectors follow the plain ones so
+            the checked light-green fill stays dominant while still showing hover/press feedback. The
+            :focus-visible ring is a 2px accent border (the button size is fixed, so it adds no reflow),
+            keeping a WCAG-visible keyboard-focus indicator.
+        -->
+        <Style Selector="ToggleButton.optionButton:pointerover, RadioButton.optionButton:pointerover">
+            <Setter Property="Background" Value="#FFE5F1FB" />
+            <Setter Property="BorderBrush" Value="#FF7EB4EA" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:checked:pointerover, RadioButton.optionButton:checked:pointerover">
+            <Setter Property="Background" Value="#FFB6EFB6" />
+            <Setter Property="BorderBrush" Value="#FF7EB4EA" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:pressed, RadioButton.optionButton:pressed">
+            <Setter Property="Background" Value="#FFCCE4F7" />
+            <Setter Property="BorderBrush" Value="#FF569DE5" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:checked:pressed, RadioButton.optionButton:checked:pressed">
+            <Setter Property="Background" Value="#FF9FE89F" />
+            <Setter Property="BorderBrush" Value="#FF569DE5" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:focus-visible, RadioButton.optionButton:focus-visible">
+            <Setter Property="BorderBrush" Value="#FF005A9E" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:disabled, RadioButton.optionButton:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
     </Window.Styles>
 
     <!--
@@ -95,10 +127,14 @@
                                 FontFamily="Tahoma" FontSize="24" FontWeight="Bold"
                                 Click="BtnConnect1_Click" />
 
-                        <!-- btnRescan: flat image button (ScanPorts.png is an AvaloniaResource). -->
+                        <!-- btnRescan: flat image button (ScanPorts.png is an AvaloniaResource).
+                             [XPLAT] M4: image-only control needs an accessible name + tooltip so screen
+                             readers announce its purpose (the WinForms button conveyed it only visually). -->
                         <Button x:Name="btnRescan" Canvas.Left="508" Canvas.Top="24"
                                 Width="72" Height="72" Padding="0"
                                 Background="Transparent" BorderThickness="0"
+                                AutomationProperties.Name="Rescan ports"
+                                ToolTip.Tip="Rescan ports"
                                 Click="BtnRescan_Click">
                             <Image Source="avares://GPS_Out/Resources/ScanPorts.png" Stretch="Uniform" />
                         </Button>

@@ -28,10 +28,18 @@
         <TextBlock x:Name="lblCurrentLat" Canvas.Left="36" Canvas.Top="4" Text="-88.8888888" FontSize="12" FontWeight="Bold" />
         <TextBlock x:Name="label22" Canvas.Left="1" Canvas.Top="26" Text="Lon" FontSize="12" />
         <TextBlock x:Name="lblCurrentLon" Canvas.Left="36" Canvas.Top="26" Text="-166.8888888" FontSize="12" FontWeight="Bold" />
-        <NumericUpDown x:Name="nudLat" Canvas.Left="11" Canvas.Top="52" Width="136" Height="27" Minimum="-90" Maximum="90" Increment="1" FormatString="0.0000000" FontSize="12" FontWeight="Bold" />
-        <NumericUpDown x:Name="nudLon" Canvas.Left="11" Canvas.Top="81" Width="136" Height="27" Minimum="-180" Maximum="180" Increment="1" FormatString="0.0000000" FontSize="12" FontWeight="Bold" />
-        <Button x:Name="btnSave" Canvas.Left="20" Canvas.Top="112" Width="101" Height="28" Content="Save" Click="OnSaveClick" />
-        <TextBlock x:Name="lblIP" Canvas.Left="5" Canvas.Top="150" Width="143" Height="59" Text="288.288.288.288&#10;288&#10;288" Background="Transparent" FontSize="11.25" FontWeight="Bold" Tapped="OnIpLabelClick" />
+        <NumericUpDown x:Name="nudLat" Canvas.Left="11" Canvas.Top="52" Width="136" Height="27" Minimum="-90" Maximum="90" Increment="1" FormatString="0.0000000" FontSize="12" FontWeight="Bold"
+                       AutomationProperties.Name="Simulated start latitude" />
+        <NumericUpDown x:Name="nudLon" Canvas.Left="11" Canvas.Top="81" Width="136" Height="27" Minimum="-180" Maximum="180" Increment="1" FormatString="0.0000000" FontSize="12" FontWeight="Bold"
+                       AutomationProperties.Name="Simulated start longitude" />
+        <Button x:Name="btnSave" Canvas.Left="20" Canvas.Top="112" Width="101" Height="28" Content="Save" Click="OnSaveClick"
+                AutomationProperties.Name="Save simulated start coordinate" />
+        <!-- [XPLAT] M10: tap-only readout exposed to assistive tech and operable from the keyboard
+             (Focusable + Enter/Space via OnClickableKeyDown), with an accessible name and tooltip. -->
+        <TextBlock x:Name="lblIP" Canvas.Left="5" Canvas.Top="150" Width="143" Height="59" Text="288.288.288.288&#10;288&#10;288" Background="Transparent" FontSize="11.25" FontWeight="Bold"
+                   Tapped="OnIpLabelClick" Focusable="True" KeyDown="OnClickableKeyDown"
+                   AutomationProperties.Name="Local IP addresses. Activate to refresh the list."
+                   ToolTip.Tip="Click to list this computer's network addresses" />
 
         <!-- ===== Center: steer angle / speed / roll readouts + sliders ===== -->
         <Border Canvas.Left="195" Canvas.Top="10" Width="119" Height="21"
@@ -39,27 +47,36 @@
             <TextBlock x:Name="lblWAS" Text="Steer: 0.0°" Background="White"
                        FontSize="11.25" FontWeight="Bold" TextAlignment="Left"
                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="3,2,0,0"
-                       Tapped="OnWasLabelClick" />
+                       Tapped="OnWasLabelClick" Focusable="True" KeyDown="OnClickableKeyDown"
+                       AutomationProperties.Name="Steer angle readout. Activate to zero the steer angle."
+                       ToolTip.Tip="Click to zero the steer angle" />
         </Border>
-        <Slider x:Name="tbarSteerAngleWAS" Canvas.Left="182" Canvas.Top="41" Width="190" Height="45" Orientation="Horizontal" Minimum="-6000" Maximum="6000" TickFrequency="500" TickPlacement="BottomRight" ValueChanged="OnSteerAngleChanged" />
+        <Slider x:Name="tbarSteerAngleWAS" Canvas.Left="182" Canvas.Top="41" Width="190" Height="45" Orientation="Horizontal" Minimum="-6000" Maximum="6000" TickFrequency="500" TickPlacement="BottomRight" ValueChanged="OnSteerAngleChanged"
+                AutomationProperties.Name="Simulated steer angle" />
         <TextBlock x:Name="lblHeading" Canvas.Left="315" Canvas.Top="11" Text="0" FontSize="11.25" FontWeight="Bold" />
         <Border Canvas.Left="190" Canvas.Top="86" Width="104" Height="24"
                 Background="White" BorderBrush="Black" BorderThickness="1">
             <TextBlock x:Name="lblKmh" Text="Kmh: 0.0" Background="White"
                        FontSize="11.25" FontWeight="Bold" TextAlignment="Center"
                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="0,3,0,0"
-                       Tapped="OnKmhLabelClick" />
+                       Tapped="OnKmhLabelClick" Focusable="True" KeyDown="OnClickableKeyDown"
+                       AutomationProperties.Name="Speed readout in km/h. Activate to zero the speed."
+                       ToolTip.Tip="Click to zero the speed" />
         </Border>
         <TextBlock x:Name="mSec" Canvas.Left="296" Canvas.Top="90" Text="m/s: 0.0" FontFamily="Microsoft Sans Serif" FontSize="9.75" FontWeight="Bold" />
-        <Slider x:Name="tbarSpeed" Canvas.Left="182" Canvas.Top="117" Width="190" Height="45" Orientation="Horizontal" Minimum="-200" Maximum="500" TickFrequency="50" TickPlacement="BottomRight" ValueChanged="OnSpeedChanged" />
+        <Slider x:Name="tbarSpeed" Canvas.Left="182" Canvas.Top="117" Width="190" Height="45" Orientation="Horizontal" Minimum="-200" Maximum="500" TickFrequency="50" TickPlacement="BottomRight" ValueChanged="OnSpeedChanged"
+                AutomationProperties.Name="Simulated speed" />
         <Border Canvas.Left="220" Canvas.Top="169" Width="114" Height="21"
                 Background="White" BorderBrush="Black" BorderThickness="1">
             <TextBlock x:Name="lblRoll" Text="Roll: 0°" Background="White"
                        FontSize="11.25" FontWeight="Bold" TextAlignment="Center"
                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="0,2,0,0"
-                       Tapped="OnRollLabelClick" />
+                       Tapped="OnRollLabelClick" Focusable="True" KeyDown="OnClickableKeyDown"
+                       AutomationProperties.Name="Roll readout. Activate to zero the roll."
+                       ToolTip.Tip="Click to zero the roll" />
         </Border>
-        <Slider x:Name="tbarRoll" Canvas.Left="182" Canvas.Top="198" Width="190" Height="45" Orientation="Horizontal" Minimum="-200" Maximum="200" TickFrequency="50" TickPlacement="BottomRight" ValueChanged="OnRollChanged" />
+        <Slider x:Name="tbarRoll" Canvas.Left="182" Canvas.Top="198" Width="190" Height="45" Orientation="Horizontal" Minimum="-200" Maximum="200" TickFrequency="50" TickPlacement="BottomRight" ValueChanged="OnRollChanged"
+                AutomationProperties.Name="Simulated roll" />
 
         <!-- ===== NMEA sentence enable checkboxes (only NDA checked by default) ===== -->
         <CheckBox x:Name="cboxGGA" Canvas.Left="178" Canvas.Top="259" Width="69" Height="24" Content="GGA" FontFamily="Microsoft Sans Serif" FontSize="12" FontWeight="Bold" />
@@ -94,13 +111,16 @@
                 <!-- group caption straddling the top border line (WinForms GroupBox.Text) -->
                 <TextBlock Text="Steer Module" Canvas.Left="8" Canvas.Top="-1"
                            Background="WhiteSmoke" Padding="4,0,4,0" FontSize="11.25" />
-                <Button x:Name="btnSteerButtonRemote" Canvas.Left="114" Canvas.Top="27" Width="61" Height="61" Click="OnSteerButtonRemoteClick" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0">
+                <Button x:Name="btnSteerButtonRemote" Canvas.Left="114" Canvas.Top="27" Width="61" Height="61" Click="OnSteerButtonRemoteClick" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0"
+                        AutomationProperties.Name="Steer button (momentary)">
                     <TextBlock Text="Steer Button" TextWrapping="Wrap" TextAlignment="Center" />
                 </Button>
-                <ToggleButton x:Name="cboxSteerSwitchRemote" Canvas.Left="15" Canvas.Top="29" Width="61" Height="59" Click="OnSteerSwitchRemoteClick" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0">
+                <ToggleButton x:Name="cboxSteerSwitchRemote" Canvas.Left="15" Canvas.Top="29" Width="61" Height="59" Click="OnSteerSwitchRemoteClick" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0"
+                              AutomationProperties.Name="Steer switch (latching)">
                     <TextBlock Text="Steer Switch" TextWrapping="Wrap" TextAlignment="Center" />
                 </ToggleButton>
-                <ToggleButton x:Name="cboxWorkSwitch" Canvas.Left="210" Canvas.Top="29" Width="61" Height="59" Click="OnWorkSwitchClick" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0">
+                <ToggleButton x:Name="cboxWorkSwitch" Canvas.Left="210" Canvas.Top="29" Width="61" Height="59" Click="OnWorkSwitchClick" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0"
+                              AutomationProperties.Name="Work switch (latching)">
                     <TextBlock Text="Work Switch" TextWrapping="Wrap" TextAlignment="Center" />
                 </ToggleButton>
                 <TextBlock x:Name="label20" Canvas.Left="4" Canvas.Top="99" Text="Steer Switch:" FontSize="12" />

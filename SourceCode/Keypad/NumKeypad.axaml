@@ -1,0 +1,68 @@
+<!-- [XPLAT] migrated from net48/WinForms NumKeypad.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] Numeric keypad reimplemented as an Avalonia UserControl deriving from GenericKeypad
+    (the standard Avalonia UserControl-inheritance pattern: the XAML root element is the base type).
+    Layout reproduces the original 456x430 WinForms control: a 4x4 grid of 93x92 buttons at the
+    original Canvas coordinates (columns 3/122/241/360, rows 3/112/223/334), Tahoma 36pt Bold glyphs
+    (the +/- key uses 24pt as in the original). Emitted command tokens are preserved exactly:
+    digits 0-9, 'C' (clear), 'B' (backspace), 'X' (cancel), 'K' (OK/enter), '-' (plus/minus), '.' (decimal).
+-->
+<keypad:GenericKeypad xmlns="https://github.com/avaloniaui"
+                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                      xmlns:keypad="clr-namespace:Keypad"
+                      x:Class="Keypad.NumKeypad"
+                      Width="456" Height="430">
+
+    <keypad:GenericKeypad.Styles>
+        <!-- [XPLAT] Tahoma 36pt Bold matches the WinForms designer font for the numeric glyphs. -->
+        <Style Selector="Button">
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="FontSize" Value="36" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </keypad:GenericKeypad.Styles>
+
+    <Canvas Width="456" Height="430">
+        <!-- Row 0: 1 2 3 C -->
+        <Button x:Name="btn1" Canvas.Left="3"   Canvas.Top="3"   Width="93" Height="92" Content="1" Click="Btn1_Click" />
+        <Button x:Name="btn2" Canvas.Left="122" Canvas.Top="3"   Width="93" Height="92" Content="2" Click="Btn2_Click" />
+        <Button x:Name="btn3" Canvas.Left="241" Canvas.Top="3"   Width="93" Height="92" Content="3" Click="Btn3_Click" />
+        <Button x:Name="btnClear" Canvas.Left="360" Canvas.Top="3" Width="93" Height="92" Content="C"
+                Foreground="Black" Click="BtnClear_Click" />
+
+        <!-- Row 1: 4 5 6 CE(backspace) -->
+        <Button x:Name="btn4" Canvas.Left="3"   Canvas.Top="113" Width="93" Height="92" Content="4" Click="Btn4_Click" />
+        <Button x:Name="btn5" Canvas.Left="122" Canvas.Top="112" Width="93" Height="92" Content="5" Click="Btn5_Click" />
+        <Button x:Name="btn6" Canvas.Left="241" Canvas.Top="112" Width="93" Height="92" Content="6" Click="Btn6_Click" />
+        <Button x:Name="btnBackSpace" Canvas.Left="360" Canvas.Top="112" Width="93" Height="92"
+                Foreground="Black" Click="BtnBackSpace_Click"
+                ToolTip.Tip="Backspace">
+            <Image Source="avares://Keypad/Resources/backspace.png" Stretch="Uniform" Width="56" Height="56" />
+        </Button>
+
+        <!-- Row 2: 7 8 9 Cancel -->
+        <Button x:Name="btn7" Canvas.Left="3"   Canvas.Top="223" Width="93" Height="92" Content="7" Click="Btn7_Click" />
+        <Button x:Name="btn8" Canvas.Left="122" Canvas.Top="223" Width="93" Height="92" Content="8" Click="Btn8_Click" />
+        <Button x:Name="btn9" Canvas.Left="241" Canvas.Top="224" Width="93" Height="92" Content="9" Click="Btn9_Click" />
+        <Button x:Name="btnCancel" Canvas.Left="360" Canvas.Top="224" Width="93" Height="92"
+                Foreground="Black" Click="BtnCancel_Click"
+                ToolTip.Tip="Cancel">
+            <Image Source="avares://Keypad/Resources/Cancel64.png" Stretch="Uniform" Width="56" Height="56" />
+        </Button>
+
+        <!-- Row 3: +/-  0  .  OK -->
+        <Button x:Name="btnPlusMinus" Canvas.Left="3" Canvas.Top="334" Width="93" Height="92" Content="+/-"
+                FontSize="24" Click="BtnPlusMinus_Click" />
+        <Button x:Name="btn0" Canvas.Left="122" Canvas.Top="335" Width="93" Height="92" Content="0" Click="Btn0_Click" />
+        <Button x:Name="btnDecimal" Canvas.Left="241" Canvas.Top="335" Width="93" Height="92" Content="."
+                Foreground="Black" Click="BtnDecimal_Click" />
+        <Button x:Name="btnOK" Canvas.Left="360" Canvas.Top="335" Width="93" Height="92"
+                Foreground="Black" Click="BtnOK_Click"
+                ToolTip.Tip="OK">
+            <Image Source="avares://Keypad/Resources/OK64.png" Stretch="Uniform" Width="56" Height="56" />
+        </Button>
+    </Canvas>
+</keypad:GenericKeypad>

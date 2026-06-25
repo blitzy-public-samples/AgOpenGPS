@@ -1,4 +1,6 @@
-﻿using Accord;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+// Removed unused `using Accord;` — the Accord.* packages (Windows-only webcam imaging) were
+// dropped from AgLibrary in this migration, and this test references no Accord type.
 using AgOpenGPS.Core.Models;
 using NUnit.Framework;
 using System;
@@ -142,14 +144,18 @@ namespace AgOpenGPS.Core.Tests.Models
             double nLength = polygon.GetLength(3 * nVertices / 4, 1 * nVertices / 4);
 
             // Assert
-            Assert.That(eLength.IsGreaterThan(3.1 * radius));
-            Assert.That(eLength.IsLessThan(Math.PI * radius));
-            Assert.That(sLength.IsGreaterThan(3.1 * radius));
-            Assert.That(sLength.IsLessThan(Math.PI * radius));
-            Assert.That(wLength.IsGreaterThan(3.1 * radius));
-            Assert.That(wLength.IsLessThan(Math.PI * radius));
-            Assert.That(nLength.IsGreaterThan(3.1 * radius));
-            Assert.That(nLength.IsLessThan(Math.PI * radius));
+            // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+            // Replaced Accord.Math's double.IsGreaterThan/IsLessThan extension methods (removed with
+            // the Accord.* packages) with the equivalent NUnit-native Is.GreaterThan/Is.LessThan
+            // constraints. The numeric bounds and assertion semantics are identical.
+            Assert.That(eLength, Is.GreaterThan(3.1 * radius));
+            Assert.That(eLength, Is.LessThan(Math.PI * radius));
+            Assert.That(sLength, Is.GreaterThan(3.1 * radius));
+            Assert.That(sLength, Is.LessThan(Math.PI * radius));
+            Assert.That(wLength, Is.GreaterThan(3.1 * radius));
+            Assert.That(wLength, Is.LessThan(Math.PI * radius));
+            Assert.That(nLength, Is.GreaterThan(3.1 * radius));
+            Assert.That(nLength, Is.LessThan(Math.PI * radius));
         }
 
         [Test]

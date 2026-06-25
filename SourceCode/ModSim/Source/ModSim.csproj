@@ -1,13 +1,15 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <!-- [XPLAT] Exe (not WinExe) so the Avalonia simulator launches as a normal cross-platform
+         process; Avalonia owns its windowing/message loop. -->
+    <OutputType>Exe</OutputType>
     <PublishDir>..\..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>ModSim_ico.ico</ApplicationIcon>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <EmbeddedResourceUseDependentUponConvention>true</EmbeddedResourceUseDependentUponConvention>
-    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+    <!-- [XPLAT] compiled XAML + generated typed x:Name fields for the Views/*.axaml code-behind -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <!-- [XPLAT] per-OS self-contained publish targets for the tri-OS CI matrix (Windows/Linux/macOS) -->
     <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
@@ -24,38 +26,21 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.18" />
     <!-- [XPLAT] developer diagnostics overlay; Debug builds only -->
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.18" Condition="'$(Configuration)' == 'Debug'" />
-    <!-- [XPLAT] cross-platform backing for retained ApplicationSettingsBase (in-box on net48, package on net8.0) -->
+    <!-- [XPLAT] cross-platform backing for the retained ApplicationSettingsBase persistence
+         (Properties/Settings.Designer.cs: NMEA-enable flags, sim lat/lon, UDP subnet). In-box on
+         net48; supplied by this package on net8.0. The unused VS-template Resources.resx and the
+         dead strongly-typed gStr.resx (both carried System.Drawing-typed entries and had zero code
+         references) were removed, so System.Resources.Extensions / GenerateResourceUsePreserialized-
+         Resources are no longer needed. -->
     <PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.0" />
-    <!-- preserialized .resx resources (gStr.resx, Properties/Resources.resx) retained -->
-    <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="gStr.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>gStr.resx</DependentUpon>
-    </Compile>
-    <Compile Update="Properties\Resources.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
     <Compile Update="Properties\Settings.Designer.cs">
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Update="gStr.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>gStr.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <EmbeddedResource Update="Properties\Resources.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <None Update="Properties\Settings.settings">

@@ -1,4 +1,6 @@
-﻿using System;
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using GPS_Out.Views;   // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
+using System;
 using System.Globalization;
 
 namespace GPS_Out
@@ -23,9 +25,9 @@ namespace GPS_Out
         #endregion RMC Message
 
         private string cSentence;
-        private frmStart mf;
+        private MainWindow mf;
 
-        public PGN_RMC(frmStart CalledFrom)
+        public PGN_RMC(MainWindow CalledFrom)
         {
             mf = CalledFrom;
         }

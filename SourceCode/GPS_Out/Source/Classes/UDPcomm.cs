@@ -1,12 +1,15 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.Net;
 using System.Net.Sockets;
+using Avalonia.Threading;   // [XPLAT] replaces WinForms Control.Invoke for cross-thread UI marshalling
+using GPS_Out.Views;        // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
 
 namespace GPS_Out
 {
     public class UDPComm
     {
-        private readonly frmStart mf;
+        private readonly MainWindow mf;
         private byte[] buffer = new byte[1024];
         private string cConnectionName;
         private bool cIsUDPSendConnected;
@@ -17,11 +20,10 @@ namespace GPS_Out
         private int cSendToPort;
         private IPAddress cSourceIP;
         private string cSubNet;
-        private HandleDataDelegateObj HandleDataDelegate = null;
         private Socket recvSocket;
         private Socket sendSocket;
 
-        public UDPComm(frmStart CallingForm, int ReceivePort, int SendToPort, int SendFromPort,
+        public UDPComm(MainWindow CallingForm, int ReceivePort, int SendToPort, int SendFromPort,
             string ConnectionName, string SourceIPaddress, string DestinationEndPoint = "")
         {
             mf = CallingForm;
@@ -32,9 +34,6 @@ namespace GPS_Out
             SetEP(DestinationEndPoint);
             SetSourceIP(SourceIPaddress);
         }
-
-        // Status delegate
-        private delegate void HandleDataDelegateObj(int port, byte[] msg);
 
         public bool IsUDPSendConnected { get => cIsUDPSendConnected; set => cIsUDPSendConnected = value; }
 
@@ -58,9 +57,6 @@ namespace GPS_Out
         {
             try
             {
-                // initialize the delegate which updates the message received
-                HandleDataDelegate = HandleData;
-
                 // initialize the receive socket
                 recvSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
                 recvSocket.Bind(new IPEndPoint(cSourceIP, cReceivePort));
@@ -145,8 +141,10 @@ namespace GPS_Out
                 recvSocket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref epSender, new AsyncCallback(ReceiveData), epSender);
 
                 int port = ((IPEndPoint)epSender).Port;
-                // Update status through a delegate
-                mf.Invoke(HandleDataDelegate, new object[] { port, localMsg });
+                // [XPLAT] marshal the parsed datagram onto the Avalonia UI thread (was WinForms
+                // Control.Invoke). Preserves the original receive->UI-thread handoff semantics so
+                // PGN parsing that mutates UI-read state stays single-threaded.
+                Dispatcher.UIThread.Post(() => HandleData(port, localMsg));
             }
             catch (ObjectDisposedException)
             {

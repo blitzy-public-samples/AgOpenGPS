@@ -1,0 +1,51 @@
+<!-- [XPLAT] migrated from net48/WinForms (Forms/FormReleaseNotes.{cs,Designer.cs}) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="AgOpenGPS.Updater.Forms.FormReleaseNotes"
+        Title="Release Notes"
+        Width="700" Height="580"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        FontFamily="Segoe UI">
+    <DockPanel LastChildFill="True">
+        <!-- panelHeader (Dock=Top, 70h, BackColor 27,151,160 teal) -->
+        <Border DockPanel.Dock="Top" Height="70" Background="#1B97A0">
+            <TextBlock x:Name="lblTitle"
+                       Text="Release Notes"
+                       Foreground="White"
+                       FontSize="20" FontWeight="Bold"
+                       VerticalAlignment="Center"
+                       Margin="25,0,0,0" />
+        </Border>
+
+        <!-- panelButtons (Dock=Bottom, 80h, BackColor 180,180,200, Padding 20) -->
+        <Border DockPanel.Dock="Bottom" Height="80" Background="#B4B4C8" Padding="20">
+            <Button x:Name="btnClose"
+                    Content="Close"
+                    Width="160" Height="50"
+                    FontSize="16" FontWeight="Bold"
+                    Foreground="White" Background="#1B97A0"
+                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Click="BtnClose_Click"
+                    AutomationProperties.Name="Close release notes" />
+        </Border>
+
+        <!-- panelMain (Fill, BackColor 210,210,230 lavender, Padding 20) -->
+        <Border Background="#D2D2E6" Padding="20">
+            <TextBox x:Name="txtNotes"
+                     Text="Release notes will appear here."
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     Background="White"
+                     FontSize="11"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     AutomationProperties.Name="Release notes text" />
+        </Border>
+    </DockPanel>
+</Window>

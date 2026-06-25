@@ -1,0 +1,64 @@
+<!-- [XPLAT] migrated from net48/WinForms (Forms/FormDialog.{cs,Designer.cs}) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="AgOpenGPS.Updater.Forms.FormDialog"
+        Title="AgOpenGPS Updater"
+        Width="600" Height="320"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        FontFamily="Segoe UI">
+    <!--
+        Custom styled dialog box (confirm / info / error / success). 1:1 port of the WinForms FormDialog:
+        a colored icon chip + wrapping message over a lavender body, with OK/Cancel buttons on a footer.
+        Icon-chip / button colors are set per dialog kind in code-behind and mirror App.axaml's
+        AccentBrush (#1B97A0) / ErrorBrush (#DC3C3C) / SuccessBrush (#28A745).
+    -->
+    <DockPanel LastChildFill="True">
+        <!-- panelButtons (Dock=Bottom, 80h, BackColor 180,180,200, Padding 20) -->
+        <Border DockPanel.Dock="Bottom" Height="80" Background="#B4B4C8" Padding="20">
+            <StackPanel Orientation="Horizontal" Spacing="16"
+                        HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button x:Name="btnOK"
+                        Content="OK"
+                        Width="200" Height="50"
+                        FontSize="14" FontWeight="Bold"
+                        Foreground="White" Background="#28A745"
+                        Click="BtnOK_Click" />
+                <Button x:Name="btnCancel"
+                        Content="Cancel"
+                        Width="200" Height="50"
+                        FontSize="14" FontWeight="Bold"
+                        Foreground="White" Background="#DC5050"
+                        Click="BtnCancel_Click" />
+            </StackPanel>
+        </Border>
+
+        <!-- panelMain (Fill, BackColor 210,210,230 lavender, Padding 30) -->
+        <Border Background="#D2D2E6" Padding="30">
+            <Grid ColumnDefinitions="40,*">
+                <!-- panelIcon (40x40, colored chip) + lblIcon glyph -->
+                <Border x:Name="panelIcon" Grid.Column="0"
+                        Width="40" Height="40"
+                        Background="#1B97A0"
+                        VerticalAlignment="Top">
+                    <TextBlock x:Name="lblIcon"
+                               Text="!"
+                               Foreground="White"
+                               FontSize="24" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock x:Name="lblMessage" Grid.Column="1"
+                           Margin="20,0,0,0"
+                           Text="Message text goes here"
+                           FontSize="14"
+                           Foreground="#0A0A14"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Top" />
+            </Grid>
+        </Border>
+    </DockPanel>
+</Window>

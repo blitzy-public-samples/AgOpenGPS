@@ -1,4 +1,5 @@
-﻿using AgOpenGPS.Core.Drawing;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core.Drawing;
 using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Core.Models;
 
@@ -12,7 +13,9 @@ namespace AgOpenGPS.Core.Visuals
         public BingMapVisual(BingMap bingMap)
         {
             _bingMap = bingMap;
-            _bingMapTexture = new GeoTexture2D(bingMap.Bitmap);
+            // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+            // Build the GL texture from the portable RGBA buffer + dimensions instead of a GDI+ Bitmap.
+            _bingMapTexture = new GeoTexture2D(bingMap.RgbaPixels, bingMap.Width, bingMap.Height);
         }
 
         public void Draw()

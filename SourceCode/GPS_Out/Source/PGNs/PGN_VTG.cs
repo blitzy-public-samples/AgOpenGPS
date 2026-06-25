@@ -1,4 +1,6 @@
-﻿using System.Globalization;
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using GPS_Out.Views;   // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
+using System.Globalization;
 
 namespace GPS_Out
 {
@@ -14,9 +16,9 @@ namespace GPS_Out
         //   *48          Checksum
 
         private string cSentence;
-        private frmStart mf;
+        private MainWindow mf;
 
-        public PGN_VTG(frmStart CalledFrom)
+        public PGN_VTG(MainWindow CalledFrom)
         {
             mf = CalledFrom;
         }

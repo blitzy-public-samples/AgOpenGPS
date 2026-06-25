@@ -1,14 +1,23 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    [XPLAT] AgLibrary is now a portable, cross-platform class library.
+      * Removed <UseWindowsForms>true</UseWindowsForms>: the only WinForms surfaces here
+        (Controls/RepeatButton, Controls/VideoSourcePlayer) were removed in this migration.
+        RepeatButton is replaced by Avalonia's built-in Avalonia.Controls.RepeatButton in
+        consuming UI; the webcam VideoSourcePlayer (Accord/DirectShow, Windows-only) is
+        feature-gated off-Windows (AAP §0.6.3, F-045). No remaining type needs WinForms.
+      * Removed Accord.Imaging / Accord.Video.DirectShow: these backed the deleted
+        VideoSourcePlayer webcam control only; they are Windows-only and abandoned.
+      * Removed System.Memory: a net48 BCL polyfill that is in-box on net8.0.
+    The remaining sources (Logging/Log.cs, Settings/XmlSettingsHandler.cs) use only
+    System.Drawing.Primitives types (Color/Point/Size), which ship in-box on net8.0 —
+    no System.Drawing.Common / GDI+ dependency is introduced. TargetFramework (net8.0)
+    is inherited from SourceCode/Directory.Build.props.
+  -->
   <PropertyGroup>
     <OutputType>Library</OutputType>
-    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Accord.Imaging" Version="3.8.0" />
-    <PackageReference Include="Accord.Video.DirectShow" Version="3.8.0" />
-    <PackageReference Include="System.Memory" Version="4.6.0" />
-  </ItemGroup>
 
 </Project>

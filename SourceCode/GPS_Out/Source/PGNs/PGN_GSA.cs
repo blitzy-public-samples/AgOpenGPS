@@ -1,4 +1,6 @@
-﻿using System;
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using GPS_Out.Views;   // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -34,9 +36,9 @@ namespace GPS_Out.PGNs
         #endregion GSA message
 
         private string cSentence;
-        private frmStart mf;
+        private MainWindow mf;
 
-        public PGN_GSA(frmStart CalledFrom)
+        public PGN_GSA(MainWindow CalledFrom)
         {
             mf = CalledFrom;
         }

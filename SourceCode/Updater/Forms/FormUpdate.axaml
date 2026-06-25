@@ -1,0 +1,129 @@
+<!-- [XPLAT] migrated from net48/WinForms (Forms/FormUpdate.{cs,Designer.cs}) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="AgOpenGPS.Updater.Forms.FormUpdate"
+        Title="AgOpenGPS Updater"
+        Width="750" Height="630"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
+        FontFamily="Segoe UI">
+    <!--
+        Main updater window. 1:1 layout port of WinForms FormUpdate: teal header (title + "Official"
+        badge), lavender body with version readouts / source toggle / action buttons / status + progress,
+        and a footer with Close (red) and Install Update (green). Absolute positions are reproduced with
+        Canvas placement to preserve the original designer layout exactly.
+    -->
+    <DockPanel LastChildFill="True">
+        <!-- panelHeader (Dock=Top, 90h, BackColor 27,151,160 teal) -->
+        <Border DockPanel.Dock="Top" Height="90" Background="#1B97A0">
+            <Canvas>
+                <TextBlock x:Name="lblTitle"
+                           Canvas.Left="30" Canvas.Top="25"
+                           Text="AgOpenGPS Updater"
+                           Foreground="White"
+                           FontSize="26" FontWeight="Bold" />
+                <TextBlock x:Name="lblGitHubStatus"
+                           Canvas.Left="610" Canvas.Top="35"
+                           Width="110"
+                           Text="&#x1F510; Official"
+                           Foreground="#64FF0A"
+                           FontSize="10"
+                           TextAlignment="Center"
+                           AutomationProperties.Name="Official source verified" />
+            </Canvas>
+        </Border>
+
+        <!-- panelButtons (Dock=Bottom, 110h, BackColor 180,180,200, Padding 30) -->
+        <Border DockPanel.Dock="Bottom" Height="110" Background="#B4B4C8" Padding="30">
+            <Grid>
+                <Button x:Name="btnClose"
+                        Content="Close"
+                        Width="250" Height="70"
+                        FontSize="16" FontWeight="Bold"
+                        Foreground="White" Background="#DC5050"
+                        HorizontalAlignment="Left" VerticalAlignment="Center"
+                        Click="BtnCancel_Click" />
+                <Button x:Name="btnInstallUpdate"
+                        Content="Install Update"
+                        Width="300" Height="70"
+                        FontSize="18" FontWeight="Bold"
+                        Foreground="White" Background="#28A745"
+                        IsEnabled="False"
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Click="BtnInstallUpdate_Click" />
+            </Grid>
+        </Border>
+
+        <!-- panelMain (Fill, BackColor 210,210,230 lavender) -->
+        <Border Background="#D2D2E6">
+            <Canvas>
+                <TextBlock x:Name="lblCurrentVersion"
+                           Canvas.Left="30" Canvas.Top="30"
+                           Text="Current Version: -"
+                           FontSize="16" Foreground="#0A0A14" />
+                <TextBlock x:Name="lblLatestVersion"
+                           Canvas.Left="30" Canvas.Top="70"
+                           Text="Latest Version: -"
+                           FontSize="18" FontWeight="Bold" Foreground="#0A0A14" />
+                <CheckBox x:Name="chkIncludePrerelease"
+                          Canvas.Left="30" Canvas.Top="120"
+                          Content="Include pre-release"
+                          FontSize="14" Foreground="#0A0A14" />
+                <Button x:Name="btnToggleSource"
+                        Canvas.Left="550" Canvas.Top="25"
+                        Content="Use USB"
+                        Width="170" Height="40"
+                        FontSize="12" FontWeight="Bold"
+                        Foreground="White" Background="#646464"
+                        Click="BtnToggleSource_Click"
+                        AutomationProperties.Name="Toggle update source between Web and USB" />
+                <TextBlock x:Name="lblSourceInfo"
+                           Canvas.Left="30" Canvas.Top="160"
+                           Width="690" Height="60"
+                           Text="Local: Place AgOpenGPS.zip in root of USB drive"
+                           FontSize="11" FontStyle="Italic" Foreground="#646464"
+                           TextWrapping="Wrap"
+                           IsVisible="False" />
+                <Button x:Name="btnCheckForUpdates"
+                        Canvas.Left="30" Canvas.Top="210"
+                        Content="Check for Updates"
+                        Width="350" Height="70"
+                        FontSize="16" FontWeight="Bold"
+                        Foreground="White" Background="#1B97A0"
+                        Click="BtnCheckForUpdates_Click" />
+                <Button x:Name="btnViewReleaseNotes"
+                        Canvas.Left="400" Canvas.Top="210"
+                        Content="View Release Notes"
+                        Width="320" Height="70"
+                        FontSize="16" FontWeight="Bold"
+                        Foreground="White" Background="#646464"
+                        IsEnabled="False"
+                        Click="BtnViewReleaseNotes_Click" />
+                <TextBlock x:Name="lblStatus"
+                           Canvas.Left="30" Canvas.Top="300"
+                           Width="690" Height="60"
+                           Text="Ready..."
+                           FontSize="16" FontWeight="Bold" Foreground="#1B97A0"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           AutomationProperties.Name="Updater status" />
+                <ProgressBar x:Name="progressBar1"
+                             Canvas.Left="30" Canvas.Top="370"
+                             Width="690" Height="40"
+                             Minimum="0" Maximum="100" Value="0"
+                             IsVisible="False" />
+                <TextBlock x:Name="lblProgressPercent"
+                           Canvas.Left="30" Canvas.Top="420"
+                           Width="690" Height="80"
+                           Text="0%"
+                           FontSize="48" FontWeight="Bold" Foreground="#1B97A0"
+                           TextAlignment="Center"
+                           IsVisible="False" />
+            </Canvas>
+        </Border>
+    </DockPanel>
+</Window>

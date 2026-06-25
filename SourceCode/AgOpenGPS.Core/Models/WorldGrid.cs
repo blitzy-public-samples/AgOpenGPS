@@ -1,5 +1,6 @@
 ﻿//Please, if you use this, share the improvements
 
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using AgOpenGPS.Core.Drawing;
 using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Core.Models;
@@ -7,7 +8,6 @@ using AgOpenGPS.Core.Visuals;
 using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 
 namespace AgOpenGPS.Core
 {
@@ -15,7 +15,12 @@ namespace AgOpenGPS.Core
     {
         private BingMap _bingMap;
         private BingMapVisual _bingMapVisual;
-        private Bitmap _floorBitmap;
+        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+        // Floor texture source is now a portable, tightly-packed RGBA byte buffer (4 bytes/pixel,
+        // row-major) with explicit dimensions, replacing the Windows-only GDI+ System.Drawing.Bitmap.
+        private byte[] _floorRgbaPixels;
+        private int _floorWidth;
+        private int _floorHeight;
         private GeoTexture2D _floorTexture;
 
         //Y
@@ -33,9 +38,13 @@ namespace AgOpenGPS.Core
 
         public double gridRotation = 0.0;
 
-        public WorldGrid(Bitmap floorBitmap)
+        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+        // Accepts the floor texture as a portable RGBA buffer + dimensions instead of a GDI+ Bitmap.
+        public WorldGrid(byte[] floorRgbaPixels, int floorWidth, int floorHeight)
         {
-            _floorBitmap = floorBitmap;
+            _floorRgbaPixels = floorRgbaPixels;
+            _floorWidth = floorWidth;
+            _floorHeight = floorHeight;
         }
 
         public double GridStep { private get; set; }
@@ -58,7 +67,7 @@ namespace AgOpenGPS.Core
         {
             get
             {
-                if (null == _floorTexture) _floorTexture = new GeoTexture2D(_floorBitmap);
+                if (null == _floorTexture) _floorTexture = new GeoTexture2D(_floorRgbaPixels, _floorWidth, _floorHeight);
                 return _floorTexture;
             }
         }

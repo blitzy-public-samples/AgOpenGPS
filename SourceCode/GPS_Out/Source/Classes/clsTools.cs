@@ -1,41 +1,18 @@
-﻿using RateController;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+// WinForms/GDI+ purged: System.Windows.Forms, System.Drawing(.Printing), System.Media and the
+// user32.dll Form-drag P/Invoke are gone. Window geometry persistence now flows through the
+// internal IWindowState contract (Avalonia PixelPoint), and ShowHelp opens the Avalonia
+// Views.HelpWindow. File/settings/CRC logic is unchanged (behaviour frozen).
 using System;
 using System.Collections;
-using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Printing;
 using System.IO;
-using System.Linq;
-using System.Media;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Windows.Forms;
-using System.Xml.Linq;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+using Avalonia;          // [XPLAT] PixelPoint for IWindowState-based geometry persistence
+using GPS_Out.Views;     // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
 
 namespace GPS_Out
 {
     public class clsTools
     {
-        #region Form Dragging API Support
-
-        // https://www.c-sharpcorner.com/article/transparent-borderless-forms-in-C-Sharp/
-        // add to form:
-        // private void Form1_MouseDown(object sender, MouseEventArgs e)
-        // {
-        //    if (e.Button == MouseButtons.Left) Tls.DragForm(this);
-        // }
-
-        //ReleaseCapture releases a mouse capture
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = false)]
-        public static extern bool ReleaseCapture();
-
-        //The SendMessage function sends a message to a window or windows.
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = false)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, int wParam, int lParam);
-
-        #endregion Form Dragging API Support
-
         private static Hashtable HTapp;
         private static Hashtable HTfiles;
         private string cAppName = "GPS_Out";
@@ -43,10 +20,10 @@ namespace GPS_Out
         private string cPropertiesApp;
         private string cPropertiesFile;
         private string cSettingsDir;
-        private frmStart mf;
+        private MainWindow mf;
         private int SentenceCount = 0;
 
-        public clsTools(frmStart CallingForm)
+        public clsTools(MainWindow CallingForm)
         {
             mf = CallingForm;
             CheckFolders();
@@ -73,52 +50,9 @@ namespace GPS_Out
             return Result;
         }
 
-        public void DragForm(Form Frm)
-        {
-            ReleaseCapture();
-            SendMessage(Frm.Handle, 0xa1, 0x2, 0);
-        }
-
-        public void DrawGroupBox(GroupBox box, Graphics g, Color BackColor, Color textColor, Color borderColor)
-        {
-            // useage:
-            // point the Groupbox paint event to this sub:
-            //private void GroupBoxPaint(object sender, PaintEventArgs e)
-            //{
-            //    GroupBox box = sender as GroupBox;
-            //    mf.Tls.DrawGroupBox(box, e.Graphics, this.BackColor, Color.Black, Color.Blue);
-            //}
-
-            if (box != null)
-            {
-                Brush textBrush = new SolidBrush(textColor);
-                Brush borderBrush = new SolidBrush(borderColor);
-                Pen borderPen = new Pen(borderBrush);
-                SizeF strSize = g.MeasureString(box.Text, box.Font);
-                Rectangle rect = new Rectangle(box.ClientRectangle.X,
-                                               box.ClientRectangle.Y + (int)(strSize.Height / 2),
-                                               box.ClientRectangle.Width - 1,
-                                               box.ClientRectangle.Height - (int)(strSize.Height / 2) - 1);
-
-                // Clear text and border
-                g.Clear(BackColor);
-
-                // Draw text
-                g.DrawString(box.Text, box.Font, textBrush, box.Padding.Left, 0);
-
-                // Drawing Border
-                //Left
-                g.DrawLine(borderPen, rect.Location, new Point(rect.X, rect.Y + rect.Height));
-                //Right
-                g.DrawLine(borderPen, new Point(rect.X + rect.Width, rect.Y), new Point(rect.X + rect.Width, rect.Y + rect.Height));
-                //Bottom
-                g.DrawLine(borderPen, new Point(rect.X, rect.Y + rect.Height), new Point(rect.X + rect.Width, rect.Y + rect.Height));
-                //Top1
-                g.DrawLine(borderPen, new Point(rect.X, rect.Y), new Point(rect.X + box.Padding.Left, rect.Y));
-                //Top2
-                g.DrawLine(borderPen, new Point(rect.X + box.Padding.Left + (int)strSize.Width, rect.Y), new Point(rect.X + rect.Width, rect.Y));
-            }
-        }
+        // [XPLAT] DragForm (user32.dll P/Invoke) and DrawGroupBox (GDI+ Graphics) were WinForms-only
+        // and had zero surviving callers: the Avalonia Views/*.axaml reproduce the group-box frames
+        // declaratively (Border + header TextBlock), and borderless drag is not used. Both removed.
 
         public bool GoodCRC(byte[] Data, byte Start = 0)
         {
@@ -129,23 +63,6 @@ namespace GPS_Out
             return Result;
         }
 
-        public bool IsOnScreen(Form form, bool PutOnScreen = false)
-        {
-            // Create rectangle
-            Rectangle formRectangle = new Rectangle(form.Left, form.Top, form.Width, form.Height);
-
-            // Test
-            bool IsOn = Screen.AllScreens.Any(s => s.WorkingArea.IntersectsWith(formRectangle));
-
-            if (!IsOn & PutOnScreen)
-            {
-                form.Top = 0;
-                form.Left = 0;
-            }
-
-            return IsOn;
-        }
-
         public string LoadAppProperty(string Key)
         {
             string Prop = "";
@@ -153,17 +70,25 @@ namespace GPS_Out
             return Prop;
         }
 
-        public void LoadFormData(Form Frm)
+        // [XPLAT] geometry persistence retargeted from System.Windows.Forms.Form to the internal
+        // IWindowState contract (Avalonia PixelPoint). The persisted keys remain Name + ".Left"/
+        // ".Top" so saved positions round-trip unchanged. The old IsOnScreen multi-monitor reset is
+        // replaced by a simple non-negative clamp (the original effect was to pull an off-screen
+        // window back to 0,0).
+        // [XPLAT] internal: takes the internal IWindowState (R7-scoped). Only MainWindow (same
+        // assembly) calls it, so internal accessibility resolves CS0051 without widening surface.
+        internal void LoadFormData(IWindowState w)
         {
             int Leftloc = 0;
-            int.TryParse(LoadAppProperty(Frm.Name + ".Left"), out Leftloc);
-            Frm.Left = Leftloc;
+            int.TryParse(LoadAppProperty(w.Name + ".Left"), out Leftloc);
 
             int Toploc = 0;
-            int.TryParse(LoadAppProperty(Frm.Name + ".Top"), out Toploc);
-            Frm.Top = Toploc;
+            int.TryParse(LoadAppProperty(w.Name + ".Top"), out Toploc);
 
-            IsOnScreen(Frm, true);
+            if (Leftloc < 0) Leftloc = 0;
+            if (Toploc < 0) Toploc = 0;
+
+            w.Position = new PixelPoint(Leftloc, Toploc);
         }
 
         public string LoadProperty(string Key)
@@ -217,12 +142,13 @@ namespace GPS_Out
             if (Changed) SaveAppProperties();
         }
 
-        public void SaveFormData(Form Frm)
+        // [XPLAT] internal: takes the internal IWindowState (R7-scoped); only MainWindow calls it.
+        internal void SaveFormData(IWindowState w)
         {
             try
             {
-                SaveAppProperty(Frm.Name + ".Left", Frm.Left.ToString());
-                SaveAppProperty(Frm.Name + ".Top", Frm.Top.ToString());
+                SaveAppProperty(w.Name + ".Left", w.Position.X.ToString());
+                SaveAppProperty(w.Name + ".Top", w.Position.Y.ToString());
             }
             catch (Exception)
             {
@@ -234,13 +160,17 @@ namespace GPS_Out
             return cSettingsDir;
         }
 
+        // [XPLAT] opens the Avalonia Views.HelpWindow (replaces the deleted WinForms frmHelp). The
+        // modal path uses ShowDialog(owner) discarded fire-and-forget to preserve the non-blocking
+        // call semantics; the only caller uses Modal=false (auto-dismissing popup). PlayErrorSound
+        // is a cross-platform no-op (System.Media.SystemSounds is Windows-only).
         public void ShowHelp(string Message, string Title = "Help",
             int timeInMsec = 30000, bool LogError = false, bool Modal = false, bool PlayErrorSound = false)
         {
-            var Hlp = new frmHelp(mf, Message, Title, timeInMsec);
+            var Hlp = new HelpWindow(Message, Title, timeInMsec);
             if (Modal)
             {
-                Hlp.ShowDialog();
+                _ = Hlp.ShowDialog(mf);
             }
             else
             {
@@ -248,7 +178,6 @@ namespace GPS_Out
             }
 
             if (LogError) WriteErrorLog(Message);
-            if (PlayErrorSound) SystemSounds.Exclamation.Play();
         }
 
         public void WriteByteFile(byte[] Data, string DataName)

@@ -1,3 +1,4 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using AgLibrary.Logging;
 using System;
 using System.Collections;
@@ -232,7 +233,19 @@ namespace AgLibrary.Settings
                             xml.WriteStartElement("value");
 
                             var serializer = new XmlSerializer(fieldType);
-                            serializer.Serialize(xml, value);
+
+                            // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+                            // Preserve the .NET Framework XmlSerializer namespace-declaration order
+                            // (xmlns:xsd BEFORE xmlns:xsi). On net8.0+ the serializer's default order is
+                            // reversed (xsi before xsd), which would change the bytes of every saved
+                            // settings file. Supplying an explicit, ordered XmlSerializerNamespaces keeps
+                            // the output byte-for-byte identical to the net48 baseline, honoring the frozen
+                            // settings-XML round-trip contract (AAP §0.2.2). Namespaces are added in the
+                            // legacy order; the serializer emits them in insertion order.
+                            var legacyNamespaceOrder = new XmlSerializerNamespaces();
+                            legacyNamespaceOrder.Add("xsd", "http://www.w3.org/2001/XMLSchema");
+                            legacyNamespaceOrder.Add("xsi", "http://www.w3.org/2001/XMLSchema-instance");
+                            serializer.Serialize(xml, value, legacyNamespaceOrder);
 
                             xml.WriteEndElement(); // value
                         }
