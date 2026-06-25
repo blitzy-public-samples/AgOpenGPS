@@ -48,18 +48,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="Forms\Controls.Designer.cs">
-      <DependentUpon>FormGPS.cs</DependentUpon>
-    </Compile>
-    <Compile Update="Forms\GUI.Designer.cs">
-      <DependentUpon>FormGPS.cs</DependentUpon>
-    </Compile>
-    <Compile Update="Forms\Position.Designer.cs">
-      <DependentUpon>FormGPS.cs</DependentUpon>
-    </Compile>
-    <Compile Update="Forms\SaveOpen.Designer.cs">
-      <DependentUpon>FormGPS.cs</DependentUpon>
-    </Compile>
+    <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md.
+         CP3: removed stale <Compile Update> metadata for the eight FormGPS partial files
+         (Controls, GUI, Position, SaveOpen, OpenGL, PGN, Sections, UDPComm .Designer.cs).
+         Those partials, and their DependentUpon target FormGPS.cs, were deleted in CP3; their
+         non-visual logic is extracted to GPS/Services/* (PositionService, PgnDispatcher,
+         SectionService, FieldIoService, RenderCoordinator) — Deferred, see TRANSITION_MAP.md.
+         The Forms\Settings\Config*.Designer.cs entries below remain valid (FormConfig.cs is
+         retained, CP4 scope) and are intentionally preserved. -->
     <Compile Update="Forms\Settings\ConfigData.Designer.cs">
       <DependentUpon>FormConfig.cs</DependentUpon>
     </Compile>
@@ -77,18 +73,6 @@
     </Compile>
     <Compile Update="Forms\Settings\ConfigVehicle.Designer.cs">
       <DependentUpon>FormConfig.cs</DependentUpon>
-    </Compile>
-    <Compile Update="Forms\OpenGL.Designer.cs">
-      <DependentUpon>FormGPS.cs</DependentUpon>
-    </Compile>
-    <Compile Update="Forms\PGN.Designer.cs">
-      <DependentUpon>FormGPS.cs</DependentUpon>
-    </Compile>
-    <Compile Update="Forms\Sections.Designer.cs">
-      <DependentUpon>FormGPS.cs</DependentUpon>
-    </Compile>
-    <Compile Update="Forms\UDPComm.Designer.cs">
-      <DependentUpon>FormGPS.cs</DependentUpon>
     </Compile>
     <Compile Update="Properties\Resources.Designer.cs">
       <DesignTime>True</DesignTime>
