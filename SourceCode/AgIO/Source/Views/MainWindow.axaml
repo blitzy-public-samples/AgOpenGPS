@@ -1,0 +1,107 @@
+<!-- [XPLAT] migrated from net48/WinForms Forms/FormLoop (shell + status display) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgIO.Views.MainWindow"
+        Width="430" Height="560"
+        CanResize="false"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Tahoma"
+        FontSize="13"
+        Title="AgIO">
+    <!--
+        [XPLAT] Avalonia reimplementation of the WinForms FormLoop main shell. This is the AgIO
+        "comms hub" status window: it hosts the extracted UDP-loopback / serial / NTRIP / NMEA transport
+        services (instantiated and wired in the code-behind composition root) and surfaces their live
+        status. Module connection indicators reproduce the FormLoop DoHelloAlarmLogic / SetModulesOnOff
+        colours (LimeGreen talking / Red silent) via the App.axaml status brushes; the one-second scan
+        loop in the code-behind drives every readout below. The full configuration-dialog surface
+        (Ethernet/NTRIP/Serial/Radio/Profiles/...) is reimplemented in a later UI checkpoint and is tracked
+        in MIGRATION_DOCS/TRANSITION_MAP.md; CP2 delivers the runnable hub and its status display.
+    -->
+    <Grid Margin="10" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+
+        <!-- Module connection status row (GPS / IMU / Steer / Machine) -->
+        <UniformGrid Grid.Row="0" Columns="4" Height="92">
+
+            <Border x:Name="borderGPS" Margin="3" CornerRadius="6" BorderThickness="1"
+                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}">
+                <StackPanel Margin="4" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="GPS" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" />
+                    <TextBlock x:Name="lblGPS1Comm" Text="" FontSize="11" HorizontalAlignment="Center" Foreground="White" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="borderIMU" Margin="3" CornerRadius="6" BorderThickness="1"
+                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}">
+                <StackPanel Margin="4" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="IMU" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" />
+                    <TextBlock x:Name="lblIMUComm" Text="" FontSize="11" HorizontalAlignment="Center" Foreground="White" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="borderSteer" Margin="3" CornerRadius="6" BorderThickness="1"
+                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}">
+                <StackPanel Margin="4" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="Steer" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" />
+                    <TextBlock x:Name="lblMod1Comm" Text="" FontSize="11" HorizontalAlignment="Center" Foreground="White" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="borderMachine" Margin="3" CornerRadius="6" BorderThickness="1"
+                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}">
+                <StackPanel Margin="4" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="Machine" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" />
+                    <TextBlock x:Name="lblMod2Comm" Text="" FontSize="11" HorizontalAlignment="Center" Foreground="White" />
+                </StackPanel>
+            </Border>
+
+        </UniformGrid>
+
+        <!-- GPS position / data-rate readouts -->
+        <Border Grid.Row="1" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="From GPS:" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="lblFromGPS" Text="---" FontWeight="Bold" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Latitude:" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="lblCurrentLat" Text="" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Longitude:" Margin="0,0,8,0" />
+                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="lblCurrentLon" Text="" />
+            </Grid>
+        </Border>
+
+        <!-- NTRIP status -->
+        <Border Grid.Row="2" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
+            <Grid ColumnDefinitions="Auto,*">
+                <Border Grid.Column="0" x:Name="lblNTRIPBytes" MinWidth="60" Padding="6,2" CornerRadius="4"
+                        Background="Transparent" VerticalAlignment="Center">
+                    <TextBlock x:Name="lblNTRIPBytesText" Text="NTRIP" HorizontalAlignment="Center" />
+                </Border>
+                <TextBlock Grid.Column="1" x:Name="lblNTRIPMessages" Margin="8,0,0,0" Text="" TextWrapping="Wrap" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- Network / IP -->
+        <Border Grid.Row="3" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
+            <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Text="IP:" Margin="0,0,8,0" VerticalAlignment="Top" />
+                <TextBlock Grid.Column="1" x:Name="lblIP" Text="Off" TextWrapping="Wrap" />
+            </Grid>
+        </Border>
+
+        <!-- Serial ports list -->
+        <Border Grid.Row="4" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Serial Ports" FontWeight="Bold" Margin="0,0,0,4" />
+                <ScrollViewer>
+                    <TextBlock x:Name="lblSerialPorts" Text="None" TextWrapping="Wrap" />
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Footer: PGN reference guide access (the dialog whose Avalonia view exists in CP2) -->
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="PGN Guide" Click="OnShowPgnGuideClick" />
+        </StackPanel>
+
+    </Grid>
+</Window>

@@ -1,0 +1,35 @@
+<!-- [XPLAT] migrated from net48/WinForms Forms/FormTimedMessage — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormTimedMessageView"
+        x:DataType="vm:FormTimedMessageViewModel"
+        Title="AgIO Message"
+        Width="268" Height="147"
+        Background="#FFA07A"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms `Forms/FormTimedMessage`
+        auto-dismissing toast. Shell mirrors FormTimedMessage.Designer.cs:
+          Text "AgIO Message"; ClientSize 268x147; BackColor LightSalmon=#FFA07A; TopMost; Tahoma 14.25.
+        Bound to FormTimedMessageViewModel (TitleText, MessageText). The auto-close DispatcherTimer and
+        the proportional Width override (len*15+120) live in the code-behind (the VM is display-only).
+    -->
+    <Canvas>
+        <!-- WinForms lblTitle: (12,20) Tahoma 18 Bold -->
+        <TextBlock Text="{Binding TitleText}"
+                   Canvas.Left="12" Canvas.Top="20"
+                   FontFamily="Tahoma" FontSize="18" FontWeight="Bold" />
+
+        <!-- WinForms lblMessage2: (75,71) Tahoma 18 -->
+        <TextBlock Text="{Binding MessageText}"
+                   Canvas.Left="75" Canvas.Top="71"
+                   FontFamily="Tahoma" FontSize="18" />
+    </Canvas>
+</Window>

@@ -12,17 +12,31 @@ namespace AgIO.Services
     /// This service is the single source of truth for parsed GPS/IMU state: the NTRIP and UDP loopback
     /// peer services read its public fields, and the serial/UDP peers feed incoming "$" sentences in by
     /// appending bytes to <see cref="rawBuffer"/> and calling <c>ParseNMEA</c>. The only outward call
-    /// — sending the assembled PGN 0xD6 frame — is routed through the <see cref="Udp"/> peer.
+    /// — sending the assembled PGN 0xD6 frame — is routed through the injected UDP loopback transport.
     /// </summary>
     public sealed class NmeaService
     {
         /// <summary>
-        /// [XPLAT] Peer reference to the UDP loopback service. Wired AFTER construction by the
-        /// coordinator/composition root to break the construction cycle between NmeaService and
-        /// UdpLoopbackService (each needs the other). It is guarded with the null-conditional
-        /// operator at every call site because it can be briefly null during bootstrap.
+        /// [XPLAT] REQUIRED peer reference to the UDP loopback transport. Injected through the constructor
+        /// and validated non-null so that a comm hub that is wired incorrectly fails fast at construction
+        /// rather than silently dropping the GPS PGN 0xD6 frame at run time (CWE-476 / review CP2 finding).
+        /// The construction cycle with <see cref="UdpLoopbackService"/> is broken in the opposite direction:
+        /// UdpLoopbackService takes no required peers in its constructor and receives its
+        /// <c>Nmea</c> back-reference via a property set by the composition root immediately afterwards.
         /// </summary>
-        internal UdpLoopbackService Udp { get; set; }
+        private readonly UdpLoopbackService _udp;
+
+        /// <summary>
+        /// [XPLAT] Creates the NMEA service with its required UDP loopback transport.
+        /// </summary>
+        /// <param name="udp">The UDP loopback transport used to forward the assembled PGN 0xD6 GPS frame to
+        /// AgOpenGPS and (optionally) out to the steer module. Must not be null.</param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="udp"/> is null, surfacing an
+        /// incomplete composition immediately instead of failing silently later.</exception>
+        public NmeaService(UdpLoopbackService udp)
+        {
+            _udp = udp ?? throw new ArgumentNullException(nameof(udp));
+        }
 
         // [XPLAT] rawBuffer is appended to by the serial/UDP peers, then drained here by ParseNMEA(ref ...).
         public string rawBuffer = "";
@@ -198,13 +212,17 @@ namespace AgIO.Services
                 //    if (isGPSSentencesOn) rmcSentence = nextNMEASentence;
                 //}
 
-                else if (words[0] == "$KSXT")
+                // [XPLAT] CWE-20: ParseKSXT() indexes up to words[20], so require >20 fields before dispatch.
+                // A checksum-valid but short $KSXT sentence is now safely skipped instead of crashing the
+                // comm path. Valid KSXT sentences always carry these fields, so wire parity is preserved.
+                else if (words[0] == "$KSXT" && words.Length > 20)
                 {
                     ParseKSXT();
                     if (isGPSSentencesOn) ksxtSentence = nextNMEASentence;
                 }
 
-                else if (words[0] == "$GPHPD")
+                // [XPLAT] CWE-20: ParseHPD() indexes up to words[18], so require >18 fields before dispatch.
+                else if (words[0] == "$GPHPD" && words.Length > 18)
                 {
                     ParseHPD();
                     if (isGPSSentencesOn) hpdSentence = nextNMEASentence;
@@ -216,7 +234,9 @@ namespace AgIO.Services
                     if (isGPSSentencesOn) paogiSentence = nextNMEASentence;
                 }
 
-                else if (words[0] == "$PANDA" && words.Length > 14)
+                // [XPLAT] CWE-20: ParsePANDA() indexes up to words[15], so the guard must be >15 (the
+                // baseline >14 was off-by-one and could let a 15-field $PANDA reach words[15] and crash).
+                else if (words[0] == "$PANDA" && words.Length > 15)
                 {
                     ParsePANDA();
                     if (isGPSSentencesOn) pandaSentence = nextNMEASentence;
@@ -234,23 +254,27 @@ namespace AgIO.Services
                     if (isGPSSentencesOn) avrSentence = nextNMEASentence;
                 }
 
-                else if (words[0] == "$GNTRA" || words[0] == "$GPTRA")
+                // [XPLAT] CWE-20: ParseTRA() indexes up to words[5], so require >5 fields before dispatch.
+                else if ((words[0] == "$GNTRA" || words[0] == "$GPTRA") && words.Length > 5)
                 {
                     ParseTRA();
                 }
 
-                else if (words[0] == "$PSTI" && words[1] == "032" && !isSti035Available && !isSti036Available) //PSTI,032 and 035 messages are kind of outdated, but stay here for supporting older SkyTraq setups with two receivers.
+                // [XPLAT] CWE-20: ParseSTI032STI035() indexes up to words[10], so require >10 fields. The
+                // words[1] discriminator is already safe because the top-of-loop guard ensures words.Length>=3.
+                else if (words[0] == "$PSTI" && words[1] == "032" && words.Length > 10 && !isSti035Available && !isSti036Available) //PSTI,032 and 035 messages are kind of outdated, but stay here for supporting older SkyTraq setups with two receivers.
                 {
                     ParseSTI032STI035();
                 }
 
-                else if (words[0] == "$PSTI" && words[1] == "035" && !isSti036Available)
+                else if (words[0] == "$PSTI" && words[1] == "035" && words.Length > 10 && !isSti036Available)
                 {
                     isSti035Available = true; //set to true to avoid using PSTI,032 message
                     ParseSTI032STI035();
                 }
 
-                else if (words[0] == "$PSTI" && words[1] == "036") //Heading, Pitch and Roll Messages from SkyTraq PX1172RH modules... only available if RTK
+                // [XPLAT] CWE-20: ParseSTI036() indexes up to words[7], so require >7 fields before dispatch.
+                else if (words[0] == "$PSTI" && words[1] == "036" && words.Length > 7) //Heading, Pitch and Roll Messages from SkyTraq PX1172RH modules... only available if RTK
                 {
                     isSti036Available = true; //set to true to avoid using PSTI,032 or PSTI,035 messages
                     ParseSTI036(); //there are also different $PSTI,0XX,... sentences which contain compete different data!
@@ -265,6 +289,11 @@ namespace AgIO.Services
 
                 nmeaPGN[0] = 0x80;
                 nmeaPGN[1] = 0x81;
+                // [XPLAT] Source byte 0x7C is INTENTIONAL and frozen for the GPS data PGN 0xD6 (this is the
+                // byte the baseline net48 AgIO emitted, and AgOpenGPS expects it byte-for-byte — AAP R2).
+                // It deliberately differs from the generic 0x7F "from AgIO" source byte documented in the
+                // PGN reference (docs/pgn-protocol.md / FormPGNViewModel); see TRANSITION_MAP.md for the
+                // rationale. Do not "reconcile" 0x7C to 0x7F here — doing so would break wire parity.
                 nmeaPGN[2] = 0x7C;
                 nmeaPGN[3] = 0xD6;
                 nmeaPGN[4] = 0x33; // nmea total array count minus 6
@@ -332,10 +361,12 @@ namespace AgIO.Services
                 nmeaPGN[56] = (byte)CK_A;
 
                 //Send nmea to AgOpenGPS
-                Udp?.SendToLoopBackMessageAOG(nmeaPGN);
+                // [XPLAT] _udp is a required, non-null constructor dependency, so the GPS frame can never be
+                // silently dropped and no nullable service member is dereferenced inside the call arguments.
+                _udp.SendToLoopBackMessageAOG(nmeaPGN);
 
                 //Send nmea to autosteer module 8888
-                if (isSendNMEAToUDP) Udp?.SendUDPMessage(nmeaPGN, Udp.epModule);
+                if (isSendNMEAToUDP) _udp.SendUDPMessage(nmeaPGN, _udp.EpModule);
             }
         }
 
@@ -373,7 +404,7 @@ namespace AgIO.Services
 
                 int.TryParse(words[11], NumberStyles.Float, CultureInfo.InvariantCulture, out headingQuality);
 
-                if (headingQuality == 3)   // roll only when rtk 
+                if (headingQuality == 3)   // roll only when rtk
                 {
                     roll = (float)(rollK);
                     rollData = rollK;
@@ -592,7 +623,7 @@ namespace AgIO.Services
             (2,3) 4807.038,N Latitude 48 deg 07.038' N
             (4,5) 01131.000,E Longitude 11 deg 31.000' E
 
-            (6) 1 Fix quality: 
+            (6) 1 Fix quality:
                 0 = invalid
                 1 = GPS fix(SPS)
                 2 = DGPS fix
@@ -709,7 +740,7 @@ namespace AgIO.Services
             (2,3) 4807.038,N Latitude 48 deg 07.038' N
             (4,5) 01131.000,E Longitude 11 deg 31.000' E
 
-            (6) 1 Fix quality: 
+            (6) 1 Fix quality:
                 0 = invalid
                 1 = GPS fix(SPS)
                 2 = DGPS fix
@@ -728,7 +759,7 @@ namespace AgIO.Services
             FROM IMU:
             (12) Heading in degrees
             (13) Roll angle in degrees(positive roll = right leaning - right down, left up)
-            
+
             (14) Pitch angle in degrees(Positive pitch = nose up)
             (15) Yaw Rate in Degrees / second
 
@@ -1088,9 +1119,38 @@ namespace AgIO.Services
             }
             catch (Exception ex)
             {
-                Log.EventWriter("Catch - > Validate NMEA Checksum" + ex.ToString());
+                // [XPLAT] Security/logging (review CP2 MINOR): the inbound sentence is UNTRUSTED, so do not
+                // log full exception details (ex.ToString() includes stack traces / internal implementation
+                // detail). Log only the exception type plus a sanitized sentence identifier and length —
+                // enough to diagnose a malformed-frame failure without echoing untrusted payload content.
+                Log.EventWriter("NMEA checksum validation failed: " + ex.GetType().Name
+                    + " type=" + SanitizeSentenceId(Sentence)
+                    + " len=" + (Sentence?.Length ?? 0).ToString(CultureInfo.InvariantCulture));
                 return false;
             }
+        }
+
+        /// <summary>
+        /// [XPLAT] Returns a short, sanitized NMEA sentence identifier (the leading token up to the first
+        /// comma or '*') for safe logging of malformed-frame failures. Keeps only the ASCII letters/digits
+        /// and the leading '$', capped at 6 characters, so untrusted payload bytes are never echoed to the log.
+        /// </summary>
+        private static string SanitizeSentenceId(string sentence)
+        {
+            if (string.IsNullOrEmpty(sentence)) return "?";
+
+            var sb = new StringBuilder(6);
+            foreach (char c in sentence)
+            {
+                if (c == ',' || c == '*') break;
+                if (c == '$' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
+                {
+                    sb.Append(c);
+                    if (sb.Length >= 6) break;
+                }
+            }
+
+            return sb.Length == 0 ? "?" : sb.ToString();
         }
     }
 }

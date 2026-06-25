@@ -67,8 +67,25 @@ namespace AgIO.Views
         /// <summary>Frame byte [1]: the PGN header (<c>0x81</c>).</summary>
         public const byte FrameHeaderByte1 = 0x81;
 
-        /// <summary>Frame byte [2]: the source address (<c>0x7F</c>).</summary>
+        /// <summary>
+        /// Frame byte [2]: the generic source address (<c>0x7F</c>) for frames originating at AgIO, as
+        /// documented in <c>docs/pgn-protocol.md</c>.
+        /// </summary>
+        /// <remarks>
+        /// [XPLAT] Known, intentional exception: the GPS Position Data frame (PGN <c>0xD6</c>) assembled by
+        /// AgIO's NMEA bridge uses source byte <c>0x7C</c> (see <see cref="GpsPositionDataSourceAddress"/> and
+        /// <c>NmeaService</c>), NOT <c>0x7F</c>. That value is frozen for byte-for-byte wire parity with the
+        /// baseline net48 AgIO and AgOpenGPS (AAP R2); it is documented here so operators/developers reading
+        /// frame bytes are not misled by the generic <c>0x7F</c>. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        /// </remarks>
         public const byte FrameSourceAddress = 0x7F;
+
+        /// <summary>
+        /// [XPLAT] Frame byte [2] for the GPS Position Data PGN <c>0xD6</c> specifically: <c>0x7C</c>. This
+        /// differs from the generic <see cref="FrameSourceAddress"/> (<c>0x7F</c>) and is FROZEN — AgOpenGPS
+        /// expects this exact byte from AgIO's NMEA bridge, so it must not be "reconciled" to <c>0x7F</c>.
+        /// </summary>
+        public const byte GpsPositionDataSourceAddress = 0x7C;
 
         /// <summary>The AgOpenGPS (AOG) UDP listen port on the loopback subnet.</summary>
         public const int AogLoopbackPort = 15555;
@@ -90,7 +107,7 @@ namespace AgIO.Views
             PgnColumnHeader = "PGN";
             DescriptionColumnHeader = "Description";
             PgnReferenceEntries = _entries;
-            FrameStructureDescription = "[0]=0x80 (AOG header), [1]=0x81 (PGN header), [2]=0x7F (source addr), [3]=PGN id, [4]=data length, [5..]=payload, [last]=CRC";
+            FrameStructureDescription = "[0]=0x80 (AOG header), [1]=0x81 (PGN header), [2]=0x7F (source addr; GPS PGN 0xD6 uses 0x7C), [3]=PGN id, [4]=data length, [5..]=payload, [last]=CRC";
             CrcDescription = "CRC = additive sum of bytes index 2..(len-2)";
         }
 

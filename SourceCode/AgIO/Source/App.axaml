@@ -1,0 +1,57 @@
+<!-- [XPLAT] migrated from net48/WinForms (Program.cs + FormLoop shell) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    AgIO Avalonia Application definition.
+
+    Pairs with the code-behind App.axaml.cs (partial class AgIO.App : Application);
+    x:Class below MUST stay "AgIO.App" to match it. There was no WinForms "App"
+    equivalent in the source — the original Program.cs called Application.Run(new FormLoop())
+    directly — so this is net-new Avalonia scaffolding. Per AAP §0.3.3 this is a 1:1 visual
+    PARITY reimplementation of the current Windows Forms look, never a redesign.
+
+    Theme:
+      The Avalonia Fluent theme (Avalonia.Themes.Fluent, referenced in AgIO.csproj) is the
+      app-wide base. AgIO is the small two-program "comms hub" status window; unlike the GPS
+      program it had no day/night palette toggle in WinForms (it used the default system
+      chrome), so RequestedThemeVariant is left at the system default.
+
+    Fonts:
+      The Inter font family is registered programmatically via .WithInterFont() in
+      Program.BuildAvaloniaApp(), so no font include is required here.
+
+    Status palette (Application.Resources):
+      The module connection indicators reproduce the exact WinForms FormLoop status colours
+      (DoHelloAlarmLogic / SetModulesOnOff): LimeGreen when a module is talking, Red when it
+      has gone silent, plus the NTRIP activity colours. These are referenced from
+      MainWindow.axaml.cs as {DynamicResource Aog*Brush} when recolouring the indicators, so
+      the colour values live in one place.
+-->
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AgIO.App"
+             RequestedThemeVariant="Default">
+
+    <!-- App-wide base theme. -->
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+    <!--
+        Module/NTRIP status palette — parity with the WinForms FormLoop status colours.
+        Avalonia colour syntax is #AARRGGBB — no WinForms/GDI colour types are referenced.
+    -->
+    <Application.Resources>
+        <!-- Color.LimeGreen — module is talking (hello received within window). -->
+        <Color x:Key="AogModuleOkColor">#FF32CD32</Color>
+        <!-- Color.Red — module has gone silent. -->
+        <Color x:Key="AogModuleAlarmColor">#FFFF0000</Color>
+        <!-- Color.CornflowerBlue / Color.DarkOrange — NTRIP byte activity toggle. -->
+        <Color x:Key="AogNtripActiveColor">#FF6495ED</Color>
+        <Color x:Key="AogNtripIdleColor">#FFFF8C00</Color>
+
+        <SolidColorBrush x:Key="AogModuleOkBrush" Color="{StaticResource AogModuleOkColor}" />
+        <SolidColorBrush x:Key="AogModuleAlarmBrush" Color="{StaticResource AogModuleAlarmColor}" />
+        <SolidColorBrush x:Key="AogNtripActiveBrush" Color="{StaticResource AogNtripActiveColor}" />
+        <SolidColorBrush x:Key="AogNtripIdleBrush" Color="{StaticResource AogNtripIdleColor}" />
+    </Application.Resources>
+
+</Application>

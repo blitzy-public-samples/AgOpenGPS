@@ -982,6 +982,16 @@ namespace AgOpenGPS
                     p_254.pgn[p_254.steerAngleLo] = unchecked((byte)(guidanceLineSteerAngle));
 
                     // Smart WAS sample collection - guidance steer angle in degrees
+                    // [XPLAT] Synchronize the live autosteer/speed/guidance state into the shared
+                    // AgOpenGPS.Core ApplicationModel immediately before sampling. CSmartWAS was decoupled
+                    // from the WinForms host form and now reads its sample-gating inputs (isBtnAutoSteerOn,
+                    // avgSpeed, guidanceLineDistanceOff) from ApplicationModel; without this push the model
+                    // fields stayed at their false/0 defaults and silently disabled all sample collection.
+                    // Names/types/scaling are preserved exactly so the gating is byte-for-byte identical to
+                    // the former mf.* reads. See MIGRATION_DOCS/TRANSITION_MAP.md.
+                    AppModel.isBtnAutoSteerOn = isBtnAutoSteerOn;
+                    AppModel.avgSpeed = avgSpeed;
+                    AppModel.guidanceLineDistanceOff = guidanceLineDistanceOff;
                     smartWAS.AddSample(guidanceLineSteerAngle * 0.01);
                 }
             }

@@ -35,6 +35,10 @@ namespace AgIO.Views
     /// </remarks>
     public class FormNumericViewModel : ViewModel
     {
+        // [XPLAT] Placeholder the original keypad wrote on an out-of-range value; the up/down repeat
+        // buttons treat it (like "" and "-") as a zero starting point before stepping.
+        private const string ErrorText = "Error";
+
         private readonly double _min;
         private readonly double _max;
 
@@ -114,6 +118,13 @@ namespace AgIO.Views
                 _isFirstKey = false;
             }
 
+            // [XPLAT] Clear the out-of-range "Error" placeholder as soon as the user enters new values,
+            // matching the WinForms RegisterKeypad1_ButtonPressed guard so editing starts from a clean string.
+            if (text == ErrorText)
+            {
+                text = "";
+            }
+
             if (char.IsNumber(c))
             {
                 // A digit: append it.
@@ -168,6 +179,44 @@ namespace AgIO.Views
             // 'K' (OK) and 'X' (Cancel) intentionally fall through unchanged: the dialog
             // result is owned by the code-behind, not by the view-model.
             EntryText = text;
+        }
+
+        /// <summary>
+        /// Steps the value up by one, reproducing the WinForms <c>BtnDistanceUp_MouseDown</c> repeat-button
+        /// behaviour: an empty / "-" / "Error" entry is treated as 0, the value is incremented, clamped to
+        /// <see cref="Max"/>, and the type-to-replace state is cleared. Parsing/formatting use
+        /// <see cref="CultureInfo.InvariantCulture"/> (AAP §0.6.5 culture safety).
+        /// </summary>
+        public void Increment()
+        {
+            if (EntryText == "" || EntryText == "-" || EntryText == ErrorText) EntryText = "0";
+
+            if (!double.TryParse(EntryText, NumberStyles.Float, CultureInfo.InvariantCulture, out double tryNumber))
+                tryNumber = 0;
+
+            tryNumber++;
+            if (tryNumber > _max) tryNumber = _max;
+            EntryText = tryNumber.ToString(CultureInfo.InvariantCulture);
+            _isFirstKey = false;
+        }
+
+        /// <summary>
+        /// Steps the value down by one, reproducing the WinForms <c>BtnDistanceDn_MouseDown</c> repeat-button
+        /// behaviour: an empty / "-" / "Error" entry is treated as 0, the value is decremented, clamped to
+        /// <see cref="Min"/>, and the type-to-replace state is cleared. Parsing/formatting use
+        /// <see cref="CultureInfo.InvariantCulture"/> (AAP §0.6.5 culture safety).
+        /// </summary>
+        public void Decrement()
+        {
+            if (EntryText == "" || EntryText == "-" || EntryText == ErrorText) EntryText = "0";
+
+            if (!double.TryParse(EntryText, NumberStyles.Float, CultureInfo.InvariantCulture, out double tryNumber))
+                tryNumber = 0;
+
+            tryNumber--;
+            if (tryNumber < _min) tryNumber = _min;
+            EntryText = tryNumber.ToString(CultureInfo.InvariantCulture);
+            _isFirstKey = false;
         }
 
         /// <summary>

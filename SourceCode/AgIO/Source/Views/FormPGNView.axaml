@@ -1,0 +1,58 @@
+<!-- [XPLAT] migrated from net48/WinForms Forms/FormPGN — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormPGNView"
+        x:DataType="vm:FormPGNViewModel"
+        Title="{Binding WindowTitle}"
+        Width="420" Height="640"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms `Forms/FormPGN`
+        read-only "PGN Guide" reference window. Bound to FormPGNViewModel (immutable reference data
+        reproduced verbatim from the WinForms designer/resx). The OK button closes the dialog, mirroring
+        the WinForms btnSerialOK_Click -> Close(). The 0xD6 frame's 0x7C source-byte exception is noted
+        in the frame-structure line so the guide is reconciled with the preserved NMEA behaviour.
+    -->
+    <DockPanel Margin="8">
+        <!-- OK button (WinForms btnSerialOK) -->
+        <Button DockPanel.Dock="Bottom"
+                Content="Ok"
+                Width="105" Height="48"
+                Margin="0,8,0,0"
+                HorizontalAlignment="Right"
+                IsDefault="True"
+                Click="OnOkClick" />
+
+        <!-- Frozen wire-protocol reference (docs/pgn-protocol.md) -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <TextBlock Text="{Binding FrameStructureDescription}" FontSize="11" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding CrcDescription}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <!-- Column headers -->
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="80,*" Margin="0,0,0,4">
+            <TextBlock Grid.Column="0" Text="{Binding PgnColumnHeader}" FontWeight="Bold" />
+            <TextBlock Grid.Column="1" Text="{Binding DescriptionColumnHeader}" FontWeight="Bold" />
+        </Grid>
+
+        <!-- Reference rows -->
+        <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding PgnReferenceEntries}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:FormPGNViewModel+PgnReferenceEntry">
+                        <Grid ColumnDefinitions="80,*" Margin="0,1">
+                            <TextBlock Grid.Column="0" Text="{Binding PgnId}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Description}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

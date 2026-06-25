@@ -1,0 +1,76 @@
+<!-- [XPLAT] migrated from net48/WinForms Forms/FormNumeric — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        xmlns:keypad="clr-namespace:Keypad;assembly=Keypad"
+        x:Class="AgIO.Views.FormNumericView"
+        x:DataType="vm:FormNumericViewModel"
+        Title="Enter Value"
+        Width="460" Height="545"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="8.25">
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms `Forms/FormNumeric`
+        numeric-keypad entry dialog. Shell mirrors FormNumeric.Designer.cs:
+          Text "Enter Value"; ClientSize 460x545; Tahoma 8.25 base.
+          tboxNumber TextBox (208,7) 246x52 Tahoma 27.75 Bold readonly center;
+          lblMin (205,62) 125x36 Bold; lblMax (332,62) 125x36 Bold;
+          btnDistanceDn (4,3) 91x92; btnDistanceUp (112,3) 91x92; keypad1 NumKeypad (0,112) 454x429.
+        Display TextBox bound to FormNumericViewModel.EntryText; min/max labels bound to Min/Max.
+        Up/Down buttons call ViewModel.Increment()/Decrement() (the WinForms BtnDistanceUp/Dn_MouseDown).
+        NumKeypad.ButtonPressed is routed in the code-behind: OK ('K') validates + Close(true) (or sets
+        "Error" + reddens the violated bound), Cancel ('X') -> Close(false), every other char ->
+        ViewModel.AppendKey (the WinForms RegisterKeypad1_ButtonPressed editing rules).
+    -->
+    <Canvas>
+        <!-- WinForms btnDistanceDn: (4,3) 91x92 -->
+        <Button x:Name="btnDistanceDn"
+                Canvas.Left="4" Canvas.Top="3"
+                Width="91" Height="92"
+                FontFamily="Tahoma" FontSize="14.25"
+                Content="-"
+                Click="OnDecrementClick" />
+
+        <!-- WinForms btnDistanceUp: (112,3) 91x92 -->
+        <Button x:Name="btnDistanceUp"
+                Canvas.Left="112" Canvas.Top="3"
+                Width="91" Height="92"
+                FontFamily="Tahoma" FontSize="14.25"
+                Content="+"
+                Click="OnIncrementClick" />
+
+        <!-- WinForms tboxNumber: (208,7) 246x52, Tahoma 27.75 Bold, readonly, centered -->
+        <TextBox x:Name="tboxNumber"
+                 Canvas.Left="208" Canvas.Top="7"
+                 Width="246" Height="52"
+                 FontFamily="Tahoma" FontSize="27.75" FontWeight="Bold"
+                 IsReadOnly="True"
+                 TextAlignment="Center"
+                 Text="{Binding EntryText}" />
+
+        <!-- WinForms lblMin: (205,62) 125x36, Tahoma 14.25 Bold, TopCenter -->
+        <TextBlock x:Name="lblMin"
+                   Canvas.Left="205" Canvas.Top="62"
+                   Width="125"
+                   FontFamily="Tahoma" FontSize="14.25" FontWeight="Bold"
+                   TextAlignment="Center"
+                   Text="{Binding Min}" />
+
+        <!-- WinForms lblMax: (332,62) 125x36, Tahoma 14.25 Bold, TopCenter -->
+        <TextBlock x:Name="lblMax"
+                   Canvas.Left="332" Canvas.Top="62"
+                   Width="125"
+                   FontFamily="Tahoma" FontSize="14.25" FontWeight="Bold"
+                   TextAlignment="Center"
+                   Text="{Binding Max}" />
+
+        <!-- WinForms keypad1: Keypad.NumKeypad (0,112) -->
+        <keypad:NumKeypad x:Name="keypad1"
+                          Canvas.Left="0" Canvas.Top="112" />
+    </Canvas>
+</Window>
