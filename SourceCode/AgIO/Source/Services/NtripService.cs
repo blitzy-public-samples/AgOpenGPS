@@ -365,8 +365,11 @@ namespace AgIO.Services
                     };
                     clientSocket.BeginConnect(new IPEndPoint(IPAddress.Parse(broadCasterIP), broadCasterPort), new AsyncCallback(OnConnect), null);
 
+                    // [XPLAT] CWE-532 / R11: never write the configured NTRIP mountpoint value to the
+                    // event log. Log only non-sensitive connection status — caster host:port, target UDP
+                    // port, and whether a mountpoint is configured. (Username/password were never logged.)
                     Log.EventWriter("NTRIP - IP: " + broadCasterIP.ToString() + ":" + broadCasterPort.ToString()
-                        + " To Port: " + toUDP_Port.ToString() + " Mount: " + mount);
+                        + " To Port: " + toUDP_Port.ToString() + " Mount configured: " + (!string.IsNullOrEmpty(mount) ? "yes" : "no"));
                 }
                 catch (Exception ex)
                 {

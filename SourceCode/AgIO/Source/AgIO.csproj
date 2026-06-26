@@ -69,6 +69,17 @@
          so this generated accessor is unused. It is retained in source control for provenance but
          excluded from compilation so AgIO builds on Windows, Linux, and macOS. -->
     <Compile Remove="Properties\Resources.Designer.cs" />
+
+    <!-- [XPLAT] Services/CommCoordinatorService.cs is the AAP §0.3.2 "Facade" comms aggregate intended
+         to own and wire the four extracted comm services (Udp/Nmea/Serial/Ntrip) for the AgIO
+         composition root. It is complete but not yet adopted: at this checkpoint Views/MainWindow.axaml.cs
+         is the composition root and constructs/wires those four services directly (plus its own scan
+         timer), so the coordinator currently has no caller. To avoid a dead parallel orchestration path
+         (review finding AGIO-1), it is explicitly DEFERRED here — excluded from compilation, retained in
+         source control for provenance — until the checkpoint that re-points the AgIO composition root
+         onto the facade. It has zero references elsewhere (verified), so excluding it is behaviour-neutral:
+         the loopback/NTRIP/scan comm behaviour MainWindow already provides is unchanged. -->
+    <Compile Remove="Services\CommCoordinatorService.cs" />
   </ItemGroup>
 
 </Project>

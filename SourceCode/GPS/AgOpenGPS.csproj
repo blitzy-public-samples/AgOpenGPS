@@ -120,19 +120,19 @@
        (RenderCoordinator/AvaloniaGeoViewport) and the FormGPS->services decoupling complete.
        ==================================================================================== -->
   <ItemGroup>
-    <!-- [XPLAT] (1) Windows-only imaging/audio. Resources.Designer.cs/BrandImages.Designer.cs are the
-         auto-generated System.Drawing.Bitmap resource accessors (System.Drawing.Common is Windows-only
-         on net8.0); CSound.cs uses System.Media.SoundPlayer; Brands.cs returns Bitmaps; VehicleTextures/
-         ScreenTextures call a removed Bitmap-based Texture2D ctor and the Bitmap accessors. These are
-         the texture/brand/audio loaders for the OpenGL rendering re-host (deferred to the AvaloniaGeoViewport
-         checkpoint); their PNG/wav assets are already packaged above as AvaloniaResource/Content for the
-         migrated loaders to consume. -->
-    <Compile Remove="Properties\Resources.Designer.cs" />
-    <Compile Remove="ResourcesBrands\BrandImages.Designer.cs" />
+    <!-- [XPLAT] (1) Audio loader still deferred. The imaging accessors and texture/brand loaders are
+         now INTEGRATED into the build (CP7 texture migration): Properties\Resources.Designer.cs and
+         ResourcesBrands\BrandImages.Designer.cs are hand-migrated cross-platform accessors returning
+         Avalonia.Media.Imaging.Bitmap from avares:// assets (no System.Drawing dependency on either
+         target framework), and Classes\Brands.cs / VehicleTextures.cs / ScreenTextures.cs construct
+         the migrated Core Texture2D via its portable RGBA byte buffer (the SkiaSharp normalization
+         bridge in VehicleTextures/ScreenTextures), so all five compile on Windows/Linux/macOS and are
+         re-included here. They are leaf resource/texture classes — their only consumers (CVehicle/CTool
+         and the OpenGL render host) are still gated below, so re-including them adds no compiling
+         dependency on an excluded file. Classes\CSound.cs remains excluded: it is the audio loader
+         (System.Media.SoundPlayer, Windows-only) awaiting the cross-platform audio replacement; its
+         .wav assets are already packaged above as Content for the migrated loader to consume. -->
     <Compile Remove="Classes\CSound.cs" />
-    <Compile Remove="Classes\Brands.cs" />
-    <Compile Remove="Classes\VehicleTextures.cs" />
-    <Compile Remove="Classes\ScreenTextures.cs" />
 
     <!-- [XPLAT] (2) FormGPS-coupled domain classes. Each holds a `private readonly FormGPS mf;` back-
          reference (the WinForms god-object, already removed) and is awaiting extraction into injectable
