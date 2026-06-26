@@ -78,7 +78,7 @@
         Title="Tracks"
         Width="650"
         Height="480"
-        Background="WhiteSmoke"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         SystemDecorations="Full"
         CanResize="False"
         ShowInTaskbar="False"
@@ -287,6 +287,7 @@
                                 <!-- b: mode icon. 35 x 25, Margin(1,10,3,10), FlatStyle.Flat,
                                      no click (drag only). ModeImage = TrackLine/TrackPivot/TrackCurve. -->
                                 <Button Classes="trackMode imageButton"
+                                        AutomationProperties.Name="Track mode icon"
                                         Width="35"
                                         Height="25"
                                         Margin="1,10,3,10"
@@ -311,6 +312,7 @@
                                 <!-- a: visible toggle. 40 x 25, Margin(20,10,2,10). Click toggles
                                      visibility (code-behind). BackColor Green when visible else Red. -->
                                 <Button Classes="trackVisible trackCell"
+                                        AutomationProperties.Name="Toggle track visibility"
                                         Width="40"
                                         Height="25"
                                         Margin="20,10,2,10"
@@ -754,6 +756,7 @@
             <!-- textBox1 — track name entry. WinForms BackColor LightCyan, BorderStyle FixedSingle,
                  Multiline, Tahoma 14.25pt (19 DIP). (17,37) 204 x 77. -->
             <TextBox x:Name="textBox1"
+                     AutomationProperties.Name="Track name"
                      Canvas.Left="17"
                      Canvas.Top="37"
                      Width="204"
@@ -822,6 +825,7 @@
             <!-- textBox2 — track name editor. WinForms BackColor LightCyan, BorderStyle FixedSingle,
                  Multiline, Tahoma 14.25pt (19 DIP). (17,37) 204 x 77. -->
             <TextBox x:Name="textBox2"
+                     AutomationProperties.Name="Edit track name"
                      Canvas.Left="17"
                      Canvas.Top="37"
                      Width="204"

@@ -93,7 +93,7 @@
         WindowStartupLocation="CenterOwner"
         FontFamily="Tahoma"
         FontSize="19"
-        Background="Gainsboro">
+        Background="{DynamicResource AogLegacyGainsboroBrush}">
 
     <Window.Styles>
         <!--

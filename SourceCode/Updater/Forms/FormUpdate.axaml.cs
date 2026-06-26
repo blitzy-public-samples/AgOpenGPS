@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -23,12 +24,28 @@ namespace AgOpenGPS.Updater.Forms
     /// </summary>
     public partial class FormUpdate : Window
     {
-        // [XPLAT] cached brushes mirroring the WinForms Color.FromArgb values used dynamically below.
-        private static readonly IBrush TealBrush = new SolidColorBrush(Color.FromRgb(27, 151, 160));    // #1B97A0
-        private static readonly IBrush GrayBrush = new SolidColorBrush(Color.FromRgb(100, 100, 100));   // #646464
-        private static readonly IBrush CloseRedBrush = new SolidColorBrush(Color.FromRgb(220, 80, 80)); // #DC5050
-        private static readonly IBrush CancelRedBrush = new SolidColorBrush(Color.FromRgb(200, 60, 60));// #C83C3C
-        private static readonly IBrush UpToDateBrush = new SolidColorBrush(Color.FromRgb(60, 60, 80));   // #3C3C50
+        // [XPLAT] Palette brushes resolved from App.axaml's single-source-of-truth resource dictionary
+        // instead of repeating the hex literals that already live there; used dynamically below to switch
+        // button/label colors per update state. The fallback argument is the exact WinForms Color.FromArgb
+        // parity value, used only if the resource cannot be resolved, so rendering can never regress.
+        private static readonly IBrush TealBrush = PaletteBrush("AccentBrush", Color.FromRgb(27, 151, 160));          // #1B97A0
+        private static readonly IBrush GrayBrush = PaletteBrush("NeutralButtonBrush", Color.FromRgb(100, 100, 100));  // #646464
+        private static readonly IBrush CloseRedBrush = PaletteBrush("ButtonDangerBrush", Color.FromRgb(220, 80, 80)); // #DC5050
+        private static readonly IBrush CancelRedBrush = PaletteBrush("DangerPressedBrush", Color.FromRgb(200, 60, 60));// #C83C3C
+        private static readonly IBrush UpToDateBrush = PaletteBrush("UpToDateBrush", Color.FromRgb(60, 60, 80));      // #3C3C50
+
+        // [XPLAT] Resolves a named SolidColorBrush from App.axaml's application-level resources so the
+        // updater palette has a single source of truth. Falls back to the supplied WinForms-parity color
+        // if the application or resource is unavailable (e.g. design-time), guaranteeing no visual change.
+        private static IBrush PaletteBrush(string key, Color fallback)
+        {
+            if (Application.Current is { } app && app.TryFindResource(key, out object value) && value is IBrush brush)
+            {
+                return brush;
+            }
+
+            return new SolidColorBrush(fallback);
+        }
 
         private readonly UpdateService _updateService;
         private string _currentVersion;

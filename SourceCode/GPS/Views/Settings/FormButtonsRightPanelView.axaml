@@ -166,56 +166,56 @@
                                 Width="144" Height="646">
             <Canvas>
                 <!-- btnContour -> Resources.ContourOn ; mf.buttonOrder.Add(7) -->
-                <Button x:Name="btnContour" Classes="selectButton"
+                <Button x:Name="btnContour" AutomationProperties.Name="Contour" Classes="selectButton"
                         Canvas.Left="37" Canvas.Top="30" Width="72" Height="64"
                         Click="btnContour_Click">
                     <Image Source="avares://AgOpenGPS/btnImages/ContourOn.png" Stretch="Uniform" Margin="3" />
                 </Button>
 
                 <!-- btnCycleLines -> Resources.ABLineCycle ; mf.buttonOrder.Add(6) -->
-                <Button x:Name="btnCycleLines" Classes="selectButton"
+                <Button x:Name="btnCycleLines" AutomationProperties.Name="Cycle Lines" Classes="selectButton"
                         Canvas.Left="37" Canvas.Top="107" Width="72" Height="64"
                         Click="btnCycleLines_Click">
                     <Image Source="avares://AgOpenGPS/btnImages/ABLineCycle.png" Stretch="Uniform" Margin="3" />
                 </Button>
 
                 <!-- btnCycleLinesBk -> Resources.ABLineCycleBk ; mf.buttonOrder.Add(5) -->
-                <Button x:Name="btnCycleLinesBk" Classes="selectButton"
+                <Button x:Name="btnCycleLinesBk" AutomationProperties.Name="Cycle Lines Back" Classes="selectButton"
                         Canvas.Left="37" Canvas.Top="184" Width="72" Height="64"
                         Click="btnCycleLinesBk_Click">
                     <Image Source="avares://AgOpenGPS/btnImages/ABLineCycleBk.png" Stretch="Uniform" Margin="3" />
                 </Button>
 
                 <!-- btnTrack -> Resources.AutoTrack ; mf.buttonOrder.Add(4) -->
-                <Button x:Name="btnTrack" Classes="selectButton"
+                <Button x:Name="btnTrack" AutomationProperties.Name="Track" Classes="selectButton"
                         Canvas.Left="37" Canvas.Top="261" Width="72" Height="64"
                         Click="btnTrack_Click">
                     <Image Source="avares://AgOpenGPS/btnImages/AutoTrack.png" Stretch="Uniform" Margin="3" />
                 </Button>
 
                 <!-- btnSectionMasterManual -> Resources.ManualOff ; mf.buttonOrder.Add(3) -->
-                <Button x:Name="btnSectionMasterManual" Classes="selectButton"
+                <Button x:Name="btnSectionMasterManual" AutomationProperties.Name="Section Master Manual" Classes="selectButton"
                         Canvas.Left="37" Canvas.Top="338" Width="72" Height="64"
                         Click="btnSectionMasterManual_Click">
                     <Image Source="avares://AgOpenGPS/btnImages/ManualOff.png" Stretch="Uniform" Margin="3" />
                 </Button>
 
                 <!-- btnSectionMasterAuto -> Resources.SectionMasterOff ; mf.buttonOrder.Add(2) -->
-                <Button x:Name="btnSectionMasterAuto" Classes="selectButton"
+                <Button x:Name="btnSectionMasterAuto" AutomationProperties.Name="Section Master Auto" Classes="selectButton"
                         Canvas.Left="37" Canvas.Top="415" Width="72" Height="64"
                         Click="btnSectionMasterAuto_Click">
                     <Image Source="avares://AgOpenGPS/btnImages/SectionMasterOff.png" Stretch="Uniform" Margin="3" />
                 </Button>
 
                 <!-- btnAutoYouTurn -> Resources.YouTurnNo ; mf.buttonOrder.Add(1) -->
-                <Button x:Name="btnAutoYouTurn" Classes="selectButton"
+                <Button x:Name="btnAutoYouTurn" AutomationProperties.Name="Auto U-Turn" Classes="selectButton"
                         Canvas.Left="37" Canvas.Top="492" Width="72" Height="64"
                         Click="btnAutoYouTurn_Click">
                     <Image Source="avares://AgOpenGPS/btnImages/YouTurnNo.png" Stretch="Uniform" Margin="3" />
                 </Button>
 
                 <!-- btnAutoSteer -> Resources.AutoSteerOff ; mf.buttonOrder.Add(0) -->
-                <Button x:Name="btnAutoSteer" Classes="selectButton"
+                <Button x:Name="btnAutoSteer" AutomationProperties.Name="Auto Steer" Classes="selectButton"
                         Canvas.Left="37" Canvas.Top="569" Width="72" Height="64"
                         Click="btnAutoSteer_Click">
                     <Image Source="avares://AgOpenGPS/btnImages/AutoSteerOff.png" Stretch="Uniform" Margin="3" />
@@ -269,7 +269,7 @@
              "Default" caption (TextImageRelation.ImageAboveText), Click -> btnAll_Click (adds all
              eight). WhiteSmoke face. The caption text is the gStr.gsDefault design-time default;
              if the code-behind assigns it, it sets the inner TextBlock so the glyph is preserved. -->
-        <Button x:Name="buttonLabelDefault" Classes="selectButton"
+        <Button x:Name="buttonLabelDefault" AutomationProperties.Name="Default" Classes="selectButton"
                 Canvas.Left="246" Canvas.Top="301" Width="91" Height="115"
                 Click="btnAll_Click">
             <StackPanel Orientation="Vertical"
@@ -287,7 +287,7 @@
         <!-- buttonLabelReset — WinForms Button @ (246,500) 91x115: back-button glyph above the
              "Reset" caption, Click -> btnReset_Click (clears preview + re-enables source buttons).
              WhiteSmoke face. Runtime caption from gStr.gsReset. -->
-        <Button x:Name="buttonLabelReset" Classes="selectButton"
+        <Button x:Name="buttonLabelReset" AutomationProperties.Name="Reset" Classes="selectButton"
                 Canvas.Left="246" Canvas.Top="500" Width="91" Height="115"
                 Click="btnReset_Click">
             <StackPanel Orientation="Vertical"
@@ -319,7 +319,7 @@
 
         <!-- btnTest — WinForms Button @ (623,234) 106x70, Transparent, TrackVisible glyph,
              Click -> btnTest_Click (applies the current order live without closing). -->
-        <Button x:Name="btnTest" Classes="imageButton"
+        <Button x:Name="btnTest" AutomationProperties.Name="Test" Classes="imageButton"
                 Canvas.Left="623" Canvas.Top="234" Width="106" Height="70"
                 Click="btnTest_Click">
             <Image Source="avares://AgOpenGPS/btnImages/TrackVisible.png"
@@ -328,7 +328,7 @@
 
         <!-- btnCancel — WinForms Button @ (657,451) 69x70, Transparent, Cancel64 glyph,
              Click -> btnCancel_Click (reverts setDisplay_buttonOrder and closes). -->
-        <Button x:Name="btnCancel" Classes="imageButton"
+        <Button x:Name="btnCancel" AutomationProperties.Name="Cancel" Classes="imageButton"
                 Canvas.Left="657" Canvas.Top="451" Width="69" Height="70"
                 IsCancel="True"
                 Click="btnCancel_Click">
@@ -338,7 +338,7 @@
 
         <!-- btnOk — WinForms Button @ (620,576) 106x70, Transparent, OK64 glyph,
              Click -> btnOk_Click (commits the order, rebuilds the right menu, and closes). -->
-        <Button x:Name="btnOk" Classes="imageButton"
+        <Button x:Name="btnOk" AutomationProperties.Name="OK" Classes="imageButton"
                 Canvas.Left="620" Canvas.Top="576" Width="106" Height="70"
                 IsDefault="True"
                 Click="btnOk_Click">

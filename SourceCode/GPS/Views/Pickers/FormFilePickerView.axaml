@@ -56,7 +56,7 @@
         Title="Field Picker"
         Width="991"
         Height="578"
-        Background="WhiteSmoke"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         SystemDecorations="None"
         CanResize="False"
         ShowInTaskbar="False"
@@ -171,6 +171,7 @@
                 supplied by the code-behind so the visible column order tracks the cycling header order.
             -->
             <ListBox x:Name="lvLines"
+                     AutomationProperties.Name="Field list"
                      Grid.Row="1"
                      Background="#FFBFCDDB"
                      BorderThickness="0"
@@ -243,6 +244,7 @@
             Reproduced as a centered horizontal StackPanel (image, then text) per the file spec.
         -->
         <Button x:Name="btnByDistance"
+                AutomationProperties.Name="Sort field list"
                 Classes="flatBtn"
                 Canvas.Left="210" Canvas.Top="507"
                 Width="147" Height="63">
@@ -274,6 +276,7 @@
             Tahoma 18pt (= 24 DIP). Centered horizontal StackPanel (image, then text).
         -->
         <Button x:Name="btnOpenExistingLv"
+                AutomationProperties.Name="Use Selected"
                 Classes="flatBtn"
                 Canvas.Left="697" Canvas.Top="507"
                 Width="261" Height="63">

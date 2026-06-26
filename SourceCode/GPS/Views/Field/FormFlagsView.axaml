@@ -145,6 +145,7 @@
              code-behind suppresses the Enter key and shows the on-screen keyboard on tap. Designer
              height 69; Tahoma 12pt -> 16 DIP; design-time placeholder "Default". -->
         <TextBox x:Name="tboxFlagNotes"
+        AutomationProperties.Name="Flag note"
                  Grid.Row="1"
                  Height="69"
                  FontSize="16"

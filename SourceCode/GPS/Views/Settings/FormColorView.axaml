@@ -267,7 +267,7 @@
         <!-- hsbarSmooth — replaces the WinForms HScrollBar. (366,108) 262 wide; Min 0 / Max 100,
              integer (snap to whole-number ticks, no tick marks shown). ValueChanged updates
              lblSmoothCam live in the code-behind. -->
-        <Slider x:Name="hsbarSmooth"
+        <Slider x:Name="hsbarSmooth" AutomationProperties.Name="Camera Smoothing"
                 Canvas.Left="366"
                 Canvas.Top="108"
                 Width="262"

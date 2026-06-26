@@ -80,7 +80,7 @@
     <Border x:Name="RootBorder"
             BorderThickness="20"
             BorderBrush="CornflowerBlue"
-            Background="Lavender">
+            Background="{DynamicResource AogLegacyLavenderBrush}">
 
         <!--
             Two columns + three rows reproduce the WinForms absolute layout (every coordinate is the

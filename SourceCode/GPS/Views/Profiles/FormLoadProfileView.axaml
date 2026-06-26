@@ -72,7 +72,7 @@
         SystemDecorations="None"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Background="#FFF5F5F5"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         FontFamily="Tahoma"
         FontSize="19">
 
@@ -177,7 +177,7 @@
                     already frames the dialog); horizontal scrolling is disabled so long names trim to
                     the column width as the WinForms LabelWrap=false list did.
                 -->
-                <ListBox x:Name="listViewProfiles"
+                <ListBox x:Name="listViewProfiles" AutomationProperties.Name="Profile list"
                          Grid.Column="0"
                          Background="#FFBFCDDB"
                          BorderThickness="0"

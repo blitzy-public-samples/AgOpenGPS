@@ -59,7 +59,7 @@
         Title="AgOpenGPS"
         Width="1000"
         Height="640"
-        Background="Lavender"
+        Background="{DynamicResource AogLegacyLavenderBrush}"
         SystemDecorations="None"
         CanResize="False"
         Topmost="True"
@@ -177,6 +177,7 @@ USE AT OWN RISK.
                  Apache 2.0 text is the resx default and is NOT reassigned at runtime, so it is
                  carried here verbatim. -->
             <TextBox x:Name="textBoxLicense"
+                     AutomationProperties.Name="License text"
                      Canvas.Left="170"
                      Canvas.Top="375"
                      Width="780"

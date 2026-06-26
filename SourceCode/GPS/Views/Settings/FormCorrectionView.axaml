@@ -159,7 +159,7 @@
         <!-- btnScroll — WinForms Location (12,12) Size 92 x 60, Text "Scroll On Off". Freezes / resumes
              the trace (FormCorrection isScroll). The label wraps across lines inside the narrow button,
              as it did in WinForms. Click -> code-behind btnScroll_Click_1. -->
-        <Button x:Name="btnScroll"
+        <Button x:Name="btnScroll" AutomationProperties.Name="Scroll On Off"
                 Classes="flat"
                 Canvas.Left="12"
                 Canvas.Top="12"

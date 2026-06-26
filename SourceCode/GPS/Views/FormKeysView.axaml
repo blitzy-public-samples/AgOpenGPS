@@ -42,7 +42,7 @@
         Title="AgOpenGPS - Shortcut Keys"
         Width="895"
         Height="686"
-        Background="#FFF0F0F0"
+        Background="{DynamicResource AogLegacyControlBrush}"
         CanResize="False"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"

@@ -13,9 +13,10 @@ It is one of two **single-source-of-truth** deliverables; its companion is
 **`MIGRATION_DOCS/TRANSITION_MAP.md`** (the file-by-file old→new mapping with each artifact's
 disposition and parity status). For the proof that behavior did not change — PGN byte-equivalence,
 field-file round-trip, ISOXML V3/V4 equivalence, settings XML round-trip, guidance/steering output
-equivalence, and the open GL-context risks — see **`MIGRATION_DOCS/PARITY_REPORT.md`**; for the
-per-feature (F-001…F-045) cross-platform disposition checklist see
-**`MIGRATION_DOCS/FEATURE_TRACEABILITY.md`**.
+equivalence, and the open GL-context risks — a **`MIGRATION_DOCS/PARITY_REPORT.md`** is planned for the
+parity/CI checkpoint and is **not yet on disk** (it requires the GPS build, the golden-file suites, and
+per-OS CI evidence). For the per-feature (F-001…F-045) cross-platform disposition checklist see
+**`MIGRATION_DOCS/FEATURE_TRACEABILITY.md`** (on disk).
 
 The format loosely follows the [Keep a Changelog](https://keepachangelog.com/) conventions, **adapted
 to migration areas**: because the entire refactor is executed in a single phase within the one
@@ -32,12 +33,17 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 > `GPS_Out`, and `Updater` are migrated and build, and the `AgOpenGPS.Core` (33/33) and `AgLibrary`
 > (3/3) test suites pass. The **`GPS`** application project is **intentionally non-buildable until its
 > Avalonia `csproj` conversion completes**: it still declares `UseWindowsForms=true`, so off-Windows
-> builds stop at SDK target-resolution (`NETSDK1100`) before any source compiles. Consequently the
-> GPS-side `Views/` / `Services/` / `Controls/` trees, the per-OS CI matrix, the golden-file parity
-> suites, and the documentation refresh are tracked here as **`Deferred`**, each with a named target
-> and frozen-behavior contract in `TRANSITION_MAP.md` (which carries the authoritative per-row
-> `At parity` / `Deferred` status). Entries below note this status where it is material; each bullet
-> describes the migration change for its area.
+> builds stop at SDK target-resolution (`NETSDK1100`) before any source compiles. The GPS-side
+> **`Views/` tree is now on disk** — all ~60 Avalonia dialog views plus the `MainView` shell each have a
+> matching `.axaml.cs` code-behind (validated for XAML↔code-behind consistency and XAML well-formedness
+> outside the GPS build, which is still gated by `NETSDK1100`). Still tracked as **`Deferred`** are the
+> GPS `Services/` and `Controls/` trees (not yet created), the GPS `csproj` Avalonia conversion (and thus
+> GPS compilation), the per-OS CI matrix, the golden-file parity **suite bodies** (only a
+> `Parity/Golden/**` scaffold is on disk), the documentation refresh, and the `PARITY_REPORT.md` /
+> `VALUE_SUMMARY.md` deliverables (not yet authored). Each carries a named target and frozen-behavior
+> contract in `TRANSITION_MAP.md` (which carries the authoritative per-row `At parity` / `Scaffolded` /
+> `Deferred` status). Entries below note this status where it is material; each bullet describes the
+> migration change for its area.
 
 ---
 
@@ -89,10 +95,15 @@ _Date: (in progress)_
   dialogs → `SourceCode/GPS/Views/**`; `FormLoop` + ~21 AgIO dialogs →
   `SourceCode/AgIO/Source/Views/**`; the `Keypad` `GenericKeypad` / `NumKeypad` / `Keyboard` user
   controls → Avalonia `UserControl`s. AgIO's view tree (19 view files) and the shared
-  `Keyboard.axaml` / `NumKeypad.axaml` are on disk; the GPS shell `App.axaml` and a growing set of GPS
-  dialog views (`FormDialogView`, `FormGPSDataView`, `FormEventViewerView`, `Config/`, `Field/`, …)
-  exist, with `MainView` and the remaining dialogs landing with the GPS `csproj` conversion.
-  _AgIO at parity (pending CI); GPS in progress / deferred — see `TRANSITION_MAP.md`._
+  `Keyboard.axaml` / `NumKeypad.axaml` are on disk. The GPS `Views/` tree is now on disk in full: the
+  `App.axaml` shell plus all 60 `.axaml` dialog/shell views (including `MainView` and the two custom
+  chart controls `RollChart` / `XteChartControl`) each have a matching `.axaml.cs` code-behind, with the
+  declared event handlers implemented and `AutomationProperties.Name` accessibility labels added. These
+  views are **authored and consistency-validated but not yet compiled**: the GPS `csproj` Avalonia
+  conversion — which removes `UseWindowsForms` and adds the Avalonia, `OpenGlControlBase`, and
+  `Avalonia.Controls.ColorPicker 11.3.18` references — is still pending, so the GPS project stops at
+  `NETSDK1100` before its source compiles. _AgIO views at parity (pending CI); GPS views scaffolded on
+  disk, GPS compile/conversion deferred — see `TRANSITION_MAP.md`._
 - **Core MVVM/Presenter scaffold wired to views.** The existing-but-null-wired `RelayCommand`,
   `IPanelPresenter`, and `IErrorPresenter` in `AgOpenGPS.Core` are now bound to Avalonia views via
   data binding (the AgIO `MainWindow` composition root already does this), replacing the legacy
@@ -128,10 +139,11 @@ _Unchanged:_ **`OpenTK 3.3.3`** math/bindings and the `AgOpenGPS.Core/Drawing` `
 `GLW` DrawLib are kept as-is — the renderer is insulated from the host swap by the existing
 abstraction.
 
-> **Risk (see `PARITY_REPORT.md`).** Avalonia's GL context is frequently OpenGL ES / ANGLE. If the
-> Core DrawLib/`GLW` relies on immediate-mode legacy OpenGL, it will not run unchanged under GLES; the
-> `glReadPixels` back-buffer scan must also be verified on the Avalonia surface. This is tracked as the
-> **dominant open feasibility risk** in `PARITY_REPORT.md` — these rows therefore make **no
+> **Risk (to be recorded in the planned `PARITY_REPORT.md`).** Avalonia's GL context is frequently
+> OpenGL ES / ANGLE. If the Core DrawLib/`GLW` relies on immediate-mode legacy OpenGL, it will not run
+> unchanged under GLES; the `glReadPixels` back-buffer scan must also be verified on the Avalonia
+> surface. This is the **dominant open feasibility risk** and will be tracked in `PARITY_REPORT.md` once
+> that deliverable is authored (it is **not yet on disk**) — these rows therefore make **no
 > proven-parity claim**.
 
 ### Platform services
@@ -222,6 +234,22 @@ preserved and verified by `SettingsRoundTripTests` (F-036).
 - **`SourceCode/.editorconfig`** `*.Designer.cs` analyzer glob is the capital-`D` form and lists
   `Position` (and `Config*`, `Controls`, `GUI`, `OpenGL`, `PGN`, `SaveOpen`, `Sections`, `UDPComm`,
   `NMEA`, `NTRIPComm`, `SerialComm`, `UDP`), carrying the `[XPLAT]` provenance note. _At parity._
+- **Package version inventory recorded for pre-release advisory verification (AAP §0.5; review
+  finding #14).** The pinned, on-disk package versions are: the Avalonia UI stack — `Avalonia`,
+  `Avalonia.Desktop`, `Avalonia.Themes.Fluent`, `Avalonia.Fonts.Inter`, and `Avalonia.Diagnostics` — all
+  at **11.3.18**; `Dev4Agriculture.ISO11783.ISOXML 0.23.1.1`; `OpenTK 3.3.3`; `Newtonsoft.Json 13.0.4`;
+  `SkiaSharp 2.88.9`; `SourceGear.sqlite3 3.50.3`; `System.Data.SQLite 2.0.1`; `System.IO.Ports 9.0.0`;
+  `System.Configuration.ConfigurationManager 9.0.0`; `System.Resources.Extensions 9.0.0`; and the test
+  toolchain `Microsoft.NET.Test.Sdk 17.12.0`, `NUnit 4.3.2`, `NUnit3TestAdapter 4.6.0`,
+  `NUnit.Analyzers 4.6.0`. All of these restore and build cleanly from nuget.org into the local cache.
+  **External advisory / CVE verification on nuget.org could not be completed in this offline environment**
+  (no outbound network / web search available) and **remains an explicit pre-release CI gate**, to be
+  recorded in `PARITY_REPORT.md` when that deliverable is authored. The net48-only
+  `GMap.NET.WinForms 2.1.7`, `MechanikaDesign.WinForms.UI.ColorPicker 2.0.0`, `OpenTK.GLControl 3.3.3`,
+  `System.Memory 4.6.0`, and `System.ValueTuple 4.6.1` references are removed/replaced at the GPS
+  conversion; `Avalonia.Controls.ColorPicker 11.3.18` must be **added** to the GPS `csproj` then (it
+  backs `FormColorPickerView`'s `ColorSpectrum` / `ColorSlider`). _Inventory recorded; external advisory
+  verification deferred to the CI checkpoint._
 
 ### Logic decoupling
 
@@ -266,9 +294,13 @@ latency.
 
 #### Added
 
-- **`SourceCode/AgOpenGPS.Tests/Parity/{PgnFrameGoldenTests,FieldRoundTripTests,IsoXmlEquivalenceTests,SettingsRoundTripTests,GuidanceEquivalenceTests}.cs`**
-  — golden-file parity suites modeled on `AgLibrary.Tests/Settings/XmlSettingsHandlerTests.cs`, with
-  `Parity/Golden/**` fixtures copied to output. _Deferred — `AgOpenGPS.Tests` depends on GPS and
+- **`SourceCode/AgOpenGPS.Tests/Parity/Golden/**` scaffold** — the golden-fixture directory tree
+  (`Pgn/`, `Field/`, `IsoXml/`, `Settings/`, `Guidance/`) with `README.md` / `.gitkeep` placeholders is
+  on disk. The golden-file parity **suite bodies**
+  (`PgnFrameGoldenTests`, `FieldRoundTripTests`, `IsoXmlEquivalenceTests`, `SettingsRoundTripTests`,
+  `GuidanceEquivalenceTests`), modeled on `AgLibrary.Tests/Settings/XmlSettingsHandlerTests.cs`, and the
+  captured golden fixtures themselves are **not yet authored** — no parity `.cs` test file exists on disk
+  today. _Scaffold on disk; suite bodies + fixtures deferred — `AgOpenGPS.Tests` depends on GPS and
   rebuilds at the GPS conversion._
 
 #### Changed
@@ -281,17 +313,18 @@ latency.
 
 #### Removed
 
-- **`SourceCode/AgOpenGPS.Tests/SampleTest.cs`** placeholder — superseded by the parity suites. Still
-  on disk pending the GPS-dependent project rebuild. _Deferred._
+- **`SourceCode/AgOpenGPS.Tests/SampleTest.cs`** placeholder — **deleted from disk** (it is no longer
+  present). Its role is superseded by the planned golden-file parity suites, whose bodies are authored
+  when the GPS-dependent `AgOpenGPS.Tests` project rebuilds at the GPS conversion. _Removed._
 
 ### Documentation
 
 #### Added
 
-- **`MIGRATION_DOCS/{CHANGELOG,TRANSITION_MAP,PARITY_REPORT,FEATURE_TRACEABILITY,VALUE_SUMMARY}.md`** —
-  the migration deliverable set. `CHANGELOG.md` (this file) and `TRANSITION_MAP.md` are on disk;
-  `PARITY_REPORT.md`, `FEATURE_TRACEABILITY.md`, and `VALUE_SUMMARY.md` are authored at the parity/CI
-  checkpoint.
+- **`MIGRATION_DOCS/` deliverable set.** `CHANGELOG.md` (this file), `TRANSITION_MAP.md`, and
+  `FEATURE_TRACEABILITY.md` are **on disk**. `PARITY_REPORT.md` and `VALUE_SUMMARY.md` are **not yet
+  authored** — they are planned for the parity/CI checkpoint (a `PARITY_REPORT.md` requires the GPS
+  build, the golden-file suite bodies, and per-OS CI evidence, none of which exist yet).
 
 #### Changed
 
@@ -329,7 +362,8 @@ projects). _At parity._
 ---
 
 _This changelog is kept current as the migration proceeds. See also `TRANSITION_MAP.md` (file-by-file
-old→new mapping and authoritative per-row parity status), `PARITY_REPORT.md` (behavioral-parity proof
-and the open GL-context / `glReadPixels` risks), `FEATURE_TRACEABILITY.md` (per-feature F-001…F-045
-cross-platform disposition), and `VALUE_SUMMARY.md` (executive brief)._
+old→new mapping and authoritative per-row parity status) and `FEATURE_TRACEABILITY.md` (per-feature
+F-001…F-045 cross-platform disposition) — both **on disk**. Two further deliverables are **planned but
+not yet authored**: `PARITY_REPORT.md` (behavioral-parity proof and the open GL-context /
+`glReadPixels` risks) and `VALUE_SUMMARY.md` (executive brief)._
 

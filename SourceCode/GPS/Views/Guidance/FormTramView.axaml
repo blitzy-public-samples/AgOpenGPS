@@ -63,7 +63,7 @@
         CanResize="False"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterScreen"
-        Background="WhiteSmoke"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         FontFamily="Tahoma">
 
     <Window.Styles>
@@ -203,6 +203,7 @@
              ReadOnly. Content "1" is a placeholder overwritten on Load from Settings.setTram_passes;
              a click opens the on-screen FormNumeric(1,999,current) in the code-behind. -->
         <Button x:Name="nudPasses" Classes="nud"
+                AutomationProperties.Name="Number of passes"
                 Canvas.Left="93" Canvas.Top="171"
                 Width="92" Height="46"
                 FontSize="32" FontWeight="Bold"
@@ -229,6 +230,7 @@
              (setting it True would invert the control). IsSnapToTickEnabled + TickFrequency=1
              reproduce the integer-valued snapping of the WinForms TrackBar. -->
         <Slider x:Name="tbarTramAlpha"
+                AutomationProperties.Name="Tramline transparency"
                 Canvas.Left="303" Canvas.Top="25"
                 Width="45" Height="216"
                 Orientation="Vertical"

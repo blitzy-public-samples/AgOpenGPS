@@ -60,7 +60,7 @@
         Height="545"
         MaxWidth="1024"
         MaxHeight="768"
-        Background="#FFF5F5F5"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         SystemDecorations="None"
         CanResize="True"
         ShowInTaskbar="False"
@@ -184,7 +184,7 @@
             are supplied by the code-behind; the ItemTemplate uses reflection bindings (see contract
             above). BorderThickness 0 — the form already frames the list on the WhiteSmoke ground.
         -->
-        <ListBox x:Name="listViewVehicles"
+        <ListBox x:Name="listViewVehicles" AutomationProperties.Name="Vehicle profile list"
                  Classes="profileList"
                  Canvas.Left="12" Canvas.Top="35"
                  Width="400" Height="320"
@@ -214,7 +214,7 @@
         </ListBox>
 
         <!-- listViewTools — WinForms ListView @ (500,35) 400 x 320, same style as listViewVehicles. -->
-        <ListBox x:Name="listViewTools"
+        <ListBox x:Name="listViewTools" AutomationProperties.Name="Tool profile list"
                  Classes="profileList"
                  Canvas.Left="500" Canvas.Top="35"
                  Width="400" Height="320"

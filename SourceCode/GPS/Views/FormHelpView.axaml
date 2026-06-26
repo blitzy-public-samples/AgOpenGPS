@@ -88,7 +88,7 @@
         Topmost="True"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Background="#FFF0F0F0"
+        Background="{DynamicResource AogLegacyControlBrush}"
         FontFamily="Tahoma">
 
     <!--

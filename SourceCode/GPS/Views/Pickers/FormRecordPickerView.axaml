@@ -128,6 +128,7 @@
                      21.75pt. Background matches the region so the list reads as one InactiveCaption
                      panel. -->
                 <ListBox x:Name="lvLines"
+                         AutomationProperties.Name="Recorded path list"
                          Grid.Row="1"
                          Background="#FFBFCDDB"
                          BorderThickness="0"

@@ -30,7 +30,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="AgOpenGPS.Views.Config.ConfigVehicleControl"
              FontFamily="Tahoma"
-             Background="WhiteSmoke">
+             Background="{DynamicResource AogLegacyWhiteSmokeBrush}">
 
     <!--
         Styles reproduce the WinForms "Appearance.Button" look: the radio/checkbox glyph is
@@ -131,6 +131,7 @@
                 <!-- rbtnHarvester: GroupBox-relative (16,27) 127x83 -->
                 <RadioButton x:Name="rbtnHarvester"
                              Classes="vehicleType" GroupName="VehicleType"
+                             AutomationProperties.Name="Harvester vehicle type"
                              Canvas.Left="16" Canvas.Top="27" Width="127" Height="83">
                     <Image Source="avares://AgOpenGPS/btnImages/vehiclePageHarvester.png" Stretch="Uniform" />
                 </RadioButton>
@@ -138,6 +139,7 @@
                 <!-- rbtnTractor: GroupBox-relative (192,27) 127x83 (WinForms default selection) -->
                 <RadioButton x:Name="rbtnTractor"
                              Classes="vehicleType" GroupName="VehicleType" IsChecked="True"
+                             AutomationProperties.Name="Tractor vehicle type"
                              Canvas.Left="192" Canvas.Top="27" Width="127" Height="83">
                     <Image Source="avares://AgOpenGPS/btnImages/vehiclePageTractor.png" Stretch="Uniform" />
                 </RadioButton>
@@ -145,6 +147,7 @@
                 <!-- rbtnArticulated: GroupBox-relative (366,27) 127x83 -->
                 <RadioButton x:Name="rbtnArticulated"
                              Classes="vehicleType" GroupName="VehicleType"
+                             AutomationProperties.Name="Articulated vehicle type"
                              Canvas.Left="366" Canvas.Top="27" Width="127" Height="83">
                     <Image Source="avares://AgOpenGPS/btnImages/vehiclePageArticulated.png" Stretch="Uniform" />
                 </RadioButton>
@@ -181,6 +184,7 @@
         <!-- cboxIsImage: WinForms CheckBox (Appearance.Button) @ (651,17) 96x96. -->
         <CheckBox x:Name="cboxIsImage"
                   Classes="imageToggle"
+                  AutomationProperties.Name="Hide vehicle image"
                   Canvas.Left="651" Canvas.Top="17" Width="96" Height="96">
             <Image Source="avares://AgOpenGPS/ResourcesBrands/Brands/Brand/BrandTriangleVehicle.png" Stretch="Uniform" />
         </CheckBox>
@@ -215,6 +219,7 @@
         <!-- btnOpacityDn: WinForms Button @ (555,438) 73x72, flat/transparent, DnArrow64 image.
              Plain Button (single click steps opacity -0.2 in the source — NOT a RepeatButton). -->
         <Button x:Name="btnOpacityDn"
+                AutomationProperties.Name="Decrease vehicle image opacity"
                 Canvas.Left="555" Canvas.Top="438" Width="73" Height="72"
                 Background="Transparent" BorderThickness="0" Padding="0">
             <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png" Stretch="Uniform" />
@@ -222,6 +227,7 @@
 
         <!-- btnOpacityUp: WinForms Button @ (773,438) 73x72, flat/transparent, UpArrow64 image. -->
         <Button x:Name="btnOpacityUp"
+                AutomationProperties.Name="Increase vehicle image opacity"
                 Canvas.Left="773" Canvas.Top="438" Width="73" Height="72"
                 Background="Transparent" BorderThickness="0" Padding="0">
             <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png" Stretch="Uniform" />

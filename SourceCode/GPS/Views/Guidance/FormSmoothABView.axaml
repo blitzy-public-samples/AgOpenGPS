@@ -86,7 +86,7 @@
         Title="Smooth AB Curve"
         Width="231"
         Height="393"
-        Background="WhiteSmoke"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         SystemDecorations="Full"
         CanResize="True"
         ShowInTaskbar="False"

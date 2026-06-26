@@ -92,9 +92,11 @@
              (configVehicleControl = WhiteSmoke, configSummaryControl = Gainsboro). -->
         <TabControl Grid.Row="1" TabStripPlacement="Left">
 
-            <!-- Vehicle page (legacy configVehicleControl.BackColor = WhiteSmoke). -->
+            <!-- Vehicle page (legacy configVehicleControl.BackColor = WhiteSmoke). The fixed-light
+                 parity surface is centralized in App.axaml as AogLegacyWhiteSmokeBrush (theme-
+                 independent by design — see that file's comment). -->
             <TabItem Header="Vehicle">
-                <Border Background="WhiteSmoke">
+                <Border Background="{DynamicResource AogLegacyWhiteSmokeBrush}">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto">
                         <cfg:ConfigVehicleControl x:Name="configVehicleControl" />
@@ -102,9 +104,11 @@
                 </Border>
             </TabItem>
 
-            <!-- Summary page (legacy configSummaryControl.BackColor = Gainsboro). -->
+            <!-- Summary page (legacy configSummaryControl.BackColor = Gainsboro). The fixed-light
+                 parity surface is centralized in App.axaml as AogLegacyGainsboroBrush (theme-
+                 independent by design — see that file's comment). -->
             <TabItem Header="Summary">
-                <Border Background="Gainsboro">
+                <Border Background="{DynamicResource AogLegacyGainsboroBrush}">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto">
                         <cfg:ConfigSummaryControl x:Name="configSummaryControl" />

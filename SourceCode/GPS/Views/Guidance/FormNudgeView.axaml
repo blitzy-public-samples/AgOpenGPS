@@ -73,7 +73,7 @@
         ShowInTaskbar="False"
         Topmost="False"
         WindowStartupLocation="Manual"
-        Background="LightSteelBlue"
+        Background="{DynamicResource AogLegacyLightSteelBlueBrush}"
         FontFamily="Tahoma">
 
     <!--

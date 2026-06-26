@@ -33,8 +33,8 @@
                        Margin="25,20,0,0" />
         </Border>
 
-        <!-- panelButtons: Dock=Bottom, Height 80, BackColor (180,180,200) = #B4B4C8, Padding 20. -->
-        <Border DockPanel.Dock="Bottom" Height="80" Background="#B4B4C8" Padding="20">
+        <!-- panelButtons: Dock=Bottom, Height 80, BackColor (180,180,200) = #B4B4C8 -> PanelFooterBrush, Padding 20. -->
+        <Border DockPanel.Dock="Bottom" Height="80" Background="{DynamicResource PanelFooterBrush}" Padding="20">
             <!-- btnClose: Segoe UI 16 Bold, White on AccentBrush, 160x50, anchored Bottom|Right ->
                  right-aligned within the 20px-padded footer reproduces WinForms Location (520,15). -->
             <Button x:Name="BtnClose"
@@ -48,8 +48,8 @@
                     AutomationProperties.Name="Close release notes" />
         </Border>
 
-        <!-- panelMain: Dock=Fill (last child), BackColor (210,210,230) = #D2D2E6, Padding 20. -->
-        <Border Background="#D2D2E6" Padding="20">
+        <!-- panelMain: Dock=Fill (last child), BackColor (210,210,230) = #D2D2E6 -> PanelBrush, Padding 20. -->
+        <Border Background="{DynamicResource PanelBrush}" Padding="20">
             <!-- txtNotes: White, Segoe UI 11, WinForms Multiline+ReadOnly+ScrollBars=Vertical (word-wrap)
                  -> IsReadOnly + AcceptsReturn + TextWrapping=Wrap + vertical scrollbar Auto / horizontal Disabled. -->
             <TextBox x:Name="TxtNotes"

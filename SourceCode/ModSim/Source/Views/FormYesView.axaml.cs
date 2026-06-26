@@ -52,7 +52,12 @@ public partial class FormYesView : Window
         InitializeComponent();
 
         lblMessage2.Text = messageStr;
-        Width = messageStr.Length * 15 + 180;   // [XPLAT] verbatim from WinForms FormYes(string)
+
+        // [XPLAT] proportional width from WinForms FormYes(string), null-safe: a null messageStr
+        // must size to the base width rather than throw a NullReferenceException (restores the
+        // pre-regression `messageStr?.Length ?? 0` guard).
+        int messWidth = messageStr?.Length ?? 0;
+        Width = (messWidth * 15) + 180;
     }
 
     /// <summary>

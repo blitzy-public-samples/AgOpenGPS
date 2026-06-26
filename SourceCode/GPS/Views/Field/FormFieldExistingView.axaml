@@ -201,6 +201,7 @@
                  classic reflection bindings (the root sets x:CompileBindings="False"). BorderThickness
                  0 — the window already frames it. -->
             <ListBox x:Name="lvLines"
+            AutomationProperties.Name="Nearby fields to create from"
                      Grid.Row="1"
                      Background="#FFBFCDDB"
                      BorderThickness="0"

@@ -35,7 +35,7 @@
         Title="AgOpenGPS Message"
         Width="881"
         Height="459"
-        Background="#FFFEAAAA"
+        Background="{DynamicResource AogAlertPinkBrush}"
         SystemDecorations="None"
         CanResize="False"
         Topmost="True"

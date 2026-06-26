@@ -115,6 +115,16 @@ namespace AgOpenGPS.Platform
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// [XPLAT] Linux single-instance guard = exclusive lock-file (<see cref="FileShare.None"/>) PLUS
+        /// a best-effort advisory record lock (<see cref="FileStream.Lock(long,long)"/>, supported on
+        /// Linux), per AAP §0.6.3 ("Lockfile + advisory lock"). Unix has no named-Mutex equivalent, so the
+        /// <see cref="FileShare.None"/> handle is the real cross-process guard: the .NET runtime backs it
+        /// with an exclusive <c>flock()</c>, so a second process opening the same path fails with
+        /// <see cref="IOException"/>. This guard FAILS CLOSED — if the lock location cannot be prepared or
+        /// the lock cannot be taken, it returns <see langword="false"/> (never permits a second instance),
+        /// because allowing two AgOpenGPS instances risks conflicting hardware/field operations.
+        /// </remarks>
         public bool TryAcquireSingleInstance(string identifier, out IDisposable instanceLock)
         {
             string lockPath;
@@ -125,19 +135,34 @@ namespace AgOpenGPS.Platform
             }
             catch (Exception)
             {
-                // Cannot prepare the lock location; allow startup without single-instance enforcement.
+                // [XPLAT] FAIL CLOSED: cannot prepare the lock location, so we cannot prove sole-instance.
+                // Refuse to permit a second instance rather than fail open (single-instance is a safety guard).
                 instanceLock = new NoOpDisposable();
-                return true;
+                return false;
             }
 
             try
             {
+                // FileShare.None => the runtime takes an exclusive flock; a second process opening the same
+                // path throws IOException. This is the real cross-process single-instance guard.
                 var stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-                instanceLock = new SingleInstanceLock(stream);
+
+                // [XPLAT] Advisory record lock (fcntl) — the explicit advisory lock the AAP mandates.
+                // Supported on Linux (FileStream.Lock is unsupported only on macOS), so it is guarded by
+                // an OperatingSystem.IsLinux() check that also satisfies the platform-compatibility
+                // analyzer (CA1416). Best-effort: FileShare.None already guarantees exclusivity.
+                if (OperatingSystem.IsLinux())
+                {
+                    try { stream.Lock(0, 0); } catch { /* advisory only; FileShare.None already guards */ }
+                }
+
+                instanceLock = new SingleInstanceLock(stream, lockPath);
                 return true;
             }
             catch (IOException)
             {
+                // [XPLAT] Another instance already holds the lock-file -> this is not the sole instance.
+                // FAIL CLOSED: return false so the caller exits quietly (matches WinForms second-instance behaviour).
                 instanceLock = new NoOpDisposable();
                 return false;
             }
@@ -154,24 +179,48 @@ namespace AgOpenGPS.Platform
             return sb.ToString() + ".lock";
         }
 
+        /// <summary>
+        /// [XPLAT] Holds the open, exclusively-shared lock-file <see cref="FileStream"/> for the lifetime
+        /// of the single instance. Disposing releases the advisory record lock (where held), closes the
+        /// stream — which drops the <see cref="FileShare.None"/> guard — and best-effort deletes the
+        /// lock-file so the directory stays tidy and a subsequent restart can re-acquire immediately.
+        /// Idempotent: safe to dispose more than once.
+        /// </summary>
         private sealed class SingleInstanceLock : IDisposable
         {
             private FileStream _stream;
+            private readonly string _lockPath;
+            private bool _disposed;
 
-            public SingleInstanceLock(FileStream stream)
+            public SingleInstanceLock(FileStream stream, string lockPath)
             {
                 _stream = stream;
+                _lockPath = lockPath;
             }
 
             public void Dispose()
             {
-                if (_stream == null)
+                if (_disposed)
                 {
                     return;
                 }
 
-                _stream.Dispose();
-                _stream = null;
+                _disposed = true;
+
+                if (_stream != null)
+                {
+                    // [XPLAT] Release the advisory record lock taken in TryAcquireSingleInstance. Guarded by
+                    // OperatingSystem.IsLinux() to mirror the acquire side and satisfy CA1416 (FileStream.Unlock
+                    // is unsupported on macOS). Closing the stream then drops the FileShare.None guard.
+                    if (OperatingSystem.IsLinux())
+                    {
+                        try { _stream.Unlock(0, 0); } catch { /* advisory unlock; ignore if not held */ }
+                    }
+                    try { _stream.Dispose(); } catch { /* releasing the FileShare.None guard; ignore */ }
+                    _stream = null;
+                }
+
+                try { File.Delete(_lockPath); } catch { /* best-effort cleanup; ignore */ }
             }
         }
 

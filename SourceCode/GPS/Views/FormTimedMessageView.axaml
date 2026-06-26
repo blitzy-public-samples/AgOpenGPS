@@ -52,7 +52,7 @@
         CanResize="False"
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="Manual"
-        Background="Red"
+        Background="{DynamicResource AogAlertRedBrush}"
         Padding="7">
 
     <!-- WinForms panel1: Dock=Fill, BackColor=OldLace. Sits inside the 7px red Window padding,

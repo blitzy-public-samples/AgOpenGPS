@@ -51,7 +51,7 @@
         Title="System Data"
         Width="120"
         Height="330"
-        Background="Black"
+        Background="{DynamicResource AogDataReadoutBackgroundBrush}"
         SystemDecorations="None"
         CanResize="False"
         ShowInTaskbar="False"

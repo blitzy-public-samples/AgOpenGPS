@@ -77,7 +77,7 @@
         x:Class="AgOpenGPS.Views.Pickers.FormColorPickerView"
         Title="Color Picker"
         Width="591" Height="615"
-        Background="#FF7F7F7F"
+        Background="{DynamicResource AogLegacyGray127Brush}"
         SystemDecorations="None"
         CanResize="False"
         ShowInTaskbar="False"
@@ -172,6 +172,7 @@
              Avalonia ColorSpectrum showing the Saturation (X) / Value (Y) plane; hue is the third
              component, driven by colorSlider. ColorChanged is subscribed in the code-behind. -->
         <primitives:ColorSpectrum x:Name="colorBox2D"
+                                  AutomationProperties.Name="Color saturation and value"
                                   Canvas.Left="5" Canvas.Top="6"
                                   Width="360" Height="360"
                                   Shape="Box"
@@ -181,6 +182,7 @@
              75x360. Avalonia ColorSlider as a VERTICAL Hue slider (HSVA model; first component =
              Hue), alpha hidden. ColorChanged is subscribed in the code-behind. -->
         <primitives:ColorSlider x:Name="colorSlider"
+                                AutomationProperties.Name="Hue"
                                 Canvas.Left="371" Canvas.Top="6"
                                 Width="75" Height="360"
                                 Orientation="Vertical"
@@ -250,26 +252,26 @@
                            Text="Select Preset Color" />
 
                 <!-- Row 0 (y=30) -->
-                <Button x:Name="btn00" Classes="swatch" Tag="00" Canvas.Left="10"  Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn01" Classes="swatch" Tag="01" Canvas.Left="87"  Canvas.Top="30" Width="64" Height="47" Background="Coral"     BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn02" Classes="swatch" Tag="02" Canvas.Left="164" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn03" Classes="swatch" Tag="03" Canvas.Left="241" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn04" Classes="swatch" Tag="04" Canvas.Left="318" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn05" Classes="swatch" Tag="05" Canvas.Left="395" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn00" Classes="swatch" Tag="00" AutomationProperties.Name="Preset color 1" Canvas.Left="10"  Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn01" Classes="swatch" Tag="01" AutomationProperties.Name="Preset color 2" Canvas.Left="87"  Canvas.Top="30" Width="64" Height="47" Background="Coral"     BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn02" Classes="swatch" Tag="02" AutomationProperties.Name="Preset color 3" Canvas.Left="164" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn03" Classes="swatch" Tag="03" AutomationProperties.Name="Preset color 4" Canvas.Left="241" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn04" Classes="swatch" Tag="04" AutomationProperties.Name="Preset color 5" Canvas.Left="318" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn05" Classes="swatch" Tag="05" AutomationProperties.Name="Preset color 6" Canvas.Left="395" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
 
                 <!-- Row 1 (y=92) -->
-                <Button x:Name="btn06" Classes="swatch" Tag="06" Canvas.Left="10"  Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn07" Classes="swatch" Tag="07" Canvas.Left="87"  Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn08" Classes="swatch" Tag="08" Canvas.Left="164" Canvas.Top="92" Width="64" Height="47" Background="#FF99B4D1" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn09" Classes="swatch" Tag="09" Canvas.Left="241" Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn10" Classes="swatch" Tag="10" Canvas.Left="318" Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn11" Classes="swatch" Tag="11" Canvas.Left="395" Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn06" Classes="swatch" Tag="06" AutomationProperties.Name="Preset color 7" Canvas.Left="10"  Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn07" Classes="swatch" Tag="07" AutomationProperties.Name="Preset color 8" Canvas.Left="87"  Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn08" Classes="swatch" Tag="08" AutomationProperties.Name="Preset color 9" Canvas.Left="164" Canvas.Top="92" Width="64" Height="47" Background="#FF99B4D1" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn09" Classes="swatch" Tag="09" AutomationProperties.Name="Preset color 10" Canvas.Left="241" Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn10" Classes="swatch" Tag="10" AutomationProperties.Name="Preset color 11" Canvas.Left="318" Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn11" Classes="swatch" Tag="11" AutomationProperties.Name="Preset color 12" Canvas.Left="395" Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
 
                 <!-- Row 2 (y=155) -->
-                <Button x:Name="btn12" Classes="swatch" Tag="12" Canvas.Left="10"  Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn13" Classes="swatch" Tag="13" Canvas.Left="87"  Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn14" Classes="swatch" Tag="14" Canvas.Left="164" Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
-                <Button x:Name="btn15" Classes="swatch" Tag="15" Canvas.Left="241" Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn12" Classes="swatch" Tag="12" AutomationProperties.Name="Preset color 13" Canvas.Left="10"  Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn13" Classes="swatch" Tag="13" AutomationProperties.Name="Preset color 14" Canvas.Left="87"  Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn14" Classes="swatch" Tag="14" AutomationProperties.Name="Preset color 15" Canvas.Left="164" Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn15" Classes="swatch" Tag="15" AutomationProperties.Name="Preset color 16" Canvas.Left="241" Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
             </Canvas>
         </Border>
 
@@ -278,6 +280,7 @@
              button turns PaleGreen when checked (style above). WinForms ImageAlign=MiddleRight =>
              the glyph is right-aligned within the button. -->
         <ToggleButton x:Name="chkUse"
+                      AutomationProperties.Name="Lock color selection"
                       Classes="useToggle"
                       Canvas.Left="495" Canvas.Top="428"
                       Width="79" Height="73"

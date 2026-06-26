@@ -65,7 +65,7 @@
         Title="Tracks"
         Width="270"
         Height="360"
-        Background="WhiteSmoke"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         SystemDecorations="Full"
         CanResize="False"
         ShowInTaskbar="False"
@@ -436,6 +436,7 @@
                  FixedSingle (BorderThickness 1, square corners), Tahoma 14.25pt -> 19 DIP, centred, MaxLength 100,
                  Multiline (AcceptsReturn + wrap). The code-behind shows the on-screen keyboard on click. -->
             <TextBox x:Name="textBox1"
+                     AutomationProperties.Name="Track name"
                      Canvas.Left="17" Canvas.Top="37"
                      Width="204" Height="77"
                      Background="LightCyan"

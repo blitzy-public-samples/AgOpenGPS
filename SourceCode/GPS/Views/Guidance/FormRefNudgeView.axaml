@@ -89,7 +89,7 @@
         CanResize="False"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Background="LightCoral"
+        Background="{DynamicResource AogLegacyLightCoralBrush}"
         FontFamily="Tahoma">
 
     <!--
@@ -220,6 +220,7 @@
                      design-time placeholder the code-behind overwrites, and a click opens the
                      numeric keypad. -->
                 <Button x:Name="nudSnapDistance"
+                        AutomationProperties.Name="Snap distance"
                         Classes="numBox"
                         Canvas.Left="37" Canvas.Top="214"
                         Width="107" Height="36"

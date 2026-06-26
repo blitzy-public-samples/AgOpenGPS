@@ -52,8 +52,11 @@ namespace ModSim.Views
             lblTitle.Text = titleStr;
             lblMessage2.Text = messageStr;
 
-            // [XPLAT] preserve the original proportional sizing formula verbatim.
-            Width = messageStr.Length * 15 + 120;
+            // [XPLAT] preserve the original proportional sizing formula, null-safe: a null
+            // messageStr must size to the base width rather than throw a NullReferenceException
+            // (restores the pre-regression `messageStr?.Length ?? 0` guard).
+            int messWidth = messageStr?.Length ?? 0;
+            Width = (messWidth * 15) + 120;
 
             // [XPLAT] WinForms Timer.Interval + Tick -> Avalonia DispatcherTimer (stopped on first tick).
             _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(timeInMsec) };

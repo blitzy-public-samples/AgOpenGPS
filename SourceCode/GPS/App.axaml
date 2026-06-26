@@ -101,6 +101,79 @@
                 </ResourceDictionary>
 
             </ResourceDictionary.ThemeDictionaries>
+
+            <!--
+                Theme-INDEPENDENT legacy parity surfaces (defined as direct children of this
+                ResourceDictionary, i.e. SIBLINGS of the ThemeDictionaries above, so they resolve
+                identically under BOTH the Light and Dark variants and never flip with day/night).
+
+                Rationale (AAP §0.3.3 — 1:1 visual parity, never a redesign): several WinForms
+                surfaces hard-coded a fixed neutral BackColor and were DELIBERATELY excluded from
+                FormGPS.SwapDayNightMode(). Verified against the WinForms source on the develop
+                baseline:
+                  - ConfigVehicleControl  : this.BackColor = Color.WhiteSmoke (#FFF5F5F5)
+                  - ConfigSummaryControl  : this.BackColor = Color.Gainsboro (#FFDCDCDC)
+                  - many Config/Picker/Profile/Guidance/Settings dialogs reused these same two
+                    Color.WhiteSmoke / Color.Gainsboro literals as their fixed form/panel face.
+                These must stay fixed-light to preserve parity; routing them through the day/night
+                Aog*Brush tokens would (a) change their tone (AogFrameBrush day == lavender #D2D2E6,
+                not WhiteSmoke) and (b) wrongly darken them in night mode, breaking the documented
+                look. They are centralized here — instead of being repeated as raw literals — so the
+                Views layer references one named, self-documenting resource. Reference them with
+                {DynamicResource ...} for consistency with the Aog* tokens.
+
+                WinForms named-color ARGB values are exact: Color.WhiteSmoke == #FFF5F5F5,
+                Color.Gainsboro == #FFDCDCDC. -->
+            <Color x:Key="AogLegacyWhiteSmokeColor">#FFF5F5F5</Color>
+            <Color x:Key="AogLegacyGainsboroColor">#FFDCDCDC</Color>
+            <SolidColorBrush x:Key="AogLegacyWhiteSmokeBrush" Color="{StaticResource AogLegacyWhiteSmokeColor}" />
+            <SolidColorBrush x:Key="AogLegacyGainsboroBrush" Color="{StaticResource AogLegacyGainsboroColor}" />
+
+            <!--
+                Additional theme-INDEPENDENT WinForms parity surfaces (same rationale as above). Each
+                dialog below hard-coded a fixed BackColor in WinForms and was DELIBERATELY excluded from
+                day/night theming (verified from the WinForms source / the views' own parity comments).
+                Centralized here so the Views layer references one named, self-documenting resource
+                instead of repeating raw literals; reference with {DynamicResource ...}.
+
+                WinForms named-color / ARGB provenance:
+                  Color.Lavender            == #FFE6E6FA  (input/dialog/terms prompt surface)
+                  SystemColors.Control      == #FFF0F0F0  (classic Windows control grey — help/keys)
+                  Color.FromArgb(254,170,170) == #FFFEAAAA (the pink acknowledgment ALERT box face)
+                  Color.Red                 == #FFFF0000  (the timed-message ALERT shell)
+                  Color.FromArgb(0,192,0)   == #FF00C000  (the FormSaving green shell)
+                  Color.Black               == #FF000000  (the fixed black+white GPS data overlay) -->
+            <Color x:Key="AogLegacyLavenderColor">#FFE6E6FA</Color>
+            <Color x:Key="AogLegacyControlColor">#FFF0F0F0</Color>
+            <Color x:Key="AogAlertPinkColor">#FFFEAAAA</Color>
+            <Color x:Key="AogAlertRedColor">#FFFF0000</Color>
+            <Color x:Key="AogSavingGreenColor">#FF00C000</Color>
+            <Color x:Key="AogDataReadoutBackgroundColor">#FF000000</Color>
+            <SolidColorBrush x:Key="AogLegacyLavenderBrush" Color="{StaticResource AogLegacyLavenderColor}" />
+            <SolidColorBrush x:Key="AogLegacyControlBrush" Color="{StaticResource AogLegacyControlColor}" />
+            <SolidColorBrush x:Key="AogAlertPinkBrush" Color="{StaticResource AogAlertPinkColor}" />
+            <SolidColorBrush x:Key="AogAlertRedBrush" Color="{StaticResource AogAlertRedColor}" />
+            <SolidColorBrush x:Key="AogSavingGreenBrush" Color="{StaticResource AogSavingGreenColor}" />
+            <SolidColorBrush x:Key="AogDataReadoutBackgroundBrush" Color="{StaticResource AogDataReadoutBackgroundColor}" />
+
+            <!--
+                Guidance/Pickers parity surfaces (same rationale as above). These three dialogs
+                hard-coded a fixed BackColor in WinForms and were DELIBERATELY excluded from day/night
+                theming (verified from the WinForms source). Centralized here so the Views layer
+                references one named, self-documenting resource instead of repeating raw literals;
+                reference with {DynamicResource ...}.
+
+                WinForms named-color / ARGB provenance:
+                  Color.LightSteelBlue        == #FFB0C4DE  (FormNudge tool-nudge surface)
+                  Color.LightCoral            == #FFF08080  (FormRefNudge reference-nudge surface)
+                  Color.FromArgb(127,127,127) == #FF7F7F7F  (FormColorPicker mid-grey backdrop) -->
+            <Color x:Key="AogLegacyLightSteelBlueColor">#FFB0C4DE</Color>
+            <Color x:Key="AogLegacyLightCoralColor">#FFF08080</Color>
+            <Color x:Key="AogLegacyGray127Color">#FF7F7F7F</Color>
+            <SolidColorBrush x:Key="AogLegacyLightSteelBlueBrush" Color="{StaticResource AogLegacyLightSteelBlueColor}" />
+            <SolidColorBrush x:Key="AogLegacyLightCoralBrush" Color="{StaticResource AogLegacyLightCoralColor}" />
+            <SolidColorBrush x:Key="AogLegacyGray127Brush" Color="{StaticResource AogLegacyGray127Color}" />
+
         </ResourceDictionary>
     </Application.Resources>
 

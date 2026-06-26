@@ -53,7 +53,7 @@
         Height="430"
         MinWidth="580"
         MinHeight="410"
-        Background="WhiteSmoke"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         FontFamily="Tahoma"
@@ -128,6 +128,7 @@
         <!-- textBoxServer: WinForms TextBox @ (158,19) 426x30, white background. The on-screen-keyboard
              Click handler is wired in the code-behind. -->
         <TextBox x:Name="textBoxServer"
+                 AutomationProperties.Name="AgShare server URL"
                  Canvas.Left="158" Canvas.Top="19"
                  Width="426" Height="30"
                  Background="White"
@@ -147,6 +148,7 @@
 
         <!-- textBoxApiKey: WinForms TextBox @ (158,57) 426x30, white background. -->
         <TextBox x:Name="textBoxApiKey"
+                 AutomationProperties.Name="AgShare API key"
                  Canvas.Left="158" Canvas.Top="57"
                  Width="426" Height="30"
                  Background="White"
@@ -183,6 +185,7 @@
              UploadOn<->UploadOff to reflect Settings.AgShareEnabled. -->
         <Button x:Name="btnToggleUpload"
                 Classes="imageButton"
+                AutomationProperties.Name="Toggle AgShare upload on or off"
                 Canvas.Left="16" Canvas.Top="172"
                 Width="128" Height="128">
             <Image x:Name="imgToggleUpload"
@@ -196,6 +199,7 @@
              swaps imgAutoUpload.Source AutoUploadOn<->AutoUploadOff for Settings.AgShareUploadActive. -->
         <Button x:Name="btnAutoUpload"
                 Classes="imageButton"
+                AutomationProperties.Name="Toggle automatic upload on field close"
                 Canvas.Left="158" Canvas.Top="172"
                 Width="128" Height="128">
             <Image x:Name="imgAutoUpload"
@@ -209,6 +213,7 @@
              DownloadAndUse<->DownloadAll to reflect Settings.AgShareAutoLoad. -->
         <Button x:Name="btnAutoLoad"
                 Classes="imageButton"
+                AutomationProperties.Name="Toggle automatic download on field open"
                 Canvas.Left="300" Canvas.Top="172"
                 Width="128" Height="128">
             <Image x:Name="imgAutoLoad"
@@ -232,6 +237,7 @@
              tiny hidden developer toggle whose only job is to re-enable textBoxServer when clicked. -->
         <Button x:Name="btnDevelop"
                 Classes="imageButton"
+                AutomationProperties.Name="Unlock server field (developer)"
                 Canvas.Left="12" Canvas.Top="378"
                 Width="22" Height="22" />
 
@@ -248,6 +254,7 @@
              interaction state; the open-in-browser Click handler is wired in the code-behind. -->
         <Button x:Name="linkRegister"
                 Classes="linkButton"
+                AutomationProperties.Name="Open AgShare registration page in browser"
                 Canvas.Left="50" Canvas.Top="380"
                 Width="280" Height="23">
             <TextBlock Text="https://agshare.agopengps.com"

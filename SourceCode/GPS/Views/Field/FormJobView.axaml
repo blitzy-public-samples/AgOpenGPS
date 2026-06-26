@@ -151,6 +151,7 @@
             <!-- Row 0: ISO-XML (left) | label1 | Close (right) -->
             <Grid ColumnDefinitions="*,23,*">
                 <Button x:Name="btnFromISOXML" Grid.Column="0" Classes="jobButton" Height="83">
+                AutomationProperties.Name="Create field from ISO-XML"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/ISOXML.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnFromISOXMLText" Text="ISO-XML" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -158,6 +159,7 @@
                 </Button>
                 <TextBlock x:Name="label1" Grid.Column="1" />
                 <Button x:Name="btnJobClose" Grid.Column="2" Classes="jobButton" Height="83">
+                AutomationProperties.Name="Close field"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/FileClose.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnJobCloseText" Text="Close" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -168,6 +170,7 @@
             <!-- Row 1: From KML (left) | label2 | Drive In (right) -->
             <Grid ColumnDefinitions="*,23,*">
                 <Button x:Name="btnFromKML" Grid.Column="0" Classes="jobButton" Height="83">
+                AutomationProperties.Name="Create field from KML"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/BoundaryLoadFromGE.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnFromKMLText" Text="From KML" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -175,6 +178,7 @@
                 </Button>
                 <TextBlock x:Name="label2" Grid.Column="1" />
                 <Button x:Name="btnInField" Grid.Column="2" Classes="jobButton" Height="83">
+                AutomationProperties.Name="Use the field you are driving in"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/AutoManualIsAuto.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnInFieldText" Text="Drive In" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -185,6 +189,7 @@
             <!-- Row 2: Existing (left) | label3 | Open (right) -->
             <Grid ColumnDefinitions="*,23,*">
                 <Button x:Name="btnFromExisting" Grid.Column="0" Classes="jobButton" Height="83">
+                AutomationProperties.Name="Create field from an existing field"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/FileExisting.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnFromExistingText" Text="Existing" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -192,6 +197,7 @@
                 </Button>
                 <TextBlock x:Name="label3" Grid.Column="1" />
                 <Button x:Name="btnJobOpen" Grid.Column="2" Classes="jobButton" Height="83">
+                AutomationProperties.Name="Open existing field"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/FileOpen.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnJobOpenText" Text="Open" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -202,6 +208,7 @@
             <!-- Row 3: New Field (left) | label4 | Resume (right) -->
             <Grid ColumnDefinitions="*,23,*">
                 <Button x:Name="btnJobNew" Grid.Column="0" Classes="jobButton" Height="83">
+                AutomationProperties.Name="Create new field"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/FileNew.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnJobNewText" Text="New Field" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -209,6 +216,7 @@
                 </Button>
                 <TextBlock x:Name="label4" Grid.Column="1" />
                 <Button x:Name="btnJobResume" Grid.Column="2" Classes="jobButton" Height="83">
+                AutomationProperties.Name="Resume last field"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/FilePrevious.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnJobResumeText" Text="Resume" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -224,12 +232,14 @@
             -->
             <Grid x:Name="panelAgShare" ColumnDefinitions="*,23,*">
                 <Button x:Name="btnJobAgShare" Grid.Column="0" Classes="jobButton" Height="87">
+                AutomationProperties.Name="Open field from AgShare"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/AgShare.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnJobAgShareText" Text="AgShare Download" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                 </Button>
                 <Button x:Name="btnAgShareBulkUpload" Grid.Column="2" Classes="jobButton" Height="87">
+                AutomationProperties.Name="Bulk upload fields to AgShare"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/AgShare.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnAgShareBulkUploadText" Text="AgShare Upload" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -240,6 +250,7 @@
             <!-- Row 5: Easy Drive (left, amber) | label5 | (empty right cell) -->
             <Grid ColumnDefinitions="*,23,*">
                 <Button x:Name="btnEasyDrive" Grid.Column="0" Classes="jobButton easyDrive" Height="83">
+                AutomationProperties.Name="Easy drive"
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Image Source="avares://AgOpenGPS/btnImages/AutoManualIsAuto.png" Width="48" Height="48" Stretch="Uniform" />
                         <TextBlock x:Name="btnEasyDriveText" Text="Easy Drive" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />

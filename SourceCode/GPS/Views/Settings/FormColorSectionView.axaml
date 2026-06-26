@@ -301,7 +301,7 @@
                 <!-- chkUse — Edit-Color lock toggle @ groupbox-relative (757,47) 96 x 133. Caption on
                      top, lock glyph below (WinForms TextAlign TopCenter + ImageAlign BottomCenter).
                      imgChkUse default = ColorLocked.png; code-behind switches it to ColorUnlocked.png. -->
-                <CheckBox x:Name="chkUse" Classes="lockToggle"
+                <CheckBox x:Name="chkUse" AutomationProperties.Name="Edit Color" Classes="lockToggle"
                           Canvas.Left="757" Canvas.Top="47" Width="96" Height="133"
                           IsCheckedChanged="chkUse_CheckedChanged">
                     <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -317,7 +317,7 @@
 
         <!-- cboxIsMulti — Multi-Color toggle: WinForms CheckBox (Appearance.Button) @ (528,500)
              225 x 54, anchored Bottom|Right. -->
-        <CheckBox x:Name="cboxIsMulti" Classes="multiToggle"
+        <CheckBox x:Name="cboxIsMulti" AutomationProperties.Name="Multi Color Sections" Classes="multiToggle"
                   Canvas.Left="528" Canvas.Top="500" Width="225" Height="54"
                   Content="{x:Static gStr:gStr.gsMultiColorSections}"
                   Click="cboxIsMulti_Click" />

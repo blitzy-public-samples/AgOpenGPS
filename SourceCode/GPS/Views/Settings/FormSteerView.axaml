@@ -175,14 +175,14 @@
                                    Width="84" FontSize="16" TextAlignment="Left" Text="Slow" />
                         <TextBlock x:Name="lblHoldLookAhead" Canvas.Left="3" Canvas.Top="83"
                                    Width="47" FontSize="24" TextAlignment="Right" Text="5.2" />
-                        <Slider x:Name="hsbarHoldLookAhead" Orientation="Horizontal"
+                        <Slider x:Name="hsbarHoldLookAhead" AutomationProperties.Name="Hold Look Ahead" Orientation="Horizontal"
                                 Canvas.Left="53" Canvas.Top="86" Width="264" Height="30"
                                 Minimum="10" Maximum="70" Value="25" SmallChange="1" LargeChange="1" />
                         <TextBlock x:Name="labelIntegralPP" Canvas.Left="53" Canvas.Top="213"
                                    Width="264" FontSize="19" TextAlignment="Center" Text="Integral" />
                         <TextBlock x:Name="lblPureIntegral" Canvas.Left="5" Canvas.Top="236"
                                    Width="50" FontSize="24" TextAlignment="Right" Text="20" />
-                        <Slider x:Name="hsbarIntegralPurePursuit" Orientation="Horizontal"
+                        <Slider x:Name="hsbarIntegralPurePursuit" AutomationProperties.Name="Integral Pure Pursuit" Orientation="Horizontal"
                                 Canvas.Left="53" Canvas.Top="239" Width="264" Height="30"
                                 Minimum="0" Maximum="100" Value="5" SmallChange="1" LargeChange="1" />
                         <TextBlock x:Name="labelIntegralInfo" Canvas.Left="6" Canvas.Top="290"
@@ -216,21 +216,21 @@
                                    Width="204" FontSize="19" TextAlignment="Center" Text="Distance" />
                         <TextBlock x:Name="lblStanleyGain" Canvas.Left="9" Canvas.Top="78"
                                    Width="54" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarStanleyGain" Orientation="Horizontal"
+                        <Slider x:Name="hsbarStanleyGain" AutomationProperties.Name="Stanley Gain" Orientation="Horizontal"
                                 Canvas.Left="68" Canvas.Top="80" Width="200" Height="30"
                                 Minimum="1" Maximum="40" Value="10" SmallChange="1" LargeChange="1" />
                         <TextBlock x:Name="labelHeading" Canvas.Left="62" Canvas.Top="140"
                                    Width="204" FontSize="19" TextAlignment="Center" Text="Heading" />
                         <TextBlock x:Name="lblHeadingErrorGain" Canvas.Left="9" Canvas.Top="166"
                                    Width="54" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarHeadingErrorGain" Orientation="Horizontal"
+                        <Slider x:Name="hsbarHeadingErrorGain" AutomationProperties.Name="Heading Error Gain" Orientation="Horizontal"
                                 Canvas.Left="68" Canvas.Top="170" Width="200" Height="30"
                                 Minimum="1" Maximum="15" Value="10" SmallChange="1" LargeChange="1" />
                         <TextBlock x:Name="labelIntergralStanley" Canvas.Left="63" Canvas.Top="232"
                                    Width="204" FontSize="19" TextAlignment="Center" Text="Integral" />
                         <TextBlock x:Name="lblIntegralPercent" Canvas.Left="3" Canvas.Top="259"
                                    Width="60" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarIntegral" Orientation="Horizontal"
+                        <Slider x:Name="hsbarIntegral" AutomationProperties.Name="Integral" Orientation="Horizontal"
                                 Canvas.Left="68" Canvas.Top="261" Width="202" Height="30"
                                 Minimum="0" Maximum="100" Value="5" SmallChange="1" LargeChange="1" />
                     </Canvas>
@@ -257,10 +257,10 @@
                                    Width="190" FontSize="19" TextAlignment="Center" Text="WAS Zero" />
                         <TextBlock x:Name="lblSteerAngleSensorZero" Canvas.Left="1" Canvas.Top="83"
                                    Width="70" FontSize="21" TextAlignment="Right" Text="-55.88" />
-                        <Slider x:Name="hsbarWasOffset" Orientation="Horizontal"
+                        <Slider x:Name="hsbarWasOffset" AutomationProperties.Name="WAS Offset" Orientation="Horizontal"
                                 Canvas.Left="72" Canvas.Top="85" Width="194" Height="30"
                                 Minimum="-4000" Maximum="4000" Value="0" SmallChange="2" LargeChange="20" />
-                        <Button x:Name="btnZeroWAS" Classes="flatImage" Canvas.Left="134" Canvas.Top="21"
+                        <Button x:Name="btnZeroWAS" AutomationProperties.Name="Zero WAS" Classes="flatImage" Canvas.Left="134" Canvas.Top="21"
                                 Width="70" Height="30">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/SteerZero.png" />
                         </Button>
@@ -269,7 +269,7 @@
                                    Width="190" FontSize="19" TextAlignment="Center" Text="Counts per Degree" />
                         <TextBlock x:Name="lblCountsPerDegree" Canvas.Left="16" Canvas.Top="155"
                                    Width="55" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarCountsPerDegree" Orientation="Horizontal"
+                        <Slider x:Name="hsbarCountsPerDegree" AutomationProperties.Name="Counts Per Degree" Orientation="Horizontal"
                                 Canvas.Left="72" Canvas.Top="157" Width="200" Height="30"
                                 Minimum="1" Maximum="255" Value="20" SmallChange="1" LargeChange="1" />
                         <!-- Ackermann row -->
@@ -277,7 +277,7 @@
                                    Width="190" FontSize="19" TextAlignment="Center" Text="Ackermann" />
                         <TextBlock x:Name="lblAckerman" Canvas.Left="16" Canvas.Top="228"
                                    Width="55" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarAckerman" Orientation="Horizontal"
+                        <Slider x:Name="hsbarAckerman" AutomationProperties.Name="Ackerman" Orientation="Horizontal"
                                 Canvas.Left="72" Canvas.Top="230" Width="200" Height="30"
                                 Minimum="1" Maximum="200" Value="100" SmallChange="1" LargeChange="1" />
                         <!-- Max Steer Angle row -->
@@ -285,7 +285,7 @@
                                    Width="190" FontSize="19" TextAlignment="Center" Text="Max Steer Angle" />
                         <TextBlock x:Name="lblMaxSteerAngle" Canvas.Left="19" Canvas.Top="297"
                                    Width="52" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarMaxSteerAngle" Orientation="Horizontal"
+                        <Slider x:Name="hsbarMaxSteerAngle" AutomationProperties.Name="Max Steer Angle" Orientation="Horizontal"
                                 Canvas.Left="72" Canvas.Top="299" Width="200" Height="30"
                                 Minimum="10" Maximum="80" Value="10" SmallChange="1" LargeChange="1" />
                         <!-- Parked / off-view angular-velocity telemetry (negative X in the designer). -->
@@ -328,7 +328,7 @@
                                    Width="250" FontSize="19" TextAlignment="Center" Text="Speed Factor" />
                         <TextBlock x:Name="lblLookAheadMult" Canvas.Left="8" Canvas.Top="142"
                                    Width="60" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarLookAheadMult" Orientation="Horizontal"
+                        <Slider x:Name="hsbarLookAheadMult" AutomationProperties.Name="Look Ahead Mult" Orientation="Horizontal"
                                 Canvas.Left="73" Canvas.Top="143" Width="276" Height="30"
                                 Minimum="5" Maximum="60" Value="6" SmallChange="1" LargeChange="1" />
                         <!-- Acquire Factor -->
@@ -336,7 +336,7 @@
                                    Width="250" FontSize="19" TextAlignment="Center" Text="Acquire Factor" />
                         <TextBlock x:Name="lblAcquireFactor" Canvas.Left="8" Canvas.Top="232"
                                    Width="60" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarAcquireFactor" Orientation="Horizontal"
+                        <Slider x:Name="hsbarAcquireFactor" AutomationProperties.Name="Acquire Factor" Orientation="Horizontal"
                                 Canvas.Left="73" Canvas.Top="235" Width="276" Height="30"
                                 Minimum="20" Maximum="300" Value="75" SmallChange="1" LargeChange="1" />
                         <TextBlock x:Name="labelAcquireDescription" Canvas.Left="103" Canvas.Top="269"
@@ -374,21 +374,21 @@
                                    Width="250" FontSize="19" TextAlignment="Center" Text="Proportional Gain" />
                         <TextBlock x:Name="lblProportionalGain" Canvas.Left="8" Canvas.Top="87"
                                    Width="61" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarProportionalGain" Orientation="Horizontal"
+                        <Slider x:Name="hsbarProportionalGain" AutomationProperties.Name="Proportional Gain" Orientation="Horizontal"
                                 Canvas.Left="68" Canvas.Top="89" Width="202" Height="30"
                                 Minimum="1" Maximum="200" Value="4" SmallChange="1" LargeChange="1" />
                         <TextBlock x:Name="labelMaxLimit" Canvas.Left="44" Canvas.Top="154"
                                    Width="250" FontSize="19" TextAlignment="Center" Text="Maximum Limit" />
                         <TextBlock x:Name="lblHighSteerPWM" Canvas.Left="8" Canvas.Top="176"
                                    Width="61" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarHighSteerPWM" Orientation="Horizontal"
+                        <Slider x:Name="hsbarHighSteerPWM" AutomationProperties.Name="High Steer PWM" Orientation="Horizontal"
                                 Canvas.Left="68" Canvas.Top="179" Width="202" Height="30"
                                 Minimum="0" Maximum="256" Value="50" SmallChange="1" LargeChange="2" />
                         <TextBlock x:Name="labelMinToMove" Canvas.Left="44" Canvas.Top="244"
                                    Width="250" FontSize="19" TextAlignment="Center" Text="Minimum to Move" />
                         <TextBlock x:Name="lblMinPWM" Canvas.Left="8" Canvas.Top="266"
                                    Width="61" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarMinPWM" Orientation="Horizontal"
+                        <Slider x:Name="hsbarMinPWM" AutomationProperties.Name="Min PWM" Orientation="Horizontal"
                                 Canvas.Left="68" Canvas.Top="269" Width="202" Height="30"
                                 Minimum="0" Maximum="200" Value="10" SmallChange="1" LargeChange="1" />
                     </Canvas>
@@ -416,7 +416,7 @@
                            Width="29" FontSize="13" TextAlignment="Right" Text="Err:" />
                 <TextBlock x:Name="lblError" Canvas.Left="225" Canvas.Top="8"
                            Width="71" FontSize="19" FontWeight="Bold" TextAlignment="Left" Text="-30.0" />
-                <RepeatButton x:Name="btnExpand" Classes="flatImage" Canvas.Left="299" Canvas.Top="3"
+                <RepeatButton x:Name="btnExpand" AutomationProperties.Name="Expand" Classes="flatImage" Canvas.Left="299" Canvas.Top="3"
                               Width="62" Height="37">
                     <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ArrowRight.png" />
                 </RepeatButton>
@@ -430,23 +430,23 @@
         <Border x:Name="panel1" Canvas.Left="5" Canvas.Top="446" Width="364" Height="176"
                 Background="Transparent">
             <Canvas ClipToBounds="True">
-                <Button x:Name="btnFreeDrive" Classes="flatImage" Canvas.Left="4" Canvas.Top="17"
+                <Button x:Name="btnFreeDrive" AutomationProperties.Name="Free Drive" Classes="flatImage" Canvas.Left="4" Canvas.Top="17"
                         Width="73" Height="56">
                     <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/SteerDriveOff.png" />
                 </Button>
-                <RepeatButton x:Name="btnSteerAngleDown" Classes="flatImage" Canvas.Left="95" Canvas.Top="17"
+                <RepeatButton x:Name="btnSteerAngleDown" AutomationProperties.Name="Steer Angle Down" Classes="flatImage" Canvas.Left="95" Canvas.Top="17"
                               Width="73" Height="56">
                     <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ArrowLeft.png" />
                 </RepeatButton>
-                <RepeatButton x:Name="btnSteerAngleUp" Classes="flatImage" Canvas.Left="186" Canvas.Top="17"
+                <RepeatButton x:Name="btnSteerAngleUp" AutomationProperties.Name="Steer Angle Up" Classes="flatImage" Canvas.Left="186" Canvas.Top="17"
                               Width="73" Height="56">
                     <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ArrowRight.png" />
                 </RepeatButton>
-                <Button x:Name="btnFreeDriveZero" Classes="flatImage" Canvas.Left="277" Canvas.Top="17"
+                <Button x:Name="btnFreeDriveZero" AutomationProperties.Name="Free Drive Zero" Classes="flatImage" Canvas.Left="277" Canvas.Top="17"
                         Width="73" Height="56">
                     <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/SteerZero.png" />
                 </Button>
-                <Button x:Name="btnStartSA" Classes="flatImage" Canvas.Left="15" Canvas.Top="104"
+                <Button x:Name="btnStartSA" AutomationProperties.Name="Start SA" Classes="flatImage" Canvas.Left="15" Canvas.Top="104"
                         Width="71" Height="67">
                     <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/BoundaryRecord.png" />
                 </Button>
@@ -488,21 +488,21 @@
                         <!-- Count / Encoder sensor -->
                         <TextBlock x:Name="labelEncoder" Canvas.Left="5" Canvas.Top="6"
                                    Width="200" FontSize="19" TextAlignment="Center" Text="Count Sensor" />
-                        <CheckBox x:Name="cboxEncoder" Classes="imageToggle" Canvas.Left="48" Canvas.Top="32"
+                        <CheckBox x:Name="cboxEncoder" AutomationProperties.Name="Encoder" Classes="imageToggle" Canvas.Left="48" Canvas.Top="32"
                                   Width="114" Height="78">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_TurnSensor.png" />
                         </CheckBox>
                         <!-- Pressure sensor -->
                         <TextBlock x:Name="labelPressureTurnSensor" Canvas.Left="5" Canvas.Top="134"
                                    Width="200" FontSize="19" TextAlignment="Center" Text="Pressure Sensor" />
-                        <CheckBox x:Name="cboxPressureSensor" Classes="imageToggle" Canvas.Left="48" Canvas.Top="159"
+                        <CheckBox x:Name="cboxPressureSensor" AutomationProperties.Name="Pressure Sensor" Classes="imageToggle" Canvas.Left="48" Canvas.Top="159"
                                   Width="114" Height="78">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_TurnSensorPressure.png" />
                         </CheckBox>
                         <!-- Current sensor -->
                         <TextBlock x:Name="labelCurrentTurnSensor" Canvas.Left="5" Canvas.Top="269"
                                    Width="200" FontSize="19" TextAlignment="Center" Text="Current Sensor" />
-                        <CheckBox x:Name="cboxCurrentSensor" Classes="imageToggle" Canvas.Left="48" Canvas.Top="295"
+                        <CheckBox x:Name="cboxCurrentSensor" AutomationProperties.Name="Current Sensor" Classes="imageToggle" Canvas.Left="48" Canvas.Top="295"
                                   Width="114" Height="78">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_TurnSensorCurrent.png" />
                         </CheckBox>
@@ -515,7 +515,7 @@
                                      Minimum="0" Maximum="255" />
                         <TextBlock x:Name="lblPercentFS" Canvas.Left="450" Canvas.Top="216"
                                    Width="57" FontSize="24" FontWeight="Bold" TextAlignment="Center" Text="0%" />
-                        <Slider x:Name="hsbarSensor" Orientation="Horizontal"
+                        <Slider x:Name="hsbarSensor" AutomationProperties.Name="Sensor" Orientation="Horizontal"
                                 Canvas.Left="187" Canvas.Top="320" Width="257" Height="53"
                                 Minimum="0" Maximum="255" Value="0" SmallChange="1" LargeChange="1" />
                         <TextBlock x:Name="lblhsbarSensor" Canvas.Left="450" Canvas.Top="329"
@@ -536,28 +536,28 @@
                         <!-- Right column: combo selectors -->
                         <TextBlock x:Name="labelMotorDriver" Canvas.Left="326" Canvas.Top="20"
                                    Width="181" FontSize="19" TextAlignment="Center" Text="Motor Driver" />
-                        <ComboBox x:Name="cboxMotorDrive" Canvas.Left="329" Canvas.Top="46"
+                        <ComboBox x:Name="cboxMotorDrive" AutomationProperties.Name="Motor Drive" Canvas.Left="329" Canvas.Top="46"
                                   Width="175" Height="37" FontSize="24" FontWeight="Bold">
                             <ComboBoxItem>Cytron</ComboBoxItem>
                             <ComboBoxItem>IBT2</ComboBoxItem>
                         </ComboBox>
                         <TextBlock x:Name="labelADConverter" Canvas.Left="326" Canvas.Top="118"
                                    Width="181" FontSize="19" TextAlignment="Center" Text="A2D Convertor" />
-                        <ComboBox x:Name="cboxConv" Canvas.Left="329" Canvas.Top="144"
+                        <ComboBox x:Name="cboxConv" AutomationProperties.Name="Conversion" Canvas.Left="329" Canvas.Top="144"
                                   Width="175" Height="37" FontSize="24" FontWeight="Bold">
                             <ComboBoxItem>Single</ComboBoxItem>
                             <ComboBoxItem>Differential</ComboBoxItem>
                         </ComboBox>
                         <TextBlock x:Name="labelIMUAxis" Canvas.Left="326" Canvas.Top="216"
                                    Width="181" FontSize="19" TextAlignment="Center" Text="IMU X or Y Axis" />
-                        <ComboBox x:Name="cboxXY" Canvas.Left="329" Canvas.Top="242"
+                        <ComboBox x:Name="cboxXY" AutomationProperties.Name="XY" Canvas.Left="329" Canvas.Top="242"
                                   Width="175" Height="37" FontSize="24" FontWeight="Bold">
                             <ComboBoxItem>X</ComboBoxItem>
                             <ComboBoxItem>Y</ComboBoxItem>
                         </ComboBox>
                         <TextBlock x:Name="labelSteerEnable" Canvas.Left="326" Canvas.Top="314"
                                    Width="181" FontSize="19" TextAlignment="Center" Text="Steer Enable" />
-                        <ComboBox x:Name="cboxSteerEnable" Canvas.Left="329" Canvas.Top="340"
+                        <ComboBox x:Name="cboxSteerEnable" AutomationProperties.Name="Steer Enable" Canvas.Left="329" Canvas.Top="340"
                                   Width="175" Height="37" FontSize="24" FontWeight="Bold">
                             <ComboBoxItem>None</ComboBoxItem>
                             <ComboBoxItem>Switch</ComboBoxItem>
@@ -569,25 +569,25 @@
                         <!-- Left column: Danfoss + invert toggles -->
                         <TextBlock x:Name="label55" Canvas.Left="1" Canvas.Top="32"
                                    Width="130" FontSize="19" TextAlignment="Center" Text="Danfoss" />
-                        <CheckBox x:Name="cboxDanfoss" Classes="imageToggle" Canvas.Left="9" Canvas.Top="57"
+                        <CheckBox x:Name="cboxDanfoss" AutomationProperties.Name="Danfoss" Classes="imageToggle" Canvas.Left="9" Canvas.Top="57"
                                   Width="114" Height="78">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConST_Danfoss.png" />
                         </CheckBox>
                         <TextBlock x:Name="labelInvertWas" Canvas.Left="129" Canvas.Top="30"
                                    Width="181" FontSize="19" TextAlignment="Center" Text="Invert WAS" />
-                        <CheckBox x:Name="chkInvertWAS" Classes="imageToggle" Canvas.Left="165" Canvas.Top="57"
+                        <CheckBox x:Name="chkInvertWAS" AutomationProperties.Name="Invert WAS" Classes="imageToggle" Canvas.Left="165" Canvas.Top="57"
                                   Width="109" Height="78" IsChecked="True">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_InvertWAS.png" />
                         </CheckBox>
                         <TextBlock x:Name="labelInvertMotor" Canvas.Left="129" Canvas.Top="167"
                                    Width="181" FontSize="19" TextAlignment="Center" Text="Invert Motor Dir" />
-                        <CheckBox x:Name="chkInvertSteer" Classes="imageToggle" Canvas.Left="165" Canvas.Top="192"
+                        <CheckBox x:Name="chkInvertSteer" AutomationProperties.Name="Invert Steer" Classes="imageToggle" Canvas.Left="165" Canvas.Top="192"
                                   Width="109" Height="78">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_InvertDirection.png" />
                         </CheckBox>
                         <TextBlock x:Name="labelInvertRelays" Canvas.Left="129" Canvas.Top="299"
                                    Width="181" FontSize="19" TextAlignment="Center" Text="Invert Relays" />
-                        <CheckBox x:Name="chkSteerInvertRelays" Classes="imageToggle" Canvas.Left="165" Canvas.Top="324"
+                        <CheckBox x:Name="chkSteerInvertRelays" AutomationProperties.Name="Steer Invert Relays" Classes="imageToggle" Canvas.Left="165" Canvas.Top="324"
                                   Width="109" Height="78">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConSt_InvertRelay.png" />
                         </CheckBox>
@@ -609,7 +609,7 @@
                                    Width="339" FontSize="19" TextAlignment="Center" Text="UTurn Compensation" />
                         <TextBlock x:Name="lblUTurnCompensation" Canvas.Left="18" Canvas.Top="56"
                                    Width="88" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarUTurnCompensation" Orientation="Horizontal"
+                        <Slider x:Name="hsbarUTurnCompensation" AutomationProperties.Name="UTurn Compensation" Orientation="Horizontal"
                                 Canvas.Left="109" Canvas.Top="46" Width="339" Height="53"
                                 Minimum="2" Maximum="20" Value="5" SmallChange="1" LargeChange="1" />
                         <TextBlock x:Name="label39" Canvas.Left="112" Canvas.Top="103"
@@ -621,20 +621,20 @@
                                    Width="339" FontSize="19" TextAlignment="Center" Text="Sidehill Deg Turn per Deg of Roll" />
                         <TextBlock x:Name="lblSideHillComp" Canvas.Left="18" Canvas.Top="161"
                                    Width="88" FontSize="24" TextAlignment="Right" Text="888" />
-                        <Slider x:Name="hsbarSideHillComp" Orientation="Horizontal"
+                        <Slider x:Name="hsbarSideHillComp" AutomationProperties.Name="Side Hill Comp" Orientation="Horizontal"
                                 Canvas.Left="109" Canvas.Top="150" Width="339" Height="53"
                                 Minimum="0" Maximum="100" Value="5" SmallChange="1" LargeChange="1" />
                         <!-- Stanley/Pure mode toggle -->
                         <TextBlock x:Name="label34" Canvas.Left="283" Canvas.Top="213"
                                    Width="201" FontSize="19" TextAlignment="Center" Text="Stanley/ Pure" />
-                        <Button x:Name="btnStanleyPure" Classes="flatImage" Canvas.Left="340" Canvas.Top="240"
+                        <Button x:Name="btnStanleyPure" AutomationProperties.Name="Stanley Pure" Classes="flatImage" Canvas.Left="340" Canvas.Top="240"
                                 Width="86" Height="90">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ModePurePursuit.png" />
                         </Button>
                         <!-- Steer-in-reverse toggle -->
                         <TextBlock x:Name="labelSteerInReverse" Canvas.Left="283" Canvas.Top="347"
                                    Width="201" FontSize="19" TextAlignment="Center" Text="Steer In Reverse?" />
-                        <CheckBox x:Name="cboxSteerInReverse" Classes="imageToggle" Canvas.Left="340" Canvas.Top="374"
+                        <CheckBox x:Name="cboxSteerInReverse" AutomationProperties.Name="Steer In Reverse" Classes="imageToggle" Canvas.Left="340" Canvas.Top="374"
                                   Width="86" Height="90">
                             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConV_RevSteer.png" />
                         </CheckBox>
@@ -644,7 +644,7 @@
                             <Canvas>
                                 <TextBlock Canvas.Left="8" Canvas.Top="-2" FontSize="16" FontWeight="Bold"
                                            Background="Gainsboro" Padding="3,0" Text="Smart WAS" />
-                                <Button x:Name="btnSmartZeroWAS" Classes="flatImage" Canvas.Left="46" Canvas.Top="38"
+                                <Button x:Name="btnSmartZeroWAS" AutomationProperties.Name="Smart Zero WAS" Classes="flatImage" Canvas.Left="46" Canvas.Top="38"
                                         Width="128" Height="60" FontSize="15" FontWeight="Bold">
                                     <Panel>
                                         <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Steer/ST_SmartWAS.png" />
@@ -754,19 +754,19 @@
                             <Canvas>
                                 <TextBlock Canvas.Left="8" Canvas.Top="-2" FontSize="19" FontWeight="Bold"
                                            Background="Gainsboro" Padding="3,0" Text="Guidance Bar" />
-                                <RadioButton x:Name="rbtnLightBar" Classes="imageToggle" GroupName="GuidanceBar"
+                                <RadioButton x:Name="rbtnLightBar" AutomationProperties.Name="Light Bar" Classes="imageToggle" GroupName="GuidanceBar"
                                              Canvas.Left="11" Canvas.Top="35" Width="121" Height="74">
                                     <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConD_LightBar.png" />
                                 </RadioButton>
                                 <TextBlock x:Name="labelLightbar" Canvas.Left="5" Canvas.Top="112"
                                            Width="132" FontSize="16" TextAlignment="Center" Text="Lightbar" />
-                                <RadioButton x:Name="rbtnSteerBar" Classes="imageToggle" GroupName="GuidanceBar"
+                                <RadioButton x:Name="rbtnSteerBar" AutomationProperties.Name="Steer Bar" Classes="imageToggle" GroupName="GuidanceBar"
                                              Canvas.Left="185" Canvas.Top="35" Width="121" Height="74" IsChecked="True">
                                     <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Config/ConD_SteerBarBar.png" />
                                 </RadioButton>
                                 <TextBlock x:Name="labelSteerBar" Canvas.Left="179" Canvas.Top="112"
                                            Width="132" FontSize="16" TextAlignment="Center" Text="Steer Bar" />
-                                <CheckBox x:Name="chkDisplayLightbar" Classes="imageToggle"
+                                <CheckBox x:Name="chkDisplayLightbar" AutomationProperties.Name="Display Lightbar" Classes="imageToggle"
                                           Canvas.Left="359" Canvas.Top="35" Width="100" Height="74">
                                     <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/SwitchOn.png" />
                                 </CheckBox>
@@ -785,21 +785,21 @@
              ============================================================================ -->
         <TextBlock x:Name="labelWizard" Canvas.Left="381" Canvas.Top="530"
                    Width="100" FontSize="15" TextAlignment="Center" Text="Wizard" />
-        <Button x:Name="btnSteerWizard" Classes="flatImage" Canvas.Left="393" Canvas.Top="553"
+        <Button x:Name="btnSteerWizard" AutomationProperties.Name="Steer Wizard" Classes="flatImage" Canvas.Left="393" Canvas.Top="553"
                 Width="75" Height="69">
             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/WizardWand.png" />
         </Button>
 
         <TextBlock x:Name="labelReset" Canvas.Left="485" Canvas.Top="530"
                    Width="150" FontSize="15" TextAlignment="Center" Text="Reset All To Defaults" />
-        <Button x:Name="button2" Classes="flatImage" Canvas.Left="523" Canvas.Top="554"
+        <Button x:Name="button2" AutomationProperties.Name="Reset All To Defaults" Classes="flatImage" Canvas.Left="523" Canvas.Top="554"
                 Width="75" Height="69">
             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/Reset_Default.png" />
         </Button>
 
         <TextBlock x:Name="labelSendAndSave" Canvas.Left="641" Canvas.Top="530"
                    Width="175" FontSize="17" FontWeight="Bold" VerticalAlignment="Center" Text="Send + Save" />
-        <Button x:Name="btnSendSteerConfigPGN" Classes="flatImage" Canvas.Left="643" Canvas.Top="560"
+        <Button x:Name="btnSendSteerConfigPGN" AutomationProperties.Name="Send Steer Config PGN" Classes="flatImage" Canvas.Left="643" Canvas.Top="560"
                 Width="103" Height="62">
             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/ToolAcceptChange.png" />
         </Button>
@@ -808,7 +808,7 @@
                IsVisible="False" Stretch="Uniform"
                Source="avares://AgOpenGPS/btnImages/Config/ConSt_Mandatory.png" />
 
-        <Button x:Name="btnClose" Classes="flatImage" Canvas.Left="824" Canvas.Top="558"
+        <Button x:Name="btnClose" AutomationProperties.Name="Close" Classes="flatImage" Canvas.Left="824" Canvas.Top="558"
                 Width="64" Height="64">
             <Image Stretch="Uniform" Source="avares://AgOpenGPS/btnImages/OK64.png" />
         </Button>

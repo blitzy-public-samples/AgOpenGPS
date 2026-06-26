@@ -38,7 +38,7 @@
                     <TextBlock x:Name="LblGitHubStatus"
                                Text="🔐 Official"
                                FontSize="10"
-                               Foreground="#64FF0A"
+                               Foreground="{DynamicResource VerifiedStatusBrush}"
                                TextAlignment="Center"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center" />
@@ -46,8 +46,8 @@
             </Canvas>
         </Border>
 
-        <!-- ===== Region 2: panelButtons (WinForms Dock=Bottom, 750x110, BackColor 180,180,200) ===== -->
-        <Border DockPanel.Dock="Bottom" Height="110" Background="#B4B4C8">
+        <!-- ===== Region 2: panelButtons (WinForms Dock=Bottom, 750x110, BackColor 180,180,200 -> PanelFooterBrush) ===== -->
+        <Border DockPanel.Dock="Bottom" Height="110" Background="{DynamicResource PanelFooterBrush}">
             <Canvas>
                 <!-- btnClose: red #DC5050 (220,80,80), Segoe UI 16 Bold White, Location (30,20), Size 250x70 -->
                 <Button x:Name="BtnClose"
@@ -55,7 +55,7 @@
                         Width="250" Height="70"
                         Content="Close"
                         FontSize="16" FontWeight="Bold"
-                        Foreground="White" Background="#DC5050"
+                        Foreground="White" Background="{DynamicResource ButtonDangerBrush}"
                         HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                         Click="BtnCancel_Click" />
                 <!-- btnInstallUpdate: SuccessBrush #28A745, Segoe UI 18 Bold White, Location (420,20), Size 300x70, Enabled=false -->
@@ -71,34 +71,34 @@
             </Canvas>
         </Border>
 
-        <!-- ===== Region 3: panelMain (WinForms Dock=Fill, 750x430, BackColor 210,210,230) ===== -->
-        <Border Background="#D2D2E6">
+        <!-- ===== Region 3: panelMain (WinForms Dock=Fill, 750x430, BackColor 210,210,230 -> PanelBrush) ===== -->
+        <Border Background="{DynamicResource PanelBrush}">
             <Canvas>
                 <!-- lblCurrentVersion: Segoe UI 16, #0A0A14, Location (30,30) -->
                 <TextBlock x:Name="LblCurrentVersion"
                            Canvas.Left="30" Canvas.Top="30"
                            Text="Current Version: -"
                            FontSize="16"
-                           Foreground="#0A0A14" />
+                           Foreground="{DynamicResource BodyTextBrush}" />
                 <!-- lblLatestVersion: Segoe UI 18 Bold, #0A0A14, Location (30,70) -->
                 <TextBlock x:Name="LblLatestVersion"
                            Canvas.Left="30" Canvas.Top="70"
                            Text="Latest Version: -"
                            FontSize="18" FontWeight="Bold"
-                           Foreground="#0A0A14" />
+                           Foreground="{DynamicResource BodyTextBrush}" />
                 <!-- chkIncludePrerelease: Segoe UI 14, #0A0A14, Location (30,125) -->
                 <CheckBox x:Name="ChkIncludePrerelease"
                           Canvas.Left="30" Canvas.Top="125"
                           Content="Include pre-release"
                           FontSize="14"
-                          Foreground="#0A0A14" />
+                          Foreground="{DynamicResource BodyTextBrush}" />
                 <!-- btnToggleSource: gray #646464 (100,100,100), Segoe UI 12 Bold White, Location (550,25), Size 170x40 -->
                 <Button x:Name="BtnToggleSource"
                         Canvas.Left="550" Canvas.Top="25"
                         Width="170" Height="40"
                         Content="Use USB"
                         FontSize="12" FontWeight="Bold"
-                        Foreground="White" Background="#646464"
+                        Foreground="White" Background="{DynamicResource NeutralButtonBrush}"
                         HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                         Click="BtnToggleSource_Click" />
                 <!-- lblSourceInfo: Segoe UI 11 Italic, #646464, Location (30,160), Size 690x60, Visible=false -->
@@ -107,7 +107,7 @@
                            Width="690" Height="60"
                            Text="Local: Place AgOpenGPS.zip in root of USB drive"
                            FontSize="11" FontStyle="Italic"
-                           Foreground="#646464"
+                           Foreground="{DynamicResource NeutralButtonBrush}"
                            TextWrapping="Wrap"
                            IsVisible="False" />
                 <!-- btnCheckForUpdates: AccentBrush #1B97A0, Segoe UI 16 Bold White, Location (30,210), Size 350x70 -->
@@ -125,7 +125,7 @@
                         Width="320" Height="70"
                         Content="View Release Notes"
                         FontSize="16" FontWeight="Bold"
-                        Foreground="White" Background="#646464"
+                        Foreground="White" Background="{DynamicResource NeutralButtonBrush}"
                         IsEnabled="False"
                         HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                         Click="BtnViewReleaseNotes_Click" />

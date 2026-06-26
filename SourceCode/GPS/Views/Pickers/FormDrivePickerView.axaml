@@ -42,7 +42,7 @@
         Title="Field Picker"
         Width="971"
         Height="407"
-        Background="WhiteSmoke"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         SystemDecorations="None"
         CanResize="False"
         ShowInTaskbar="False"
@@ -136,6 +136,7 @@
                 Horizontal scrolling is disabled (Details view does not scroll its fixed columns).
             -->
             <ListBox x:Name="lvLines"
+                     AutomationProperties.Name="Field list"
                      Background="#FFBFCDDB"
                      BorderThickness="0"
                      Padding="0"

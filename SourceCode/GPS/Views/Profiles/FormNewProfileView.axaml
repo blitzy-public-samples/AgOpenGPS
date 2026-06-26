@@ -89,7 +89,7 @@
         Height="390"
         MinWidth="650"
         MinHeight="370"
-        Background="#FFF5F5F5"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         SystemDecorations="None"
         CanResize="True"
         ShowInTaskbar="False"
@@ -199,7 +199,7 @@
                 <!-- textBoxName: WinForms TextBox (160,20) 435x33, anchor Top/Left/Right, BackColor
                      White, Tahoma 15.75pt (= 21 DIP). Tapped -> on-screen keyboard; TextChanged ->
                      filename sanitisation + enable Create (both handled in the code-behind). -->
-                <TextBox x:Name="textBoxName"
+                <TextBox x:Name="textBoxName" AutomationProperties.Name="New profile name"
                          Grid.Column="1"
                          Margin="10,0,42,0"
                          Height="33"
@@ -239,7 +239,7 @@
                 ItemsSource and the item objects (Display / CurrentMarker) are supplied by the
                 code-behind.
             -->
-            <ListBox x:Name="listViewProfiles"
+            <ListBox x:Name="listViewProfiles" AutomationProperties.Name="Copy-from profile list"
                      Grid.Row="2"
                      Margin="13,0,13,0"
                      Background="#FFBFCDDB"

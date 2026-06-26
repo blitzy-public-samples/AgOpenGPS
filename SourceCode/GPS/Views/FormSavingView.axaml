@@ -48,7 +48,7 @@
         x:Class="AgOpenGPS.Views.FormSavingView"
         Title="FormSaving"
         Width="933" Height="491"
-        Background="#00C000"
+        Background="{DynamicResource AogSavingGreenBrush}"
         CanResize="False"
         SystemDecorations="None"
         Topmost="True"

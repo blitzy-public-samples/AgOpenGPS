@@ -55,7 +55,7 @@
         Height="650"
         MinWidth="900"
         MinHeight="650"
-        Background="#FFF5F5F5"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
         RequestedThemeVariant="Light"
         SystemDecorations="None"
         CanResize="True"
@@ -183,7 +183,7 @@
             InactiveCaption (~#FFBFCDDB), Tahoma 21.75pt Bold (= 29 DIP). Vertical inset:
             Top=130, Bottom=650-(130+380)=140; fixed Width 430 (Left anchor only).
         -->
-        <ListBox x:Name="listViewFiles"
+        <ListBox x:Name="listViewFiles" AutomationProperties.Name="Old profile file list"
                  HorizontalAlignment="Left"
                  VerticalAlignment="Stretch"
                  Margin="20,130,0,140"
@@ -268,7 +268,7 @@
                     <!-- btnToggleVehicle — WinForms button @ (10,10) 125 x 80, BackColor LightGreen,
                          Tahoma 14pt Bold (= 19 DIP), flat. Toggles Vehicle import on/off (text +
                          color flip to LightGray driven by the code-behind). -->
-                    <Button x:Name="btnToggleVehicle"
+                    <Button x:Name="btnToggleVehicle" AutomationProperties.Name="Toggle vehicle import"
                             Classes="flat"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Top"
@@ -298,7 +298,7 @@
                          (= 24 DIP). White field / black text (fixed, theme-independent). Tapped shows
                          the on-screen keyboard (when enabled); TextChanged strips invalid filename
                          characters and re-evaluates the Convert button (code-behind). -->
-                    <TextBox x:Name="textBoxVehicleName"
+                    <TextBox x:Name="textBoxVehicleName" AutomationProperties.Name="Vehicle profile name"
                              HorizontalAlignment="Left"
                              VerticalAlignment="Top"
                              Margin="145,48,0,0"
@@ -329,7 +329,7 @@
                 <Grid>
                     <!-- btnToggleTool — WinForms button @ (10,10) 125 x 80, BackColor LightGreen,
                          Tahoma 14pt Bold (= 19 DIP), flat. -->
-                    <Button x:Name="btnToggleTool"
+                    <Button x:Name="btnToggleTool" AutomationProperties.Name="Toggle tool import"
                             Classes="flat"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Top"
@@ -357,7 +357,7 @@
 
                     <!-- textBoxToolName — WinForms TextBox @ (145,48) 345 x 36, Tahoma 18pt Bold
                          (= 24 DIP). -->
-                    <TextBox x:Name="textBoxToolName"
+                    <TextBox x:Name="textBoxToolName" AutomationProperties.Name="Tool profile name"
                              HorizontalAlignment="Left"
                              VerticalAlignment="Top"
                              Margin="145,48,0,0"

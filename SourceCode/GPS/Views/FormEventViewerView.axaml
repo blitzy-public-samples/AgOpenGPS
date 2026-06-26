@@ -12,11 +12,13 @@
       Text "Event Log Viewer"        -> Title.
       ClientSize 681 x 365           -> Width / Height (the WinForms client area; siblings with
                                         SystemDecorations="Full" likewise map ClientSize -> Width/Height).
-      BackColor Gainsboro            -> Background="Gainsboro" (WinForms Color.Gainsboro == #FFDCDCDC).
-                                        Like the sibling utility dialogs (FormYesView / FormSavingView /
-                                        FormInputDialogView) this colour is hard-coded for parity and is
-                                        intentionally theme-independent, so App.axaml's day/night brushes
-                                        are NOT used here. App.axaml's FluentTheme still supplies the
+      BackColor Gainsboro            -> Background="{DynamicResource AogLegacyGainsboroBrush}". This is
+                                        the WinForms Color.Gainsboro (#FFDCDCDC) parity surface, centralized
+                                        in App.axaml as the theme-INDEPENDENT AogLegacyGainsboroBrush (a
+                                        sibling of the day/night ThemeDictionaries). Like the sibling utility
+                                        dialogs (FormYesView / FormSavingView / FormInputDialogView) this
+                                        colour is intentionally fixed for parity and does NOT follow the
+                                        day/night Aog*Brush tokens. App.axaml's FluentTheme still supplies the
                                         default TextBox / Button control templates.
       FormBorderStyle.SizableToolWindow -> CanResize="True" (resizable, as the original) with
                                         SystemDecorations="Full" so the "Event Log Viewer" title shows.
@@ -51,7 +53,7 @@
         Title="Event Log Viewer"
         Width="681"
         Height="365"
-        Background="Gainsboro"
+        Background="{DynamicResource AogLegacyGainsboroBrush}"
         CanResize="True"
         SystemDecorations="Full"
         ShowInTaskbar="False"

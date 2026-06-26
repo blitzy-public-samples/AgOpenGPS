@@ -152,6 +152,7 @@
             Item text is forced dark so it stays legible on the fixed LightGreen surface in both themes.
         -->
         <ListBox x:Name="lbFields"
+        AutomationProperties.Name="Fields available to download from AgShare"
                  Canvas.Left="12" Canvas.Top="12"
                  Width="492" Height="567"
                  Background="LightGreen"
@@ -207,6 +208,7 @@
             overwriteToggle template (above) gives the flat button look + LightSalmon checked fill.
         -->
         <CheckBox x:Name="chkForceOverwrite"
+        AutomationProperties.Name="Force overwrite of existing local fields"
                   Classes="overwriteToggle"
                   Canvas.Left="482" Canvas.Top="585"
                   Width="92" Height="105">
@@ -235,6 +237,7 @@
             sets the caption from gStr.gsDownloadAll and wires the handler by name.
         -->
         <Button x:Name="btnSaveAll"
+        AutomationProperties.Name="Download all fields"
                 Classes="imageButton"
                 Canvas.Left="583" Canvas.Top="585"
                 Width="94" Height="105">
@@ -292,6 +295,7 @@
             the code-behind sets the caption from gStr.gsGetSelected and wires the handler by name.
         -->
         <Button x:Name="btnGetSelected"
+        AutomationProperties.Name="Download selected field"
                 Classes="imageButton"
                 Canvas.Left="978" Canvas.Top="585"
                 Width="83" Height="105">
@@ -319,6 +323,7 @@
             Click closes the dialog (btnClose_Click); the code-behind wires the handler by name.
         -->
         <Button x:Name="btnClose"
+        AutomationProperties.Name="Close"
                 Classes="imageButton"
                 Canvas.Left="1067" Canvas.Top="596"
                 Width="83" Height="84"

@@ -19,7 +19,7 @@
              x:Class="AgOpenGPS.Views.Config.ConfigSummaryControl"
              FontFamily="Tahoma"
              FontSize="13"
-             Background="Gainsboro">
+             Background="{DynamicResource AogLegacyGainsboroBrush}">
 
     <!-- 859 x 584 reproduces the WinForms UserControl client area (Designer.cs: this.Size). -->
     <Canvas Width="859" Height="584">
