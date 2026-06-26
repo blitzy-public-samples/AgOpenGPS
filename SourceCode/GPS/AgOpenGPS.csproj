@@ -138,8 +138,10 @@
          reference (the WinForms god-object, already removed) and is awaiting extraction into injectable
          services per AAP §0.6.1. CBoundary spans four partials (CBoundary/CFence/CHead/CTurn) which must
          be excluded together. Their behaviour-frozen algorithms (Pure Pursuit/Dubins/section logic) are
-         unchanged on disk — only their compilation is deferred until the guidance pipeline is decoupled. -->
-    <Compile Remove="Classes\AgShare\AgShareUploader.cs" />
+         unchanged on disk — only their compilation is deferred until the guidance pipeline is decoupled.
+         [XPLAT] Classes\AgShare\AgShareUploader.cs was un-gated here: it has been decoupled from FormGPS
+         (the FormGPS-coupled static CreateSnapshot factory was removed and UploadAsync's unused FormGPS
+         parameter became object), so it now compiles and backs the FormAgShareUploaderView upload path. -->
     <Compile Remove="Classes\CABCurve.cs" />
     <Compile Remove="Classes\CABLine.cs" />
     <Compile Remove="Classes\CBoundary.cs" />

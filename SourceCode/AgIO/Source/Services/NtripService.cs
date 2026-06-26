@@ -1,4 +1,4 @@
-// [XPLAT] migrated from net48/WinForms Forms/NTRIPComm.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
+﻿// [XPLAT] migrated from net48/WinForms Forms/NTRIPComm.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
 //Please, if you use this, share the improvements
 using System;
 using System.Collections.Generic;
@@ -7,8 +7,9 @@ using System.IO.Ports;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Timers;
 using AgLibrary.Logging;
-using Avalonia.Threading;
+using AgOpenGPS.Core.Interfaces;
 
 namespace AgIO.Services
 {
@@ -21,15 +22,38 @@ namespace AgIO.Services
     /// </summary>
     /// <remarks>
     /// The correction transport, authorization handshake, GGA construction and NTRIP metering are
-    /// preserved exactly (AAP R2): NMEA/GGA numeric formatting uses <see cref="CultureInfo.InvariantCulture"/>
-    /// and the NTRIP UDP forward still targets the shared <c>epNtrip</c> endpoint. The two WinForms
-    /// <c>System.Windows.Forms.Timer</c> instances (the GGA send timer and the 50&#160;ms NTRIP meter)
-    /// become <see cref="DispatcherTimer"/> instances, the WinForms <c>BeginInvoke</c> marshalling becomes
-    /// <see cref="Dispatcher"/> posts, and the direct status-label/<c>TimedMessageBox</c> UI mutation is
-    /// replaced by the <see cref="StatusChanged"/> and <see cref="MessageRequested"/> events.
+    /// preserved exactly (AAP §0.2.2 / §0.7.1): NMEA/GGA numeric formatting uses
+    /// <see cref="CultureInfo.InvariantCulture"/> throughout and the NTRIP UDP forward still targets the
+    /// shared <c>epNtrip</c> endpoint. The only structural transforms versus the WinForms original are:
+    /// (a) the two WinForms <c>System.Windows.Forms.Timer</c> instances (the GGA send timer and the
+    /// 50&#160;ms NTRIP meter) become cross-platform <see cref="System.Timers.Timer"/> instances with the
+    /// identical interval/enable semantics — their <c>Elapsed</c> handlers run on a thread-pool thread,
+    /// adding no latency to the correction path (AAP §0.6.1); (b) the WinForms <c>BeginInvoke</c> UI-thread
+    /// marshalling in the two receive callbacks becomes a <b>direct</b> call to <see cref="OnAddMessage"/>
+    /// on the socket/serial-callback thread; (c) the former status-label mutations are surfaced through the
+    /// <see cref="StatusChanged"/> event for the Avalonia view-model to bind, and the WinForms
+    /// <c>TimedMessageBox</c> is routed through the optional injected <see cref="IErrorPresenter"/>
+    /// (and the <see cref="MessageRequested"/> event for shells that bind events instead). Because the
+    /// receive callbacks and the meter timer can now touch the shared RTCM queue from different threads
+    /// (the WinForms original serialised everything on the UI thread), access to that queue is guarded by
+    /// a private lock so the byte stream can never be corrupted — the bytes forwarded are unchanged.
     /// </remarks>
-    public sealed class NtripService
+    public sealed class NtripService : IDisposable
     {
+        // [XPLAT] Optional error presenter that replaces the WinForms TimedMessageBox (AAP transform).
+        // Null when the composition root prefers to bind the MessageRequested event instead; every use is
+        // null-conditional so an absent presenter is simply a no-op.
+        private readonly IErrorPresenter _errorPresenter;
+
+        // [XPLAT] Guards the shared RTCM byte queue (rawTrip) against concurrent access now that the
+        // socket/serial receive callbacks (OnAddMessage) and the meter timer (ntripMeterTimer_Tick) run on
+        // separate thread-pool threads instead of the single WinForms UI thread. Restores the original's
+        // race-free serialisation without changing the forwarded bytes.
+        private readonly object _tripLock = new object();
+
+        // [XPLAT] Idempotency guard for IDisposable and a fast-exit for timer Elapsed handlers that may
+        // race with shutdown.
+        private bool _disposed;
         // [XPLAT] Peer services wired AFTER construction by the composition root (cycle break).
         internal UdpLoopbackService Udp { get; set; }
         internal SerialCommService Serial { get; set; }
@@ -41,11 +65,11 @@ namespace AgIO.Services
         private Socket clientSocket;                      // Server connection
         private readonly byte[] casterRecBuffer = new byte[2800];    // Recieved data buffer
 
-        //Send GGA back timer
-        private DispatcherTimer tmr;
+        //Send GGA back timer ([XPLAT] System.Windows.Forms.Timer -> cross-platform System.Timers.Timer)
+        private Timer tmr;
 
-        //NTRIP metering timer (50 ms)
-        private readonly DispatcherTimer ntripMeterTimer;
+        //NTRIP metering timer (50 ms) ([XPLAT] System.Windows.Forms.Timer -> cross-platform System.Timers.Timer)
+        private readonly Timer ntripMeterTimer;
 
         private string mount;
         private string username;
@@ -55,7 +79,6 @@ namespace AgIO.Services
         private int broadCasterPort;
 
         private int sendGGAInterval = 0;
-        private string GGASentence;
 
         public uint tripBytes = 0;
         private int toUDP_Port = 0;
@@ -99,15 +122,25 @@ namespace AgIO.Services
         /// </summary>
         public event EventHandler<NtripMessageEventArgs> MessageRequested;
 
-        public NtripService()
+        public NtripService(IErrorPresenter errorPresenter = null)
         {
+            _errorPresenter = errorPresenter;
+
             // [XPLAT] 50 ms NTRIP meter timer (was FormLoop.Designer.cs ntripMeterTimer, Interval = 50).
-            ntripMeterTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-            ntripMeterTimer.Tick += ntripMeterTimer_Tick;
+            // System.Timers.Timer repeats (AutoReset = true) like the original WinForms timer; its Elapsed
+            // handler drains the RTCM queue on a thread-pool thread (queue access is lock-guarded).
+            ntripMeterTimer = new Timer(50) { AutoReset = true };
+            ntripMeterTimer.Elapsed += ntripMeterTimer_Tick;
         }
 
-        private void RaiseMessage(int timeout, string title, string message) =>
+        // [XPLAT] Replaces the WinForms TimedMessageBox: prefer the injected IErrorPresenter, and also raise
+        // the MessageRequested event for shells that bind events instead. _errorPresenter is null-conditional,
+        // so a composition root that wires only the event sees a single notification (no double display).
+        private void RaiseMessage(int timeout, string title, string message)
+        {
+            _errorPresenter?.PresentTimedMessage(TimeSpan.FromMilliseconds(timeout), title, message);
             MessageRequested?.Invoke(this, new NtripMessageEventArgs(timeout, title, message));
+        }
 
         //set up connection to Caster
         public void DoNTRIPSecondRoutine()
@@ -292,14 +325,16 @@ namespace AgIO.Services
                 sendGGAInterval = Properties.Settings.Default.setNTRIP_sendGGAInterval; //how often to send fixes
                 packetSizeNTRIP = Properties.Settings.Default.setNTRIP_packetSize;
 
-                //if we had a timer already, kill it
-                tmr?.Stop();
+                //if we had a timer already, kill it ([XPLAT] Dispose + null the old System.Timers.Timer
+                //before recreating so the underlying timer is released and the later null-checks are correct)
+                tmr?.Dispose();
+                tmr = null;
 
                 //create new timer at fast rate to start
                 if (sendGGAInterval > 0)
                 {
-                    tmr = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(5000) };
-                    tmr.Tick += NTRIPtick;
+                    tmr = new Timer(5000) { AutoReset = true };
+                    tmr.Elapsed += NTRIPtick;
                 }
 
                 try
@@ -446,8 +481,9 @@ namespace AgIO.Services
             if (NTRIP_Watchdog++ > 30 && isNTRIP_Connected)
                 ReconnectRequest();
 
-            //Once all connected set the timer GGA to NTRIP Settings
-            if (sendGGAInterval > 0 && ntripCounter == 40 && tmr != null) tmr.Interval = TimeSpan.FromMilliseconds(sendGGAInterval * 1000);
+            //Once all connected set the timer GGA to NTRIP Settings ([XPLAT] System.Timers.Timer.Interval is
+            //milliseconds as a double — same numeric value as the original WinForms Timer.Interval (int ms))
+            if (sendGGAInterval > 0 && ntripCounter == 40 && tmr != null) tmr.Interval = sendGGAInterval * 1000;
         }
 
         private void SendAuthorization()
@@ -467,9 +503,10 @@ namespace AgIO.Services
                     //encode user and password
                     string auth = ToBase64(username + ":" + password);
 
-                    //grab location sentence
+                    //grab location sentence ([XPLAT] BuildGGA still populates sbGGA exactly as before; the
+                    //write-only GGASentence capture was removed as dead code so the build stays analyzer-clean
+                    //under Release TreatWarningsAsErrors — the position line is not appended to the request)
                     BuildGGA();
-                    GGASentence = sbGGA.ToString();
 
                     string htt;
                     if (Properties.Settings.Default.setNTRIP_isHTTP10) htt = "1.0";
@@ -479,7 +516,7 @@ namespace AgIO.Services
                     string str = "GET /" + mount + " HTTP/" + htt + "\r\n";
                     str += "User-Agent: NTRIP AgOpenGPSClient/6.4\r\n";
                     str += "Authorization: Basic " + auth + "\r\n"; //This line can be removed if no authorization is needed
-                                                                    //str += GGASentence; //this line can be removed if no position feedback is needed
+                                                                    //str += sbGGA.ToString(); //this line can be removed if no position feedback is needed
                     str += "Accept: */*\r\nConnection: close\r\n";
                     str += "\r\n";
 
@@ -504,6 +541,10 @@ namespace AgIO.Services
 
         public void OnAddMessage(byte[] data)
         {
+            // [XPLAT] Called directly on the socket/serial receive-callback thread (the WinForms BeginInvoke
+            // UI-thread marshal was removed — no UI here). Bail out if the service was disposed mid-flight.
+            if (_disposed) return;
+
             //update gui with stats
             tripBytes += (uint)data.Length;
 
@@ -547,10 +588,14 @@ namespace AgIO.Services
 
             if (isNTRIP_RequiredOn)
             {
-                //move the ntrip stream to queue
-                for (int i = 0; i < data.Length; i++)
+                //move the ntrip stream to queue ([XPLAT] lock-guarded — the meter timer now drains rawTrip
+                //on a separate thread-pool thread, where the WinForms original serialised on the UI thread)
+                lock (_tripLock)
                 {
-                    rawTrip.Enqueue(data[i]);
+                    for (int i = 0; i < data.Length; i++)
+                    {
+                        rawTrip.Enqueue(data[i]);
+                    }
                 }
 
                 ntripMeterTimer.Start();
@@ -563,33 +608,52 @@ namespace AgIO.Services
             }
         }
 
-        private void ntripMeterTimer_Tick(object sender, EventArgs e)
+        private void ntripMeterTimer_Tick(object sender, ElapsedEventArgs e)
         {
-            //we really should get here, but have to check
-            if (rawTrip.Count == 0) return;
+            // [XPLAT] Elapsed fires on a thread-pool thread (System.Timers.Timer); bail out if the service
+            // was disposed during shutdown so a late tick cannot touch a closed socket/queue.
+            if (_disposed) return;
 
-            //how many bytes in the Queue
-            int cnt = rawTrip.Count;
+            byte[] trip;
+            bool drained;
 
-            //how many sends have occured
-            if (Udp != null) Udp.traffic.cntrGPSIn++;
+            // [XPLAT] All rawTrip access is taken under the lock (enqueue happens on the receive thread):
+            // the dequeue, the "done?" check and the overflow clear are atomic so the byte stream can never
+            // be corrupted. The socket/serial send runs OUTSIDE the lock so I/O is never held under it.
+            lock (_tripLock)
+            {
+                //we really should get here, but have to check
+                if (rawTrip.Count == 0) return;
 
-            //128 bytes chunks max
-            if (cnt > packetSizeNTRIP) cnt = packetSizeNTRIP;
+                //how many bytes in the Queue
+                int cnt = rawTrip.Count;
 
-            //new data array to send
-            byte[] trip = new byte[cnt];
+                //how many sends have occured
+                if (Udp != null) Udp.traffic.cntrGPSIn++;
 
-            if (Udp != null) Udp.traffic.cntrGPSInBytes += cnt;
+                //128 bytes chunks max
+                if (cnt > packetSizeNTRIP) cnt = packetSizeNTRIP;
 
-            //dequeue into the array
-            for (int i = 0; i < cnt; i++) trip[i] = rawTrip.Dequeue();
+                //new data array to send
+                trip = new byte[cnt];
+
+                if (Udp != null) Udp.traffic.cntrGPSInBytes += cnt;
+
+                //dequeue into the array
+                for (int i = 0; i < cnt; i++) trip[i] = rawTrip.Dequeue();
+
+                //Are we done?
+                drained = rawTrip.Count == 0;
+
+                //Can't keep up as internet dumped a shit load so clear
+                if (rawTrip.Count > 10000) rawTrip.Clear();
+            }
 
             //send it
             SendNTRIP(trip);
 
             //Are we done?
-            if (rawTrip.Count == 0)
+            if (drained)
             {
                 ntripMeterTimer.Stop();
 
@@ -599,9 +663,6 @@ namespace AgIO.Services
                     Udp.traffic.cntrGPSInBytes = 0;
                 }
             }
-
-            //Can't keep up as internet dumped a shit load so clear
-            if (rawTrip.Count > 10000) rawTrip.Clear();
         }
 
         public void SendNTRIP(byte[] data)
@@ -649,8 +710,10 @@ namespace AgIO.Services
             }
         }
 
-        private void NTRIPtick(object o, EventArgs e)
+        private void NTRIPtick(object sender, ElapsedEventArgs e)
         {
+            // [XPLAT] Elapsed fires on a thread-pool thread (System.Timers.Timer); skip if disposed.
+            if (_disposed) return;
             SendGGA();
         }
 
@@ -679,7 +742,9 @@ namespace AgIO.Services
                     byte[] localMsg = new byte[nBytesRec];
                     Array.Copy(casterRecBuffer, localMsg, nBytesRec);
 
-                    Dispatcher.UIThread.Post(() => OnAddMessage(localMsg));
+                    // [XPLAT] WinForms BeginInvoke UI-thread marshal removed — process on the socket-callback
+                    // thread directly (no UI; preserves real-time correction throughput with no added latency).
+                    OnAddMessage(localMsg);
                     clientSocket.BeginReceive(casterRecBuffer, 0, casterRecBuffer.Length, SocketFlags.None, new AsyncCallback(OnRecievedData), null);
                 }
                 else
@@ -712,7 +777,9 @@ namespace AgIO.Services
                     byte[] localMsg = new byte[nBytesRec];
                     comport.Read(localMsg, 0, nBytesRec);
 
-                    Dispatcher.UIThread.Post(() => OnAddMessage(localMsg));
+                    // [XPLAT] WinForms BeginInvoke UI-thread marshal removed — process on the serial
+                    // DataReceived callback thread directly (no UI; no added latency on the correction path).
+                    OnAddMessage(localMsg);
                 }
                 else
                 {
@@ -883,6 +950,65 @@ namespace AgIO.Services
             string ip = null, string mount = null, string toGPS = null, bool? visible = null)
         {
             StatusChanged?.Invoke(this, new NtripStatusEventArgs(watch, bytes, countdown, ip, mount, toGPS, visible));
+        }
+
+        /// <summary>
+        /// [XPLAT] Releases the TCP caster socket, the radio / serial-pass <see cref="SerialPort"/> and both
+        /// <see cref="System.Timers.Timer"/> instances. Best-effort and idempotent: the re-entrancy guard
+        /// makes repeated calls safe and each step is wrapped in try/catch so one failure cannot block the
+        /// rest of the teardown. The timers are stopped before the socket is closed so a late Elapsed tick
+        /// cannot touch a half-closed connection. The runtime <see cref="ShutDownNTRIP"/> /
+        /// <see cref="SettingsShutDownNTRIP"/> stop/restart paths remain available and are unaffected.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            // stop the GGA send timer first so NTRIPtick cannot fire mid-teardown
+            try
+            {
+                if (tmr != null)
+                {
+                    tmr.Stop();
+                    tmr.Dispose();
+                    tmr = null;
+                }
+            }
+            catch (Exception ex) { Log.EventWriter("Catch - > NTRIP Dispose tmr: " + ex.Message); }
+
+            // stop the NTRIP meter timer
+            try
+            {
+                ntripMeterTimer.Stop();
+                ntripMeterTimer.Dispose();
+            }
+            catch (Exception ex) { Log.EventWriter("Catch - > NTRIP Dispose meter timer: " + ex.Message); }
+
+            // close the caster TCP socket
+            try
+            {
+                if (clientSocket != null)
+                {
+                    if (clientSocket.Connected) clientSocket.Shutdown(SocketShutdown.Both);
+                    clientSocket.Close();
+                    clientSocket.Dispose();
+                    clientSocket = null;
+                }
+            }
+            catch (Exception ex) { Log.EventWriter("Catch - > NTRIP Dispose socket: " + ex.Message); }
+
+            // close the radio / serial-pass port
+            try
+            {
+                if (spRadio != null)
+                {
+                    spRadio.Close();
+                    spRadio.Dispose();
+                    spRadio = null;
+                }
+            }
+            catch (Exception ex) { Log.EventWriter("Catch - > NTRIP Dispose radio: " + ex.Message); }
         }
     }
 

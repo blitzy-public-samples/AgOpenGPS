@@ -22,51 +22,17 @@ namespace AgOpenGPS
             _client = client;
         }
 
-        // Create a snapshot from the current GPS session to upload
-        public static FieldSnapshot CreateSnapshot(FormGPS gps)
-        {
-            string dir = Path.Combine(RegistrySettings.fieldsDirectory, gps.currentFieldDirectory);
-            string idPath = Path.Combine(dir, "agshare.txt");
-
-            Guid fieldId;
-            if (File.Exists(idPath))
-            {
-                string raw = File.ReadAllText(idPath).Trim();
-                fieldId = Guid.Parse(raw);
-            }
-            else
-            {
-                fieldId = Guid.NewGuid();
-            }
-
-            List<List<vec3>> boundaries = new List<List<vec3>>();
-            foreach (var b in gps.bnd.bndList)
-            {
-                boundaries.Add(b.fenceLine.ToList());
-            }
-
-            List<CTrk> tracks = gps.trk.gArr.ToList();
-
-            Wgs84 origin = gps.AppModel.LocalPlane.Origin;
-            LocalPlane plane = new LocalPlane(origin, new SharedFieldProperties());
-
-            FieldSnapshot snapshot = new FieldSnapshot
-            {
-                FieldName = gps.displayFieldName,
-                FieldDirectory = dir,
-                FieldId = fieldId,
-                OriginLat = origin.Latitude,
-                OriginLon = origin.Longitude,
-                Convergence = 0,
-                Boundaries = boundaries,
-                Tracks = tracks,
-                Converter = plane
-            };
-            return snapshot;
-        }
+        // [XPLAT] Removed the static CreateSnapshot(FormGPS gps) factory — see MIGRATION_DOCS/TRANSITION_MAP.md.
+        // It reached through the WinForms FormGPS god-object (gps.currentFieldDirectory / gps.bnd.bndList /
+        // gps.trk.gArr / gps.AppModel.LocalPlane / gps.displayFieldName), none of which survive the Avalonia
+        // migration, and it had zero callers. Field snapshots are now assembled by the caller from the field
+        // directory (see FormAgShareUploaderView.LoadFieldSnapshot), so this FormGPS-coupled overload is dropped.
 
         // Upload snapshot to AgShare using boundary with holes
-        public async Task UploadAsync(FieldSnapshot snapshot, FormGPS gps)
+        // [XPLAT] The trailing FormGPS gps parameter is replaced with an unused object gps = null — see
+        // MIGRATION_DOCS/TRANSITION_MAP.md. The method body never referenced gps; the parameter is retained
+        // (now optional/typeless) purely so the behaviour-frozen call sites keep their exact shape.
+        public async Task UploadAsync(FieldSnapshot snapshot, object gps = null)
         {
             try
             {
