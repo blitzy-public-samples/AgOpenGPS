@@ -162,19 +162,44 @@
 
     <!-- [XPLAT] (3) Cascade dependents of the (2) domain classes above. ISO11783_TaskFile.cs takes a
          CTrack parameter; SectionsVisual.cs draws List<CPatches>; FormFieldDataView.axaml.cs injects
-         CFieldData + CBoundary. They are excluded with their providers and re-enabled alongside them. -->
+         CFieldData + CBoundary; FormFieldKMLView.axaml.cs injects CBoundary + CFieldData (+ CNMEA) to
+         build a field boundary from a KML ring; FormFieldISOXMLView.axaml.cs injects CBoundary +
+         CFieldData + CTrack for its importer-driven ISO-XML field build (signature-correct against the
+         real domain types, but those providers are gated in (2) above, so the view is excluded in
+         lockstep to preserve the "no compiling consumer of an excluded file" invariant); and
+         FormBoundaryPlayerView.axaml.cs injects CBoundary to build a driven boundary from the recorded
+         points (same lockstep exclusion until CBoundary lands). They are excluded with their providers
+         and re-enabled alongside them. -->
     <Compile Remove="Protocols\ISOBUS\ISO11783_TaskFile.cs" />
     <Compile Remove="Visuals\SectionsVisual.cs" />
     <Compile Remove="Views\Field\FormFieldDataView.axaml.cs" />
+    <Compile Remove="Views\Field\FormFieldKMLView.axaml.cs" />
+    <Compile Remove="Views\Field\FormFieldISOXMLView.axaml.cs" />
+    <Compile Remove="Views\Field\FormBoundaryPlayerView.axaml.cs" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- [XPLAT] FormFieldDataView's markup is excluded in lockstep with its gated code-behind (above):
-         remove it from BOTH the Avalonia XAML compilation and the embedded resource set so the
-         AvaloniaResource glob (Views/**/*.axaml) does not try to compile a view whose code-behind
-         partial is absent. Re-enabled with FormFieldDataView.axaml.cs when CFieldData/CBoundary land. -->
+    <!-- [XPLAT] FormFieldDataView's and FormFieldKMLView's markup is excluded in lockstep with their
+         gated code-behind (above): remove each from BOTH the Avalonia XAML compilation and the embedded
+         resource set so the AvaloniaResource glob (Views/**/*.axaml) does not try to compile a view whose
+         code-behind partial is absent. Each is re-enabled with its .axaml.cs when CFieldData/CBoundary land. -->
     <AvaloniaXaml Remove="Views\Field\FormFieldDataView.axaml" />
     <AvaloniaResource Remove="Views\Field\FormFieldDataView.axaml" />
+    <AvaloniaXaml Remove="Views\Field\FormFieldKMLView.axaml" />
+    <AvaloniaResource Remove="Views\Field\FormFieldKMLView.axaml" />
+    <!-- [XPLAT] FormFieldISOXMLView's markup is likewise excluded in lockstep with its gated code-behind
+         (above): the compiled-XAML loader generates the InitializeComponent partial against the
+         code-behind class, so the markup must leave BOTH the XAML compilation and the embedded resource
+         set while the code-behind is gated. Re-enabled with FormFieldISOXMLView.axaml.cs when
+         CBoundary/CFieldData/CTrack land. -->
+    <AvaloniaXaml Remove="Views\Field\FormFieldISOXMLView.axaml" />
+    <AvaloniaResource Remove="Views\Field\FormFieldISOXMLView.axaml" />
+    <!-- [XPLAT] FormBoundaryPlayerView's markup is excluded in lockstep with its gated code-behind
+         (above), which injects the deferred CBoundary domain model. Removed from BOTH the Avalonia XAML
+         compilation and the embedded resource set so the AvaloniaResource glob does not compile a view
+         whose code-behind is absent. Re-enabled with FormBoundaryPlayerView.axaml.cs when CBoundary lands. -->
+    <AvaloniaXaml Remove="Views\Field\FormBoundaryPlayerView.axaml" />
+    <AvaloniaResource Remove="Views\Field\FormBoundaryPlayerView.axaml" />
   </ItemGroup>
 
   <ItemGroup>

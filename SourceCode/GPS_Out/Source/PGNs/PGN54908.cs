@@ -1,5 +1,4 @@
-// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-using GPS_Out.Views;   // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 
 namespace GPS_Out
@@ -45,10 +44,10 @@ namespace GPS_Out
         private ushort cSatellites;
         private float cSpeed;
         private float cTrueHeading;
-        private MainWindow mf;
+        private INmeaHost mf;
         private DateTime ReceiveTime;
 
-        public PGN54908(MainWindow CalledFrom)
+        public PGN54908(INmeaHost CalledFrom)
         {
             mf = CalledFrom;
         }

@@ -1,7 +1,5 @@
-// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-using GPS_Out.Views;   // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
-using System.Diagnostics;
 
 namespace GPS_Out.PGNs
 {
@@ -33,11 +31,11 @@ namespace GPS_Out.PGNs
         private double cFix2Fix;
         private double cLatitude;
         private double cLongitude;
-        private MainWindow mf;
+        private INmeaHost mf;
         private DateTime ReceiveTime;
         private bool ExtendedPGN = false;
 
-        public PGN100(MainWindow CalledFrom)
+        public PGN100(INmeaHost CalledFrom)
         {
             mf = CalledFrom;
             cFix2Fix = 1000;    // invalid data flag

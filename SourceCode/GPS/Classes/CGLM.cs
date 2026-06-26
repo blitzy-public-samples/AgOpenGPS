@@ -5,7 +5,14 @@ using System.Collections.Generic;
 
 namespace AgOpenGPS
 {
-
+    // [XPLAT] The all-lowercase type name 'glm' (the GLM-style math helper, referenced pervasively as
+    // glm.* across the suite) is intentional and frozen for parity — renaming it would ripple through
+    // dozens of call sites and break the behaviour-frozen contract. On net8.0 the Roslyn analyzer flags
+    // such purely-lowercase names with CS8981 (a name that "may become reserved for the language"),
+    // which the Release TreatWarningsAsErrors setting would otherwise turn into a build break. Suppress
+    // that single style diagnostic here (no behavioural effect) so the migrated module compiles cleanly
+    // in Release while keeping the original API surface byte-for-byte.
+#pragma warning disable CS8981
     public static class glm
     {
         private const double DefaultZeroTolerance = 1e-6;
@@ -406,4 +413,5 @@ namespace AgOpenGPS
             return false;
         }
     }
+#pragma warning restore CS8981
 }

@@ -17,11 +17,21 @@ namespace AgDiag
     /// </remarks>
     public partial class App : Application
     {
+        /// <summary>
+        /// Loads the XAML defined in App.axaml (applying the Fluent theme) into this application
+        /// instance. Invoked by the Avalonia runtime during <c>AppBuilder</c> setup.
+        /// </summary>
         public override void Initialize()
         {
             AvaloniaXamlLoader.Load(this);
         }
 
+        /// <summary>
+        /// Creates and assigns the single main window once the Avalonia framework has finished
+        /// initializing. For the classic desktop lifetime this is the re-platformed
+        /// <see cref="FormLoop"/> diagnostics window — the Avalonia equivalent of the former
+        /// WinForms <c>Application.Run(new FormLoop())</c>.
+        /// </summary>
         public override void OnFrameworkInitializationCompleted()
         {
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

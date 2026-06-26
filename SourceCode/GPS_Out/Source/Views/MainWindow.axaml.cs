@@ -37,7 +37,7 @@ namespace GPS_Out.Views
     /// <see cref="OnLoaded"/>.</item>
     /// </list>
     /// </remarks>
-    public partial class MainWindow : Window, ISerialStatusSink, IWindowState
+    public partial class MainWindow : Window, ISerialStatusSink, IWindowState, INmeaHost
     {
         // ---- Public surface consumed by the ported helper classes (was frmStart's public fields) ----
         public UDPComm AGIOcomm;
@@ -56,6 +56,16 @@ namespace GPS_Out.Views
         public string VTGsentence = "";
         public PGN_ZDA ZDA;
         public string ZDAsentence = "";
+
+        // [XPLAT] INmeaHost provider wiring — the decoupled PGN encoder/parser classes hold their host
+        // back-reference as the INmeaHost abstraction (see PGNs/INmeaHost.cs) rather than this concrete
+        // window, so the byte-frozen protocol logic no longer depends on any UI type. These explicit
+        // interface members surface the existing public fields as the read-only INmeaHost properties
+        // without altering field semantics or any existing access; CheckSum(string) and Heading()
+        // satisfy the interface implicitly via their public methods below.
+        clsTools INmeaHost.Tls => Tls;
+        PGN100 INmeaHost.AOGdata => AOGdata;
+        PGN54908 INmeaHost.AGIOdata => AGIOdata;
 
         // ---- Private state (matches frmStart) ----
         private string HeadingType;
