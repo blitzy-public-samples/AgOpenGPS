@@ -1,4 +1,5 @@
 name: Build
+# [XPLAT] migrated from net48/WinForms single Windows runner to tri-OS (windows/ubuntu/macos) matrix — see MIGRATION_DOCS/CHANGELOG.md
 
 on:
   push:
@@ -20,7 +21,11 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false   # let every OS run to completion so cross-OS divergences are all surfaced
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
     - name: Checkout
@@ -56,5 +61,5 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: AgOpenGPS
+        name: AgOpenGPS-${{ matrix.os }}
         path: ${{env.PUBLISH_DIR}}

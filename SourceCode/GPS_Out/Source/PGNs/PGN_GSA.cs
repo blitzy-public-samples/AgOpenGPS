@@ -1,11 +1,5 @@
-// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-using GPS_Out.Views;   // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
-using System;
-using System.Collections.Generic;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace GPS_Out.PGNs
 {
@@ -36,9 +30,9 @@ namespace GPS_Out.PGNs
         #endregion GSA message
 
         private string cSentence;
-        private MainWindow mf;
+        private INmeaHost mf;
 
-        public PGN_GSA(MainWindow CalledFrom)
+        public PGN_GSA(INmeaHost CalledFrom)
         {
             mf = CalledFrom;
         }
@@ -50,7 +44,7 @@ namespace GPS_Out.PGNs
             cSentence += ",2";
 
             cSentence += "*";
-            string Hex = mf.CheckSum(cSentence).ToString("X2");
+            string Hex = mf.CheckSum(cSentence).ToString("X2", CultureInfo.InvariantCulture);
             cSentence += Hex;
 
             return cSentence;

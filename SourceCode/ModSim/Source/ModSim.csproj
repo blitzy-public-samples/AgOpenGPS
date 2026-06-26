@@ -36,6 +36,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- [XPLAT] Embed the simulator icon as an Avalonia resource so MainSimView can load it via
+         avares://ModSim/ModSim_ico.ico for the window title-bar icon (WinForms FormSim parity).
+         This is in addition to <ApplicationIcon> above, which sets the native executable icon. -->
+    <AvaloniaResource Include="ModSim_ico.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Update="Properties\Settings.Designer.cs">
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>

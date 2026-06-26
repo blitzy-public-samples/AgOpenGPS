@@ -77,6 +77,22 @@ namespace AgOpenGPS.Core
         // once a fix is applied (e.g. the simulator resets it every DoSimTick).
         // See MIGRATION_DOCS/TRANSITION_MAP.md.
         public uint sentenceCounter;
+
+        // [XPLAT] Heading-acquisition runtime state relocated here from the WinForms host form
+        // (FormGPS, Position.designer.cs) so the portable, cross-platform fix/position pipeline writes,
+        // and the cross-platform renderer (CVehicle.DrawVehicle) reads, the SAME canonical state
+        // live-by-reference with no WinForms coupling. Names, types and defaults are preserved exactly
+        // from the originals so behavior stays byte-for-byte identical:
+        //   isFirstHeadingSet  - true once the first valid GPS/IMU heading has been established
+        //                        (was FormGPS.isFirstHeadingSet, bool, default false). Gates drawing of
+        //                        the rigid hitch, the antenna dot and the "no-heading" question mark.
+        //   headingFromSource  - identifies the heading source string (e.g. "Dual", "Fix", "VTG", "GPS")
+        //                        (was FormGPS.headingFromSource, string, default null). When it equals
+        //                        "Dual" the dual-antenna source already supplies heading, so the
+        //                        "no-heading" question mark is suppressed.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public bool isFirstHeadingSet;
+        public string headingFromSource;
     }
 
     // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md

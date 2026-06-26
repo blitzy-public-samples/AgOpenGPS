@@ -1,58 +1,97 @@
 # AgOpenGPS - Guidance software
 
-# ⚠️ Project Status: Maintenance Mode
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
 
-AgOpenGPS WinForms has reached its final development stage (April 2026).
-
-- ❌ No new features
-- ❌ No refactoring
-- ✅ Bug fixes only
-
-👉 Active development has moved to the Avalonia version.
-
----
-
-![Maintenance Mode](https://img.shields.io/badge/status-maintenance%20mode-red?style=for-the-badge)
+AgOpenGPS is now **cross-platform**. This repository **is** the cross-platform AgOpenGPS: it has been
+re-platformed from .NET Framework 4.8 + Windows Forms (Windows-only) onto modern **.NET 8/9 +
+[Avalonia UI](https://avaloniaui.net/)**, and runs natively on **Windows**, **macOS**, and **Linux**
+while preserving **100% functional parity** with the previous Windows-only product. The migration is
+documented under [`MIGRATION_DOCS/`](MIGRATION_DOCS/) — see the
+[Changelog](MIGRATION_DOCS/CHANGELOG.md) for the change narrative and the
+[Transition Map](MIGRATION_DOCS/TRANSITION_MAP.md) for the old → new file-by-file mapping.
 
 [![GitHub Release](https://img.shields.io/github/v/release/agopengps-official/AgOpenGPS)](https://github.com/agopengps-official/AgOpenGPS/releases/latest)
 [![Translation status](https://hosted.weblate.org/widget/agopengps/language-badge.svg)](https://hosted.weblate.org/engage/agopengps/)
 
 Ag Precision Mapping and Section Control Software
 
-AgOpenGPS is 2 programs. AgIO is the communication hub to the outside world and AgOpenGPS is the 
+AgOpenGPS is 2 programs. AgIO is the communication hub to the outside world and AgOpenGPS is the
 application. You can run either and within each, you can run the other.
 
 You only need to run AgOpenGPS if you are using the simulator.
 
-The software reads NMEA strings for the purpose of recording and mapping position information 
-for Agricultural use. Also it has up to 16 sections of Section Control that can have unique widths 
-or up to 64 same width sections to control implements application of product preventing 
+The software reads NMEA strings for the purpose of recording and mapping position information
+for Agricultural use. Also it has up to 16 sections of Section Control that can have unique widths
+or up to 64 same width sections to control implements application of product preventing
 over-application.
 
-Also ouputs Pure pursuit steer angles from reference line for AB line, AB Curve and Contour guidance. 
-Auto Headland called UTurn on Curve and AB Line with loops for narrow equipment. 
+Also ouputs Pure pursuit steer angles from reference line for AB line, AB Curve and Contour guidance.
+Auto Headland called UTurn on Curve and AB Line with loops for narrow equipment.
 Mapping as a background can also be added.
 
-Included in this repository is an application, and source folders. 
+The application now runs **natively on Windows, macOS, and Linux** (previously Windows-only). Core
+guidance, Section Control, field I/O, and the PGN communication fabric behave identically on every
+platform. A few non-essential conveniences — online background map imagery and webcam — are
+**optional features available where the platform supports them** and are gracefully disabled
+elsewhere, so they never affect startup or core guidance.
 
-See the PCB repo for PCB layouts, firmware for steering and rate control, machine control, GPS and simulator. 
+Included in this repository is an application, and source folders.
+
+See the PCB repo for PCB layouts, firmware for steering and rate control, machine control, GPS and simulator.
 
 ## Installation
 
-1. Download the [Most Stable AgOpenGPS Release](https://github.com/agopengps-official/AgOpenGPS/releases)
-2. Unzip or extract the contents to a folder (folder accessible by user not the root of C:\\)
-Even on your desktop
-3. Run AgOpenGPS.exe
+1. Download the [Most Stable AgOpenGPS Release](https://github.com/agopengps-official/AgOpenGPS/releases).
+   Releases now ship **per-OS self-contained** artifacts — one archive per runtime identifier
+   (`win-x64`, `linux-x64`, `osx-x64`, `osx-arm64`) produced by the CI matrix — so no separate .NET
+   runtime install is required. Pick the archive that matches your operating system.
+2. Extract the contents to a folder that is writable by your user (not the root of `C:\`, and not a
+   system-protected location). Your desktop or home folder is fine.
+3. Start the application for your platform:
+   - **Windows (win-x64):** run `AgOpenGPS.exe`.
+   - **Linux (linux-x64):** make the binary executable once with `chmod +x AgOpenGPS`, then run `./AgOpenGPS`.
+   - **macOS (osx-x64 / osx-arm64):** run the `AgOpenGPS` executable. Because the build is unsigned,
+     Gatekeeper may ask you to allow it the first time (right-click → **Open**, or allow it from
+     *System Settings → Privacy & Security*).
+
+AgIO (the communication hub) is **auto-started and stopped by AgOpenGPS**, so you normally only launch
+AgOpenGPS; the two-program model is preserved.
 
 ## Building
 
-1. Clone this repository (e.g. use Visual Studio to do so)
-2. Open the solution (`SourceCode/AgOpenGPS.sln`) in Visual Studio
-3. Add your code and (re)build
-4. Execute the following command in the root folder to get a single `AgOpenGPS` folder containing all the applications:
+You no longer need Windows or Visual Studio to build AgOpenGPS — it builds on **Windows, macOS, or
+Linux** using the cross-platform `dotnet` CLI.
+
+1. Install the **.NET SDK 9.0.300** (pinned in [`global.json`](global.json)).
+2. Clone this repository.
+3. Open the solution (`SourceCode/AgOpenGPS.sln`) in your editor of choice — Visual Studio 2022+,
+   Visual Studio Code, or JetBrains Rider — or just use the `dotnet` CLI.
+4. Add your code and (re)build.
+5. Execute the following command in the root folder to get a single `AgOpenGPS` folder containing all the applications:
    ```sh
    dotnet publish SourceCode/AgOpenGPS.sln
    ```
+
+To produce a **per-OS self-contained** build (the .NET runtime is bundled, so the target machine needs
+no SDK installed), publish for the runtime identifier (RID) you want:
+
+```sh
+# Windows x64
+dotnet publish SourceCode/AgOpenGPS.sln -c Release -r win-x64 --self-contained
+# Linux x64
+dotnet publish SourceCode/AgOpenGPS.sln -c Release -r linux-x64 --self-contained
+# macOS Intel / Apple Silicon
+dotnet publish SourceCode/AgOpenGPS.sln -c Release -r osx-x64 --self-contained
+dotnet publish SourceCode/AgOpenGPS.sln -c Release -r osx-arm64 --self-contained
+```
+
+`dotnet build` and `dotnet test` also work on all three operating systems, and continuous integration
+now validates the solution on a **windows / ubuntu / macos** matrix.
+
+Settings and profiles are stored under a per-OS configuration root — `%AppData%\AgOpenGPS` on Windows,
+`~/.config/AgOpenGPS` on Linux, and `~/Library/Application Support/AgOpenGPS` on macOS. On Windows,
+existing settings are migrated one time from the legacy Windows Registry / `%AppData%` location; the
+settings XML schema itself is unchanged.
 
 ## Contributing
 
@@ -87,8 +126,14 @@ If you want to help translate AgOpenGPS, follow these steps:
 - [AgOpenGPS Forum](https://discourse.agopengps.com/)
 - [PCB and Firmware Repository](https://github.com/agopengps-official/Boards)
 - [SK21 Rate Control Repository](https://github.com/agopengps-official/Rate_Control)
+- [Migration Documentation (`MIGRATION_DOCS/`)](MIGRATION_DOCS/)
 
 ## License
+
+AgOpenGPS is distributed under two licenses. The repository root is licensed under the
+**Apache License 2.0** (see [`LICENSE`](LICENSE)), while the **GPS** application and the **Updater**
+are licensed under the **GNU GPLv3** (see `SourceCode/GPS/License.txt` and
+`SourceCode/Updater/License.txt`). These license artifacts are retained unchanged.
 
 If you distribute copies of such a program, whether
 gratis or for a fee, you must pass on to the recipients the same

@@ -104,7 +104,11 @@ namespace AgIO.Services
             Properties.Settings.Default.eth_loopThree.ToString(CultureInfo.InvariantCulture) + "." +
             Properties.Settings.Default.eth_loopFour.ToString(CultureInfo.InvariantCulture)), 15555);
 
-        private readonly IPEndPoint epModule = new IPEndPoint(IPAddress.Parse(
+        // [XPLAT] Not readonly: the UDP dialog (FormUDPViewModel.SendSubnet) rebuilds this endpoint to the
+        // new ".255" broadcast address when the operator changes the module subnet, matching the original
+        // WinForms FormUDP which reassigned mf.epModule. Without a setter, AgIO would keep broadcasting to
+        // the previous subnet until the next restart (a real regression).
+        private IPEndPoint epModule = new IPEndPoint(IPAddress.Parse(
             Properties.Settings.Default.etIP_SubnetOne.ToString(CultureInfo.InvariantCulture) + "." +
             Properties.Settings.Default.etIP_SubnetTwo.ToString(CultureInfo.InvariantCulture) + "." +
             Properties.Settings.Default.etIP_SubnetThree.ToString(CultureInfo.InvariantCulture) + ".255"), 8888);
@@ -112,9 +116,14 @@ namespace AgIO.Services
         /// <summary>
         /// [XPLAT] The module subnet-broadcast endpoint (port 8888). Exposed so the NMEA service can
         /// optionally forward the assembled PGN 0xD6 GPS frame to the modules (the former
-        /// <c>SendUDPMessage(nmeaPGN, epModule)</c>).
+        /// <c>SendUDPMessage(nmeaPGN, epModule)</c>), and so the UDP dialog can repoint it to a newly
+        /// configured subnet's broadcast address (parity with the original <c>mf.epModule</c> reassignment).
         /// </summary>
-        public IPEndPoint EpModule => epModule;
+        public IPEndPoint EpModule
+        {
+            get { return epModule; }
+            set { epModule = value; }
+        }
 
         /// <summary>
         /// [XPLAT] NTRIP endpoint, assigned by <c>NtripService</c> when an NTRIP source is active. The
