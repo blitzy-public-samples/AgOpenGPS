@@ -1,194 +1,223 @@
-// [XPLAT] migrated from net48/WinForms (Forms/Inputs/FormKeyboard.cs) — see MIGRATION_DOCS/TRANSITION_MAP.md
-using System.Globalization;
-using AgOpenGPS.Core.Translations;
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
+using System.Threading;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using AgOpenGPS.Core.Translations;
 using Keypad;
 
 namespace AgOpenGPS.Views
 {
     /// <summary>
-    /// [XPLAT] Code-behind for the on-screen QWERTY keyboard text-entry dialog, hosting the migrated
-    /// <see cref="Keyboard"/> UserControl. This is a faithful 1:1 behavioural port of the WinForms
-    /// <c>FormKeyboard : Form</c> (Forms/Inputs/FormKeyboard.cs): the dialog is IMPERATIVE (no MVVM),
-    /// driving the named <c>keyboardString</c> text box directly through the on-screen key broadcast.
+    /// [XPLAT] Code-behind for the on-screen QWERTY keyboard text-entry dialog — the behaviour half of
+    /// <c>FormKeyboard.axaml</c>. This is a 1:1 behavioural-parity reimplementation of the WinForms
+    /// <c>Forms/Inputs/FormKeyboard</c> (FormKeyboard.cs + FormKeyboard.Designer.cs): the behaviour is
+    /// unchanged, only the framework underneath it (AAP §0.7.1, §0.3.3).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The <see cref="Keyboard"/> control raises <see cref="GenericKeypad.ButtonPressed"/> carrying a
-    /// single <see cref="KeypadKeyPressedEventArgs.KeyChar"/>. The control tokens are ported verbatim
-    /// from the WinForms original: backspace <c>'\u0008'</c>, clear <c>'\u0005'</c>, cancel
-    /// <c>'\u0027'</c>, OK <c>'\u0004'</c>; every other character is inserted at the caret.
+    /// This is an imperative dialog (no view-model, no data binding). It hosts the migrated
+    /// <c>Keypad.Keyboard</c> on-screen keyboard (<c>keyboard1</c>), a single large editable
+    /// <see cref="TextBox"/> (<c>keyboardString</c>), and two caret-navigation arrow buttons
+    /// (<c>btnCharLeft</c>/<c>btnCharRight</c>) — all declared with those exact <c>x:Name</c>s in the
+    /// paired XAML. Every handler is wired in the constructor, the same pattern used by the other
+    /// non-MVVM dialogs in <c>AgOpenGPS.Views</c>.
     /// </para>
     /// <para>
-    /// The WinForms <c>TextBox.SelectionStart</c> caret API becomes Avalonia's
-    /// <see cref="TextBox.CaretIndex"/> (the established idiom across the migrated GPS views). The
-    /// outcome is surfaced through <see cref="Window.Close(object)"/> — <c>Close(true)</c> on OK
-    /// (value via <see cref="ReturnString"/>) and <c>Close(false)</c> on Cancel — the cross-platform
-    /// replacement for the WinForms <c>DialogResult.OK</c> / <c>DialogResult.Cancel</c>.
+    /// Framework conversions (each tagged <c>// [XPLAT]</c> below): the WinForms
+    /// <c>KeyPressEventHandler</c>/<c>KeyPressEventArgs</c> pair is replaced by
+    /// <see cref="GenericKeypad.ButtonPressed"/> carrying <see cref="KeypadKeyPressedEventArgs.KeyChar"/>;
+    /// the WinForms <c>TextBox.SelectionStart</c> + <c>SelectionLength = 0</c> caret model is replaced by
+    /// Avalonia's <see cref="TextBox.CaretIndex"/> (setting it collapses any selection, so the
+    /// <c>SelectionLength = 0</c> lines are simply dropped, and Avalonia clamps the value into
+    /// <c>[0, Text.Length]</c> so the Insert/Remove index math stays safe); the WinForms <c>Load</c> event
+    /// becomes the Avalonia <see cref="Window.OnOpened(EventArgs)"/> override; and the WinForms
+    /// <c>DialogResult</c> + <c>Close()</c> becomes the Avalonia modal pattern
+    /// (<c>await ShowDialog&lt;string?&gt;(owner)</c>) — OK closes with the entered string, Cancel closes
+    /// with <see langword="null"/>.
     /// </para>
     /// </remarks>
     public partial class FormKeyboard : Window
     {
-        // [XPLAT] On-screen Keyboard control tokens (Keypad.Keyboard.RaiseButtonPressed), ported verbatim
-        // from the WinForms RegisterKeyboard1_ButtonPressed so emitted characters stay byte-identical.
-        private const char BackspaceKey = '\u0008';
-        private const char CancelKey = '\u0027';
-        private const char ClearKey = '\u0005';
-        private const char OkKey = '\u0004';
-
         /// <summary>
-        /// Gets the confirmed entry text after the dialog closes with <c>true</c> (the WinForms
-        /// <c>ReturnString</c> property, preserved for caller parity).
+        /// The value the user accepted with the on-screen OK key. Set only on the OK path and also
+        /// returned as the <c>ShowDialog&lt;string?&gt;</c> result; mirrors the WinForms
+        /// <c>ReturnString</c> property.
         /// </summary>
         public string ReturnString { get; private set; }
 
         /// <summary>
-        /// Parameterless constructor required by Avalonia's compiled-XAML runtime loader (keeps the
-        /// avares resource reachable / avoids AVLN3001). Also wires the on-screen keyboard and the
-        /// caret-navigation buttons. Production code constructs via <see cref="FormKeyboard(string)"/>.
+        /// Initializes the dialog with the text to edit. Parity with the WinForms
+        /// <c>FormKeyboard(string currentString)</c> constructor — there is intentionally no
+        /// parameterless constructor (consumers always supply the current string).
         /// </summary>
-        public FormKeyboard()
+        /// <param name="currentString">The text to pre-fill into the editable field.</param>
+        public FormKeyboard(string currentString)
         {
             InitializeComponent();
 
-            // [XPLAT] WinForms wired keyboard1.ButtonPressed += RegisterKeyboard1_ButtonPressed and the
-            // btnCharLeft/btnCharRight Click handlers in the designer; the named fields are created by
-            // the Avalonia source generator from FormKeyboard.axaml, so we attach the same handlers here.
-            keyboard1.ButtonPressed += RegisterKeyboard1_ButtonPressed;
+            // [XPLAT] WinForms `this.Text = "Enter a Value"` -> Avalonia Window.Title. The window uses
+            // SystemDecorations="None", so this title is invisible chrome, but it is carried across for
+            // parity and supplies the dialog's accessible name (invisible accessibility — no visual change).
+            Title = "Enter a Value";
+
+            // [XPLAT] WinForms ctor `keyboardString.Text = currentString.ToString()`. Avalonia's
+            // TextBox.Text is string?, so the (already-string) argument is assigned null-safely; the
+            // non-null case is identical to the WinForms behaviour.
+            keyboardString.Text = currentString ?? string.Empty;
+
+            // [XPLAT] WinForms designer `keyboard1.ButtonPressed += new KeyPressEventHandler(...)`. The
+            // cross-platform Keypad.GenericKeypad raises ButtonPressed with KeypadKeyPressedEventArgs
+            // (replacing KeyPressEventArgs); the character is still read via e.KeyChar.
+            keyboard1.ButtonPressed += Keyboard1_ButtonPressed;
             btnCharLeft.Click += BtnCharLeft_Click;
             btnCharRight.Click += BtnCharRight_Click;
+
+            // [XPLAT] WinForms FormKeyboard_Load French-culture height special-case (575 for "fr", else
+            // 500). Set here in the constructor — rather than in OnOpened — so the window opens at the
+            // correct size without a visible resize.
+            Height = (Thread.CurrentThread.CurrentCulture.Name == "fr") ? 575 : 500;
         }
 
         /// <summary>
-        /// [XPLAT] Mirrors the WinForms <c>FormKeyboard(string currentString)</c> constructor: seeds the
-        /// editable text box with the current value and retitles the dialog "Enter a Value".
+        /// [XPLAT] WinForms <c>FormKeyboard_Load</c> -> Avalonia <see cref="Window.OnOpened(EventArgs)"/>:
+        /// place the caret at the end of the pre-filled text and move focus to the on-screen keyboard.
+        /// (The French-height special-case from the original Load handler is applied in the constructor.)
         /// </summary>
-        /// <param name="currentString">The initial text to edit.</param>
-        public FormKeyboard(string currentString)
-            : this()
+        /// <param name="e">The event data passed to the base implementation.</param>
+        protected override void OnOpened(EventArgs e)
         {
-            Title = "Enter a Value";
-            keyboardString.Text = currentString ?? string.Empty;
-        }
+            base.OnOpened(e);
 
-        /// <summary>
-        /// [XPLAT] Ports <c>FormKeyboard_Load</c>: places the caret at the end of the seeded text, gives
-        /// the on-screen keyboard focus, and grows the window for the taller French (fr) accent layout.
-        /// </summary>
-        /// <param name="e">The routed-event payload.</param>
-        protected override void OnLoaded(RoutedEventArgs e)
-        {
-            base.OnLoaded(e);
-
-            keyboardString.CaretIndex = keyboardString.Text?.Length ?? 0;
+            // [XPLAT] WinForms `keyboardString.SelectionStart = keyboardString.Text.Length;
+            // keyboardString.SelectionLength = 0;` -> set CaretIndex to the end (the SelectionLength=0 is
+            // implicit because setting CaretIndex collapses any selection). Text is string? on Avalonia.
+            keyboardString.CaretIndex = (keyboardString.Text ?? string.Empty).Length;
             keyboard1.Focus();
-
-            // [XPLAT] The French AZERTY layout carries an extra accent row, so the original grew the
-            // window to 575 px for "fr" and used 500 px otherwise (the .axaml default).
-            Height = CultureInfo.CurrentCulture.Name == "fr" ? 575 : 500;
         }
 
         /// <summary>
-        /// [XPLAT] Ports <c>RegisterKeyboard1_ButtonPressed</c>: applies the pressed character to the
-        /// text box using caret-relative editing, or completes the dialog on the OK / Cancel tokens.
+        /// [XPLAT] Cross-platform replacement for the WinForms
+        /// <c>RegisterKeyboard1_ButtonPressed(object, KeyPressEventArgs)</c>. Reproduces the exact token
+        /// dispatch on <see cref="KeypadKeyPressedEventArgs.KeyChar"/>: backspace (<c>\u0008</c>), cancel
+        /// (<c>\u0027</c>), clear (<c>\u0005</c>), OK (<c>\u0004</c>), or otherwise insert the character at
+        /// the caret.
         /// </summary>
-        /// <param name="sender">The on-screen keyboard; unused.</param>
-        /// <param name="e">The pressed-key payload carrying <see cref="KeypadKeyPressedEventArgs.KeyChar"/>.</param>
-        private void RegisterKeyboard1_ButtonPressed(object sender, KeypadKeyPressedEventArgs e)
+        /// <param name="sender">The on-screen keyboard control raising the event (unused).</param>
+        /// <param name="e">The pressed-key data carrying the emitted character in <c>e.KeyChar</c>.</param>
+        private void Keyboard1_ButtonPressed(object sender, KeypadKeyPressedEventArgs e)
         {
-            string text = keyboardString.Text ?? string.Empty;
-
-            // A prior validation error left the literal "Error" in the box; clear it before editing.
-            if (text == gStr.gsError)
+            // Clear the error placeholder as the user enters new values (parity with WinForms).
+            if (keyboardString.Text == gStr.gsError)
             {
-                text = string.Empty;
-                keyboardString.Text = text;
+                keyboardString.Text = "";
             }
 
-            if (e.KeyChar == BackspaceKey)
+            // [XPLAT] Avalonia TextBox.Text is string?; capture a null-safe snapshot for the .Length/
+            // .Remove/.Insert math below. Nothing else mutates the text within this single handler call,
+            // so this snapshot matches the WinForms fresh reads exactly.
+            string text = keyboardString.Text ?? string.Empty;
+
+            // Backspace key — remove one char to the left of the caret.
+            if (e.KeyChar == '\u0008')
             {
                 if (text.Length > 0)
                 {
-                    int selectionIndex = keyboardString.CaretIndex;
-                    if (selectionIndex > 0)
+                    // [XPLAT] WinForms SelectionStart -> Avalonia CaretIndex.
+                    int caret = keyboardString.CaretIndex;
+
+                    if (caret > 0)
                     {
-                        // Remove the character to the LEFT of the caret and step the caret back one.
-                        keyboardString.Text = text.Remove(selectionIndex - 1, 1);
-                        SetCaret(selectionIndex - 1);
+                        keyboardString.Text = text.Remove(caret - 1, 1);
+                        keyboardString.CaretIndex = caret - 1;
                         keyboardString.Focus();
                     }
                     else
                     {
-                        // Caret already at the start: nothing to delete (parity quirk of the original,
-                        // which nudged the caret to position 1 without removing a character).
-                        SetCaret(1);
+                        // [XPLAT] Preserve the WinForms caret-at-0 quirk exactly: with text present but
+                        // the caret at index 0, the original code does NOT delete a character and instead
+                        // sets SelectionStart = 1. Reproduced as CaretIndex = 1 for interaction parity.
+                        keyboardString.CaretIndex = 1;
                     }
                 }
             }
-            else if (e.KeyChar == CancelKey)
+
+            // Exit or cancel.
+            else if (e.KeyChar == '\u0027')
             {
-                // WinForms: DialogResult.Cancel + Close().
-                Close(false);
+                // [XPLAT] WinForms `DialogResult = DialogResult.Cancel; Close();` -> Avalonia Close(null).
+                // A null result signals cancellation to the ShowDialog<string?> caller. The early return
+                // skips the trailing focus call below (the window is closing).
+                Close(null);
                 return;
             }
-            else if (e.KeyChar == ClearKey)
+
+            // Clear the whole display.
+            else if (e.KeyChar == '\u0005')
             {
-                keyboardString.Text = string.Empty;
+                keyboardString.Text = "";
             }
-            else if (e.KeyChar == OkKey)
+
+            // OK button — accept and return the value.
+            else if (e.KeyChar == '\u0004')
             {
-                // WinForms: ReturnString = text; DialogResult.OK + Close().
+                // [XPLAT] WinForms `ReturnString = keyboardString.Text; DialogResult = DialogResult.OK;
+                // Close();` -> set ReturnString then Close(ReturnString). The returned string is the
+                // ShowDialog<string?> result (non-null == accepted). The early return skips the trailing
+                // focus call below (the window is closing).
                 ReturnString = keyboardString.Text ?? string.Empty;
-                Close(true);
+                Close(ReturnString);
                 return;
             }
+
+            // Otherwise it is a character — insert it at the caret.
             else
             {
-                // Insert the typed character AT the caret and advance the caret past it.
                 string insertText = e.KeyChar.ToString();
-                int selectionIndex = keyboardString.CaretIndex;
-                if (selectionIndex < 0) selectionIndex = 0;
-                if (selectionIndex > text.Length) selectionIndex = text.Length;
-                keyboardString.Text = text.Insert(selectionIndex, insertText);
-                SetCaret(selectionIndex + insertText.Length);
+                int caret = keyboardString.CaretIndex;
+                keyboardString.Text = text.Insert(caret, insertText);
+                keyboardString.CaretIndex = caret + insertText.Length;
             }
 
+            // Show the cursor (parity with the WinForms trailing `SelectionLength = 0; Focus();`; the
+            // SelectionLength reset is implicit under the CaretIndex model).
             keyboardString.Focus();
         }
 
-        /// <summary>[XPLAT] Ports <c>btnCharLeft_Click</c>: move the caret one character left (clamped to 0).</summary>
-        /// <param name="sender">The left-arrow button; unused.</param>
-        /// <param name="e">The routed-event payload; unused.</param>
+        /// <summary>
+        /// [XPLAT] WinForms <c>btnCharLeft_Click</c>: move the text caret one position left, clamped at 0.
+        /// </summary>
+        /// <param name="sender">The left-arrow button raising the event (unused).</param>
+        /// <param name="e">The routed event data (unused).</param>
         private void BtnCharLeft_Click(object sender, RoutedEventArgs e)
         {
+            // [XPLAT] WinForms SelectionStart-- with clamp-to-0 -> CaretIndex.
             int spot = keyboardString.CaretIndex - 1;
-            if (spot < 0) spot = 0;
-            SetCaret(spot);
+            if (spot < 0)
+            {
+                spot = 0;
+            }
+            keyboardString.CaretIndex = spot;
             keyboardString.Focus();
         }
 
-        /// <summary>[XPLAT] Ports <c>btnCharRight_Click</c>: move the caret one character right (clamped to length).</summary>
-        /// <param name="sender">The right-arrow button; unused.</param>
-        /// <param name="e">The routed-event payload; unused.</param>
+        /// <summary>
+        /// [XPLAT] WinForms <c>btnCharRight_Click</c>: move the text caret one position right, clamped at
+        /// the end of the text.
+        /// </summary>
+        /// <param name="sender">The right-arrow button raising the event (unused).</param>
+        /// <param name="e">The routed event data (unused).</param>
         private void BtnCharRight_Click(object sender, RoutedEventArgs e)
         {
-            int length = keyboardString.Text?.Length ?? 0;
+            // [XPLAT] WinForms SelectionStart++ with clamp-to-Text.Length -> CaretIndex.
+            int len = (keyboardString.Text ?? string.Empty).Length;
             int spot = keyboardString.CaretIndex + 1;
-            if (spot > length) spot = length;
-            SetCaret(spot);
+            if (spot > len)
+            {
+                spot = len;
+            }
+            keyboardString.CaretIndex = spot;
             keyboardString.Focus();
-        }
-
-        // [XPLAT] Sets the caret to a clamped index. Avalonia's TextBox.CaretIndex replaces the WinForms
-        // SelectionStart/SelectionLength=0 pair (input arrives only via the on-screen keys, so there is
-        // never a live text selection to collapse).
-        private void SetCaret(int index)
-        {
-            int length = keyboardString.Text?.Length ?? 0;
-            if (index < 0) index = 0;
-            if (index > length) index = length;
-            keyboardString.CaretIndex = index;
         }
     }
 }

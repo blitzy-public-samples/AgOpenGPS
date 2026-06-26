@@ -1,0 +1,953 @@
+<!-- [XPLAT] migrated from net48/WinForms FormConfig (folds ConfigMenu/Vehicle/Tool/Data/Module/Help partials) — see TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Configuration dialog (Avalonia view).
+
+    1:1 PARITY reimplementation that FOLDS the 8 WinForms partial-class files of the legacy
+    Forms/Settings/FormConfig (FormConfig.cs + FormConfig.Designer.cs + ConfigMenu/ConfigVehicle/
+    ConfigTool/ConfigData/ConfigModule/ConfigHelp .Designer.cs) into ONE multi-section Avalonia
+    view per AAP §0.3.3. Every control name, position and size below is taken verbatim from
+    FormConfig.Designer.cs (ClientSize 995x715; the authoritative control inventory).
+
+    IMPERATIVE / code-behind-driven (NO x:DataType, NO DataContext, NO MVVM binding): the
+    companion FormConfigView.axaml.cs reproduces the WinForms designer / Enter-Leave load-save
+    lifecycle, the sidebar nav routing (ShowSubMenu / HideSubMenu), the GradientActive/Inactive
+    sidebar highlight, the metric FixMinMaxSpinners transform and the nud->FormNumeric keypad.
+    It addresses every control by the exact x:Name declared here — those names are a HARD
+    CONTRACT. No {Binding} is used (AvaloniaUseCompiledBindingsByDefault=true + no x:DataType);
+    only static values and theme {DynamicResource} brushes appear.
+
+    SHELL PARITY (FormConfig.Designer.cs): ClientSize 995x715 -> Width/Height; ControlBox=false +
+    FixedDialog (non-resizable) -> SystemDecorations="None" + CanResize="False"; StartPosition
+    CenterScreen -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS); not in
+    taskbar -> ShowInTaskbar="False". Background/foreground/accent follow the App.axaml day/night
+    theme (AogFrameBrush / AogTextBrush / AogAccentBrush).
+
+    LAYOUT: a left navigation sidebar (panelLeftSideMenu) + a central content TabControl (tab1)
+    whose header strip is hidden (WinForms tab1 had Appearance=FlatButtons, ItemSize=(0,1),
+    SizeMode=Fixed — invisible headers; navigation is driven entirely by the sidebar buttons) +
+    a bottom strip (panelBottom) carrying the global OK button and the live unit/width readouts.
+    Per-tab controls are laid out on a Canvas using the WinForms absolute coordinates for parity.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:cfg="using:AgOpenGPS.Views.Config"
+        x:Class="AgOpenGPS.Views.Settings.FormConfigView"
+        Title="Configuration"
+        Width="995" Height="715"
+        CanResize="False"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogFrameBrush}"
+        Foreground="{DynamicResource AogTextBrush}"
+        FontFamily="Tahoma"
+        FontSize="13">
+
+    <Window.Styles>
+        <!-- Hide the tab1 header strip: navigation is via the sidebar (WinForms ItemSize=(0,1)). -->
+        <Style Selector="TabControl#tab1 /template/ ItemsPresenter#PART_ItemsPresenter">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="TabControl#tab1">
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <!-- Labels follow the day/night theme text colour. -->
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AogTextBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.groupHeader">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{DynamicResource AogTextBrush}" />
+        </Style>
+        <!-- GroupBox -> bordered Border with a header TextBlock (HeaderedContentControl analogue). -->
+        <Style Selector="Border.groupbox">
+            <Setter Property="BorderBrush" Value="{DynamicResource AogAccentBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="Border.panel">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <!-- NudlessNumericUpDown -> bordered numeric-entry button (opens FormNumeric keypad). -->
+        <Style Selector="Button.numeric">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <!-- Flat image-only push buttons (FlatStyle.Flat, transparent). -->
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+        <Style Selector="RepeatButton.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+        <!-- Image-toggle CheckBoxes/RadioButtons (WinForms Appearance.Button): flat bordered tile,
+             Background turns MediumAquamarine when :checked (FlatAppearance.CheckedBackColor). -->
+        <Style Selector="CheckBox.imageToggle">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Black" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Stretch" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="CheckBox.imageToggle:checked">
+            <Setter Property="Background" Value="MediumAquamarine" />
+        </Style>
+        <Style Selector="RadioButton.imageToggle">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Black" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Stretch" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.imageToggle:checked">
+            <Setter Property="Background" Value="MediumAquamarine" />
+        </Style>
+        <!-- Sidebar navigation buttons (icon tiles; code-behind sets the active/inactive highlight). -->
+        <Style Selector="Button.navButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AogAccentBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.navSubButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Fixed 995 x 715 client; absolute positioning for 1:1 parity with FormConfig.Designer.cs. -->
+    <Canvas Width="995" Height="715">
+
+        <!-- ===================== LEFT NAVIGATION SIDEBAR (panelLeftSideMenu) =====================
+             8 primary category buttons; 4 collapsible sub-menu panels (IsVisible="False" initially,
+             toggled by the code-behind ShowSubMenu/HideSubMenu). WinForms used fixed-offset toggled
+             panels; per AAP this is the equivalent reflow StackPanel. -->
+        <Border x:Name="panelLeftSideMenu" Canvas.Left="4" Canvas.Top="4" Width="120" Height="707"
+                Background="{DynamicResource AogFrameBrush}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                <Button x:Name="btnVehicle" Classes="navButton" MinHeight="64" AutomationProperties.Name="Vehicle">
+                    <Image Source="avares://AgOpenGPS/btnImages/Config/Con_VehicleMenu.png" Stretch="Uniform" Height="40" />
+                </Button>
+                    <StackPanel x:Name="panelVehicleSubMenu" IsVisible="False">
+                    <Button x:Name="btnSubVehicleType" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Vehicle Type">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_VehicleConfig.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubDimensions" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Dimensions">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementHitch.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubAntenna" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Antenna">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementAntenna.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubGuidance" Classes="navSubButton" MinHeight="50" Content="Sub Guidance" AutomationProperties.Name="Sub Guidance" />
+                    </StackPanel>
+                <Button x:Name="btnTool" Classes="navButton" MinHeight="64" AutomationProperties.Name="Tool">
+                    <Image Source="avares://AgOpenGPS/btnImages/Config/Con_ImplementMenu.png" Stretch="Uniform" Height="40" />
+                </Button>
+                    <StackPanel x:Name="panelToolSubMenu" IsVisible="False">
+                    <Button x:Name="btnSubToolType" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Tool Type">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementConfig.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubHitch" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Hitch">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementHitch.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubToolOffset" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Tool Offset">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementOffset.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubPivot" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Pivot">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementPivot.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubSections" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Sections">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementSection.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubSwitches" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Switches">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementSwitch.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubToolSettings" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Tool Settings">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ImplementSettings.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    </StackPanel>
+                <Button x:Name="btnDataSources" Classes="navButton" MinHeight="64" AutomationProperties.Name="Data Sources">
+                    <Image Source="avares://AgOpenGPS/btnImages/Config/Con_SourcesMenu.png" Stretch="Uniform" Height="40" />
+                </Button>
+                    <StackPanel x:Name="panelDataSourcesSubMenu" IsVisible="False">
+                    <Button x:Name="btnSubHeading" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Heading">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_SourcesHeading.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnSubRoll" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Sub Roll">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_SourcesRoll.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    </StackPanel>
+                <Button x:Name="btnArduino" Classes="navButton" MinHeight="64" AutomationProperties.Name="Arduino">
+                    <Image Source="avares://AgOpenGPS/btnImages/Config/Con_ModulesMenu.png" Stretch="Uniform" Height="40" />
+                </Button>
+                    <StackPanel x:Name="panelArduinoSubMenu" IsVisible="False">
+                    <Button x:Name="btnMachineModule" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Machine Module">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_ModulesMachine.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    <Button x:Name="btnMachineRelay" Classes="navSubButton" MinHeight="50" AutomationProperties.Name="Machine Relay">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_Pins.png" Stretch="Uniform" Height="32" />
+                    </Button>
+                    </StackPanel>
+                <Button x:Name="btnUTurn" Classes="navButton" MinHeight="64" AutomationProperties.Name="U Turn">
+                    <Image Source="avares://AgOpenGPS/btnImages/Config/Con_UTurnMenu.png" Stretch="Uniform" Height="40" />
+                </Button>
+                <Button x:Name="btnTram" Classes="navButton" MinHeight="64" AutomationProperties.Name="Tram">
+                    <Image Source="avares://AgOpenGPS/btnImages/Config/Con_TramMenu.png" Stretch="Uniform" Height="40" />
+                </Button>
+                <Button x:Name="btnDisplay" Classes="navButton" MinHeight="64" AutomationProperties.Name="Display">
+                    <Image Source="avares://AgOpenGPS/btnImages/Config/Con_Display.png" Stretch="Uniform" Height="40" />
+                </Button>
+                <Button x:Name="btnFeatureHides" Classes="navButton" MinHeight="64" AutomationProperties.Name="Feature Hides">
+                    <Image Source="avares://AgOpenGPS/btnImages/Config/Con_FeatureMenu.png" Stretch="Uniform" Height="40" />
+                </Button>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- ===================== CENTRAL CONTENT (tab1, hidden headers) =====================
+             All 20 TabItems declared with exact x:Name; code-behind selects by name (nav routing). -->
+        <TabControl x:Name="tab1" Canvas.Left="124" Canvas.Top="4" Width="867" Height="632" SelectedIndex="0">
+            <TabItem x:Name="tabSummary">
+                <Canvas Width="859" Height="584">
+                    <cfg:ConfigSummaryControl x:Name="configSummaryControl" Canvas.Left="0" Canvas.Top="0" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabVConfig">
+                <Canvas Width="859" Height="584">
+                    <cfg:ConfigVehicleControl x:Name="configVehicleControl" Canvas.Left="0" Canvas.Top="0" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabVDimensions">
+                <Canvas Width="859" Height="584">
+                    <Image x:Name="pictureBox1" Canvas.Left="4" Canvas.Top="22" Width="814" Height="545" Source="avares://AgOpenGPS/btnImages/RadiusWheelBase.png" Stretch="Uniform" />
+                    <Button x:Name="nudWheelbase" Canvas.Left="179" Canvas.Top="397" Width="152" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Wheelbase" />
+                    <Button x:Name="nudVehicleTrack" Canvas.Left="700" Canvas.Top="165" Width="133" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Vehicle Track" />
+                    <Button x:Name="nudTractorHitchLength" Canvas.Left="37" Canvas.Top="272" Width="152" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Tractor Hitch Length" />
+                    <TextBlock x:Name="labelWheelBase2" Canvas.Left="179" Canvas.Top="453" Width="152" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Wheelbase" />
+                    <TextBlock x:Name="labelTrack" Canvas.Left="700" Canvas.Top="221" Width="133" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Track" />
+                    <TextBlock x:Name="labelHitchLength" Canvas.Left="37" Canvas.Top="327" Width="152" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Hitch Length" />
+                    <TextBlock x:Name="label94" Canvas.Left="197" Canvas.Top="289" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <TextBlock x:Name="label95" Canvas.Left="236" Canvas.Top="375" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <TextBlock x:Name="label97" Canvas.Left="750" Canvas.Top="143" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <Image x:Name="HitchLengthBlindBox" Canvas.Left="21" Canvas.Top="36" Width="349" Height="230" Stretch="Uniform" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabVAntenna">
+                <Canvas Width="859" Height="584">
+                    <Image x:Name="pboxAntenna" Canvas.Left="22" Canvas.Top="106" Width="514" Height="446" Source="avares://AgOpenGPS/btnImages/AntennaTractor.png" Stretch="Uniform" />
+                    <Button x:Name="nudAntennaPivot" Canvas.Left="126" Canvas.Top="43" Width="144" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Antenna Pivot" />
+                    <Button x:Name="nudAntennaHeight" Canvas.Left="392" Canvas.Top="208" Width="144" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Antenna Height" />
+                    <Button x:Name="nudAntennaOffset" Canvas.Left="474" Canvas.Top="352" Width="144" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Antenna Offset" />
+                    <TextBlock x:Name="label98" Canvas.Left="276" Canvas.Top="62" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <TextBlock x:Name="label99" Canvas.Left="540" Canvas.Top="225" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <TextBlock x:Name="label100" Canvas.Left="620" Canvas.Top="371" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <TextBlock x:Name="labelDualPositionOnRight" Canvas.Left="370" Canvas.Top="565" Width="377" Height="16" FontSize="13" TextAlignment="Right" TextWrapping="Wrap" Text="** Dual Position Antenna on Right" />
+                    <TextBlock x:Name="labelRight" Canvas.Left="648" Canvas.Top="534" Width="73" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Right" />
+                    <TextBlock x:Name="labelLeft" Canvas.Left="370" Canvas.Top="534" Width="73" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Left" />
+                    <Border x:Name="labelAntOffset" Canvas.Left="342" Canvas.Top="417" Width="405" Height="114" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Antenna Offset" />
+                            <RadioButton x:Name="rbtnAntennaLeft" Canvas.Left="28" Canvas.Top="25" Width="73" Height="81" GroupName="labelAntOffset" Classes="imageToggle" AutomationProperties.Name="Antenna Left">
+                                <Image Source="avares://AgOpenGPS/btnImages/AntennaLeftOffset.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <RadioButton x:Name="rbtnAntennaRight" Canvas.Left="306" Canvas.Top="25" Width="73" Height="81" GroupName="labelAntOffset" Classes="imageToggle" AutomationProperties.Name="Antenna Right">
+                                <Image Source="avares://AgOpenGPS/btnImages/AntennaRightOffset.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <RadioButton x:Name="rbtnAntennaCenter" Canvas.Left="168" Canvas.Top="25" Width="73" Height="81" GroupName="labelAntOffset" Classes="imageToggle" AutomationProperties.Name="Antenna Center">
+                                <Image Source="avares://AgOpenGPS/btnImages/AntennaNoOffset.png" Stretch="Uniform" />
+                            </RadioButton>
+                        </Canvas>
+                    </Border>
+                    <TextBlock x:Name="labelCenter" Canvas.Left="510" Canvas.Top="534" Width="73" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Center" />
+                    <TextBlock x:Name="labelAntHeight" Canvas.Left="394" Canvas.Top="263" Width="142" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Antenna Height" />
+                    <TextBlock x:Name="labelPivotDistance" Canvas.Left="126" Canvas.Top="24" Width="144" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Pivot Distance" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabVGuidance">
+                <Canvas Width="859" Height="584">
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabTConfig">
+                <Canvas Width="859" Height="584">
+                    <Border x:Name="labelBoxAttachmentStyle" Canvas.Left="45" Canvas.Top="57" Width="727" Height="484" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Attachment Style" />
+                            <RadioButton x:Name="rbtnTrailing" Canvas.Left="394" Canvas.Top="290" Width="309" Height="152" GroupName="labelBoxAttachmentStyle" Classes="imageToggle" AutomationProperties.Name="Trailing">
+                                <Image Source="avares://AgOpenGPS/btnImages/ToolChkTrailing.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <RadioButton x:Name="rbtnFront" Canvas.Left="16" Canvas.Top="290" Width="309" Height="152" GroupName="labelBoxAttachmentStyle" Classes="imageToggle" AutomationProperties.Name="Front">
+                                <Image Source="avares://AgOpenGPS/btnImages/ToolChkFront.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <RadioButton x:Name="rbtnFixedRear" Canvas.Left="16" Canvas.Top="48" Width="309" Height="152" GroupName="labelBoxAttachmentStyle" Classes="imageToggle" AutomationProperties.Name="Fixed Rear">
+                                <Image Source="avares://AgOpenGPS/btnImages/ToolChkRear.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <RadioButton x:Name="rbtnTBT" Canvas.Left="394" Canvas.Top="48" Width="309" Height="152" GroupName="labelBoxAttachmentStyle" Classes="imageToggle" AutomationProperties.Name="T B T">
+                                <Image Source="avares://AgOpenGPS/btnImages/ToolChkTBT.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <Image x:Name="pboxConfigHarvester" Canvas.Left="206" Canvas.Top="123" Width="305" Height="206" Source="avares://AgOpenGPS/btnImages/vehiclePageHarvester.png" Stretch="Uniform" />
+                        </Canvas>
+                    </Border>
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabTHitch">
+                <Canvas Width="859" Height="584">
+                    <Image x:Name="picboxToolHitch" Canvas.Left="13" Canvas.Top="12" Width="838" Height="407" Source="avares://AgOpenGPS/btnImages/ToolHitchPageFront.png" Stretch="Uniform" />
+                    <Button x:Name="nudTankHitch" Canvas.Left="643" Canvas.Top="407" Width="124" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Tank Hitch" />
+                    <Button x:Name="nudDrawbarLength" Canvas.Left="401" Canvas.Top="407" Width="124" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Drawbar Length" />
+                    <Button x:Name="nudTrailingHitchLength" Canvas.Left="456" Canvas.Top="407" Width="124" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Trailing Hitch Length" />
+                    <TextBlock x:Name="labelTractorUnits" Canvas.Left="368" Canvas.Top="476" Width="57" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Units:" />
+                    <TextBlock x:Name="label112" Canvas.Left="381" Canvas.Top="495" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabToolOffset">
+                <Canvas Width="859" Height="584">
+                    <Button x:Name="nudOffset" Canvas.Left="233" Canvas.Top="109" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Offset" />
+                    <Button x:Name="nudOverlap" Canvas.Left="656" Canvas.Top="109" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Overlap" />
+                    <Border x:Name="labelToolOffset" Canvas.Left="28" Canvas.Top="201" Width="389" Height="290" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Tool Offset" />
+                            <TextBlock x:Name="labelToolLeft" Canvas.Left="17" Canvas.Top="256" Width="166" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Tool Left" />
+                            <RadioButton x:Name="rbtnToolRightPositive" Canvas.Left="205" Canvas.Top="35" Width="166" Height="218" GroupName="labelToolOffset" Classes="imageToggle" AutomationProperties.Name="Tool Right Positive">
+                                <Image Source="avares://AgOpenGPS/btnImages/Config/ToolOffsetPositiveRight.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <RadioButton x:Name="rbtnLeftNegative" Canvas.Left="17" Canvas.Top="35" Width="166" Height="218" GroupName="labelToolOffset" Classes="imageToggle" AutomationProperties.Name="Left Negative">
+                                <Image Source="avares://AgOpenGPS/btnImages/Config/ToolOffsetNegativeLeft.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <TextBlock x:Name="labelToolRight" Canvas.Left="205" Canvas.Top="256" Width="166" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Tool Right" />
+                        </Canvas>
+                    </Border>
+                    <Border x:Name="labelOverlapGap" Canvas.Left="442" Canvas.Top="201" Width="396" Height="290" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Overlap / Gap" />
+                            <RadioButton x:Name="rbtnToolGap" Canvas.Left="214" Canvas.Top="35" Width="166" Height="218" GroupName="labelOverlapGap" Classes="imageToggle" AutomationProperties.Name="Tool Gap">
+                                <Image Source="avares://AgOpenGPS/btnImages/Config/ToolGap.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <RadioButton x:Name="rbtnToolOverlap" Canvas.Left="23" Canvas.Top="35" Width="166" Height="218" GroupName="labelOverlapGap" Classes="imageToggle" AutomationProperties.Name="Tool Overlap">
+                                <Image Source="avares://AgOpenGPS/btnImages/Config/ToolOverlap.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <TextBlock x:Name="labelGap" Canvas.Left="214" Canvas.Top="256" Width="166" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Gap" />
+                            <TextBlock x:Name="labelOverlap2" Canvas.Left="23" Canvas.Top="256" Width="166" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Overlap" />
+                        </Canvas>
+                    </Border>
+                    <TextBlock x:Name="label175" Canvas.Left="350" Canvas.Top="124" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <TextBlock x:Name="label176" Canvas.Left="774" Canvas.Top="125" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <Button x:Name="btnZeroToolOffset" Canvas.Left="93" Canvas.Top="109" Width="114" Height="52" Classes="flatImage" AutomationProperties.Name="Zero Tool Offset">
+                        <Image Source="avares://AgOpenGPS/btnImages/SteerZero.png" Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="btnZeroOverlap" Canvas.Left="513" Canvas.Top="109" Width="114" Height="52" Classes="flatImage" AutomationProperties.Name="Zero Overlap">
+                        <Image Source="avares://AgOpenGPS/btnImages/SteerZero.png" Stretch="Uniform" />
+                    </Button>
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabToolPivot">
+                <Canvas Width="859" Height="584">
+                    <RadioButton x:Name="rbtnPivotAheadNeg" Canvas.Left="72" Canvas.Top="162" Width="201" Height="300" GroupName="tabToolPivot" Classes="imageToggle" AutomationProperties.Name="Pivot Ahead Neg">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ToolHitchPivotOffsetPos.png" Stretch="Uniform" />
+                    </RadioButton>
+                    <RadioButton x:Name="rbtnPivotBehindPos" Canvas.Left="577" Canvas.Top="162" Width="201" Height="300" GroupName="tabToolPivot" Classes="imageToggle" AutomationProperties.Name="Pivot Behind Pos">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ToolHitchPivotOffsetNeg.png" Stretch="Uniform" />
+                    </RadioButton>
+                    <Button x:Name="nudTrailingToolToPivotLength" Canvas.Left="320" Canvas.Top="337" Width="205" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Trailing Tool To Pivot Length" />
+                    <TextBlock x:Name="LabelCm" Canvas.Left="405" Canvas.Top="315" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <Button x:Name="btnPivotOffsetZero" Canvas.Left="368" Canvas.Top="410" Width="114" Height="52" Classes="flatImage" AutomationProperties.Name="Pivot Offset Zero">
+                        <Image Source="avares://AgOpenGPS/btnImages/SteerZero.png" Stretch="Uniform" />
+                    </Button>
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabTSections">
+                <Canvas Width="859" Height="584">
+                    <CheckBox x:Name="cboxIsUnique" Canvas.Left="28" Canvas.Top="464" Width="165" Height="110" Classes="imageToggle" AutomationProperties.Name="Is Unique">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConT_Symmetric.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <Image x:Name="pictureBox11" Canvas.Left="701" Canvas.Top="435" Width="116" Height="57" Source="avares://AgOpenGPS/btnImages/SectionOffBelow.png" Stretch="Uniform" />
+                    <CheckBox x:Name="cboxSectionBoundaryControl" Canvas.Left="245" Canvas.Top="464" Width="149" Height="107" Classes="imageToggle" AutomationProperties.Name="Section Boundary Control">
+                        <Image Source="avares://AgOpenGPS/btnImages/SectionOffBoundary.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <Button x:Name="nudNumberOfSections" Canvas.Left="486" Canvas.Top="355" Width="108" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Number Of Sections" />
+                    <Button x:Name="nudSection01" Canvas.Left="8" Canvas.Top="233" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 0 1" />
+                    <Button x:Name="nudSection02" Canvas.Left="113" Canvas.Top="233" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 0 2" />
+                    <Button x:Name="nudSection03" Canvas.Left="218" Canvas.Top="233" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 0 3" />
+                    <Button x:Name="nudSection04" Canvas.Left="323" Canvas.Top="233" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 0 4" />
+                    <Button x:Name="nudSection05" Canvas.Left="428" Canvas.Top="233" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 0 5" />
+                    <Button x:Name="nudSection06" Canvas.Left="533" Canvas.Top="233" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 0 6" />
+                    <Button x:Name="nudSection07" Canvas.Left="638" Canvas.Top="233" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 0 7" />
+                    <Button x:Name="nudSection08" Canvas.Left="743" Canvas.Top="233" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 0 8" />
+                    <Button x:Name="nudSection09" Canvas.Left="8" Canvas.Top="104" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 0 9" />
+                    <Button x:Name="nudSection10" Canvas.Left="113" Canvas.Top="104" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 1 0" />
+                    <Button x:Name="nudSection11" Canvas.Left="218" Canvas.Top="104" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 1 1" />
+                    <Button x:Name="nudSection12" Canvas.Left="323" Canvas.Top="104" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 1 2" />
+                    <Button x:Name="nudSection13" Canvas.Left="428" Canvas.Top="104" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 1 3" />
+                    <Button x:Name="nudSection14" Canvas.Left="533" Canvas.Top="104" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 1 4" />
+                    <Button x:Name="nudSection15" Canvas.Left="638" Canvas.Top="104" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 1 5" />
+                    <Button x:Name="nudSection16" Canvas.Left="743" Canvas.Top="104" Width="87" Height="36" Classes="numeric" FontSize="24" AutomationProperties.Name="Section 1 6" />
+                    <Button x:Name="nudMinCoverage" Canvas.Left="462" Canvas.Top="464" Width="132" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Min Coverage" />
+                    <Button x:Name="nudDefaultSectionWidth" Canvas.Left="218" Canvas.Top="355" Width="179" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Default Section Width" />
+                    <Button x:Name="nudCutoffSpeed" Canvas.Left="698" Canvas.Top="495" Width="127" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Cutoff Speed" />
+                    <TextBlock x:Name="label48" Canvas.Left="30" Canvas.Top="203" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="1" />
+                    <TextBlock x:Name="label47" Canvas.Left="450" Canvas.Top="203" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="5" />
+                    <TextBlock x:Name="label46" Canvas.Left="345" Canvas.Top="203" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="4" />
+                    <TextBlock x:Name="label45" Canvas.Left="660" Canvas.Top="203" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="7" />
+                    <TextBlock x:Name="label41" Canvas.Left="765" Canvas.Top="203" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="8" />
+                    <TextBlock x:Name="label37" Canvas.Left="33" Canvas.Top="73" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="9" />
+                    <TextBlock x:Name="label38" Canvas.Left="131" Canvas.Top="73" Width="38" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="10" />
+                    <TextBlock x:Name="label39" Canvas.Left="235" Canvas.Top="73" Width="38" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="11" />
+                    <TextBlock x:Name="label40" Canvas.Left="339" Canvas.Top="73" Width="38" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="12" />
+                    <TextBlock x:Name="label35" Canvas.Left="240" Canvas.Top="203" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="3" />
+                    <TextBlock x:Name="label34" Canvas.Left="135" Canvas.Top="203" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="2" />
+                    <TextBlock x:Name="label32" Canvas.Left="555" Canvas.Top="203" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="6" />
+                    <TextBlock x:Name="label30" Canvas.Left="443" Canvas.Top="73" Width="38" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="13" />
+                    <TextBlock x:Name="label19" Canvas.Left="550" Canvas.Top="73" Width="38" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="14" />
+                    <TextBlock x:Name="label4" Canvas.Left="654" Canvas.Top="73" Width="38" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="15" />
+                    <TextBlock x:Name="label1" Canvas.Left="758" Canvas.Top="73" Width="38" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="16" />
+                    <ComboBox x:Name="cboxNumberOfZones" Canvas.Left="27" Canvas.Top="355" Width="100" Height="50" FontSize="35" AutomationProperties.Name="Number Of Zones" />
+                    <TextBlock x:Name="labelNumOfSections" Canvas.Left="442" Canvas.Top="315" Width="195" Height="33" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Sections" />
+                    <TextBlock x:Name="labelZonesBox" Canvas.Left="30" Canvas.Top="319" Width="97" Height="29" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="Zones" />
+                    <TextBlock x:Name="labelCoverage" Canvas.Left="443" Canvas.Top="429" Width="174" Height="32" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="% Coverage" />
+                    <TextBlock x:Name="lblVehicleToolWidth" Canvas.Left="638" Canvas.Top="327" Width="172" Height="39" FontSize="32" TextAlignment="Center" TextWrapping="Wrap" Text="II" />
+                    <ComboBox x:Name="cboxNumSections" Canvas.Left="506" Canvas.Top="356" Width="74" Height="50" FontSize="35" AutomationProperties.Name="Num Sections" />
+                    <TextBlock x:Name="labelSectionWidth" Canvas.Left="217" Canvas.Top="325" Width="177" Height="25" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Section Width" />
+                    <TextBlock x:Name="lblInchCm2" Canvas.Left="655" Canvas.Top="370" Width="135" Height="25" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Inch" />
+                    <TextBlock x:Name="labelChoose" Canvas.Left="22" Canvas.Top="436" Width="177" Height="25" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Choose" />
+                    <TextBlock x:Name="lblTurnOffBelowUnits" Canvas.Left="740" Canvas.Top="548" Width="57" Height="23" FontSize="19" TextWrapping="Wrap" Text="Km/H" />
+                    <TextBlock x:Name="labelBoundary" Canvas.Left="240" Canvas.Top="429" Width="168" Height="32" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Boundary" />
+                    <TextBlock x:Name="label178" Canvas.Left="290" Canvas.Top="410" Width="32" Height="19" FontSize="16" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <Border x:Name="panelSymmetricSections" Canvas.Left="6" Canvas.Top="20" Width="842" Height="274" Classes="panel">
+                        <Canvas>
+                            <TextBlock x:Name="label6" Canvas.Left="273" Canvas.Top="79" Width="31" Height="23" FontSize="19" TextWrapping="Wrap" Text="-&gt;" />
+                            <TextBlock x:Name="label7" Canvas.Left="496" Canvas.Top="78" Width="31" Height="23" FontSize="19" TextWrapping="Wrap" Text="-&gt;" />
+                            <TextBlock x:Name="label104" Canvas.Left="52" Canvas.Top="78" Width="31" Height="23" FontSize="19" TextWrapping="Wrap" Text="-&gt;" />
+                            <TextBlock x:Name="label116" Canvas.Left="722" Canvas.Top="78" Width="31" Height="23" FontSize="19" TextWrapping="Wrap" Text="-&gt;" />
+                            <TextBlock x:Name="label117" Canvas.Left="52" Canvas.Top="197" Width="31" Height="23" FontSize="19" TextWrapping="Wrap" Text="-&gt;" />
+                            <TextBlock x:Name="label152" Canvas.Left="272" Canvas.Top="196" Width="31" Height="23" FontSize="19" TextWrapping="Wrap" Text="-&gt;" />
+                            <TextBlock x:Name="labelZone4" Canvas.Left="677" Canvas.Top="33" Width="162" Height="29" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="Zone 4" />
+                            <TextBlock x:Name="labelZone5" Canvas.Left="15" Canvas.Top="152" Width="153" Height="29" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="Zone 5" />
+                            <TextBlock x:Name="labelZone3" Canvas.Left="456" Canvas.Top="34" Width="158" Height="29" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="Zone 3" />
+                            <TextBlock x:Name="labelZone6" Canvas.Left="234" Canvas.Top="153" Width="155" Height="29" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="Zone 6" />
+                            <TextBlock x:Name="labelZone2" Canvas.Left="234" Canvas.Top="35" Width="155" Height="29" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="Zone 2" />
+                            <TextBlock x:Name="labelZone1" Canvas.Left="7" Canvas.Top="34" Width="161" Height="29" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="Zone 1" />
+                            <TextBlock x:Name="lblZoneStart1" Canvas.Left="1" Canvas.Top="70" Width="55" Height="42" FontSize="29" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="1 -&gt;" />
+                            <TextBlock x:Name="lblZoneStart2" Canvas.Left="221" Canvas.Top="71" Width="55" Height="42" FontSize="29" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="99 -&gt;" />
+                            <TextBlock x:Name="lblZoneStart3" Canvas.Left="445" Canvas.Top="70" Width="55" Height="42" FontSize="29" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="99 -&gt;" />
+                            <TextBlock x:Name="lblZoneStart4" Canvas.Left="671" Canvas.Top="70" Width="55" Height="42" FontSize="29" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="99 -&gt;" />
+                            <TextBlock x:Name="lblZoneStart5" Canvas.Left="1" Canvas.Top="189" Width="55" Height="42" FontSize="29" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="99 -&gt;" />
+                            <TextBlock x:Name="lblZoneStart6" Canvas.Left="221" Canvas.Top="188" Width="55" Height="42" FontSize="29" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="99" />
+                            <Button x:Name="nudZone2To" Canvas.Left="302" Canvas.Top="70" Width="87" Height="43" Classes="numeric" FontSize="29" AutomationProperties.Name="Zone 2 To" />
+                            <Button x:Name="nudZone3To" Canvas.Left="526" Canvas.Top="70" Width="87" Height="43" Classes="numeric" FontSize="29" AutomationProperties.Name="Zone 3 To" />
+                            <Button x:Name="nudZone5To" Canvas.Left="81" Canvas.Top="187" Width="87" Height="43" Classes="numeric" FontSize="29" AutomationProperties.Name="Zone 5 To" />
+                            <Button x:Name="nudZone1To" Canvas.Left="81" Canvas.Top="69" Width="87" Height="43" Classes="numeric" FontSize="29" AutomationProperties.Name="Zone 1 To" />
+                            <Button x:Name="nudZone4To" Canvas.Left="751" Canvas.Top="68" Width="87" Height="43" Classes="numeric" FontSize="29" AutomationProperties.Name="Zone 4 To" />
+                            <Button x:Name="nudZone6To" Canvas.Left="302" Canvas.Top="188" Width="87" Height="43" Classes="numeric" FontSize="29" AutomationProperties.Name="Zone 6 To" />
+                            <TextBlock x:Name="label155" Canvas.Left="496" Canvas.Top="197" Width="31" Height="23" FontSize="19" TextWrapping="Wrap" Text="-&gt;" />
+                            <TextBlock x:Name="labelZone7" Canvas.Left="456" Canvas.Top="154" Width="158" Height="29" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="Zone 7" />
+                            <TextBlock x:Name="lblZoneStart7" Canvas.Left="445" Canvas.Top="189" Width="55" Height="42" FontSize="29" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="99 -&gt;" />
+                            <Button x:Name="nudZone7To" Canvas.Left="526" Canvas.Top="189" Width="87" Height="43" Classes="numeric" FontSize="29" AutomationProperties.Name="Zone 7 To" />
+                            <TextBlock x:Name="label158" Canvas.Left="721" Canvas.Top="194" Width="31" Height="23" FontSize="19" TextWrapping="Wrap" Text="-&gt;" />
+                            <TextBlock x:Name="labelZone8" Canvas.Left="682" Canvas.Top="151" Width="156" Height="29" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="Zone 8" />
+                            <TextBlock x:Name="lblZoneStart8" Canvas.Left="670" Canvas.Top="186" Width="55" Height="42" FontSize="29" FontWeight="Bold" TextAlignment="Right" TextWrapping="Wrap" Text="99 -&gt;" />
+                            <Button x:Name="nudZone8To" Canvas.Left="751" Canvas.Top="186" Width="87" Height="43" Classes="numeric" FontSize="29" AutomationProperties.Name="Zone 8 To" />
+                        </Canvas>
+                    </Border>
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabTSwitches">
+                <Canvas Width="859" Height="584">
+                    <Border x:Name="labelGroupWorkSwitch" Canvas.Left="70" Canvas.Top="64" Width="323" Height="462" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Work Switch" />
+                            <CheckBox x:Name="chkWorkSwActiveLow" Canvas.Left="38" Canvas.Top="373" Width="238" Height="71" Classes="imageToggle" AutomationProperties.Name="Work Sw Active Low">
+                                <Image Source="avares://AgOpenGPS/btnImages/SwitchActiveClosed.png" Stretch="Uniform" />
+                            </CheckBox>
+                            <CheckBox x:Name="chkSetManualSections" Canvas.Left="38" Canvas.Top="172" Width="238" Height="71" Classes="imageToggle" AutomationProperties.Name="Set Manual Sections">
+                                <Image Source="avares://AgOpenGPS/btnImages/ManualOff.png" Stretch="Uniform" />
+                            </CheckBox>
+                            <CheckBox x:Name="chkSetAutoSections" Canvas.Left="38" Canvas.Top="272" Width="238" Height="71" Classes="imageToggle" AutomationProperties.Name="Set Auto Sections">
+                                <Image Source="avares://AgOpenGPS/btnImages/SectionMasterOff.png" Stretch="Uniform" />
+                            </CheckBox>
+                            <CheckBox x:Name="chkSelectWorkSwitch" Canvas.Left="38" Canvas.Top="56" Width="238" Height="70" Classes="imageToggle" AutomationProperties.Name="Select Work Switch">
+                                <Image Source="avares://AgOpenGPS/btnImages/HydraulicLiftOff.png" Stretch="Uniform" />
+                            </CheckBox>
+                        </Canvas>
+                    </Border>
+                    <Border x:Name="labelGroupSteerSwitch" Canvas.Left="466" Canvas.Top="64" Width="323" Height="370" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Steer Switch" />
+                            <CheckBox x:Name="chkSetManualSectionsSteer" Canvas.Left="44" Canvas.Top="172" Width="238" Height="71" Classes="imageToggle" AutomationProperties.Name="Set Manual Sections Steer">
+                                <Image Source="avares://AgOpenGPS/btnImages/ManualOff.png" Stretch="Uniform" />
+                            </CheckBox>
+                            <CheckBox x:Name="chkSelectSteerSwitch" Canvas.Left="44" Canvas.Top="56" Width="238" Height="70" Classes="imageToggle" AutomationProperties.Name="Select Steer Switch">
+                                <Image Source="avares://AgOpenGPS/btnImages/AutoSteerOff.png" Stretch="Uniform" />
+                            </CheckBox>
+                            <CheckBox x:Name="chkSetAutoSectionsSteer" Canvas.Left="44" Canvas.Top="272" Width="238" Height="71" Classes="imageToggle" AutomationProperties.Name="Set Auto Sections Steer">
+                                <Image Source="avares://AgOpenGPS/btnImages/SectionMasterOff.png" Stretch="Uniform" />
+                            </CheckBox>
+                        </Canvas>
+                    </Border>
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabTSettings">
+                <Canvas Width="859" Height="584">
+                    <Image x:Name="pictureBox3" Canvas.Left="0" Canvas.Top="108" Width="279" Height="353" Stretch="Uniform" />
+                    <Image x:Name="pictureBox4" Canvas.Left="287" Canvas.Top="108" Width="279" Height="353" Stretch="Uniform" />
+                    <Image x:Name="pictureBox18" Canvas.Left="574" Canvas.Top="108" Width="279" Height="353" Stretch="Uniform" />
+                    <Button x:Name="nudLookAhead" Canvas.Left="78" Canvas.Top="467" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Look Ahead" />
+                    <Button x:Name="nudTurnOffDelay" Canvas.Left="649" Canvas.Top="467" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Turn Off Delay" />
+                    <Button x:Name="nudLookAheadOff" Canvas.Left="363" Canvas.Top="467" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Look Ahead Off" />
+                    <TextBlock x:Name="labelDelayTime" Canvas.Left="582" Canvas.Top="528" Width="271" Height="39" FontSize="16" TextAlignment="Center" TextWrapping="Wrap" Text="Turn Off Delay (secs)" />
+                    <TextBlock x:Name="labelOffTime" Canvas.Left="287" Canvas.Top="528" Width="279" Height="39" FontSize="16" TextAlignment="Center" TextWrapping="Wrap" Text="Off (secs)" />
+                    <TextBlock x:Name="labelOnTime" Canvas.Left="0" Canvas.Top="528" Width="279" Height="39" FontSize="16" TextAlignment="Center" TextWrapping="Wrap" Text="On (secs)" />
+                    <TextBlock x:Name="labelLookAheadTiming" Canvas.Left="62" Canvas.Top="31" Width="707" Height="33" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Look Ahead Time Settings" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabDHeading">
+                <Canvas Width="859" Height="584">
+                    <CheckBox x:Name="cboxIsRTK" Canvas.Left="59" Canvas.Top="494" Width="103" Height="69" Classes="imageToggle" AutomationProperties.Name="Is R T K">
+                        <Image Source="avares://AgOpenGPS/btnImages/Con_SourcesRTKAlarm.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxIsRTK_KillAutoSteer" Canvas.Left="218" Canvas.Top="494" Width="103" Height="69" Classes="imageToggle" AutomationProperties.Name="Is R T K_ Kill Auto Steer">
+                        <Image Source="avares://AgOpenGPS/btnImages/AutoSteerOff.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <Button x:Name="nudFixJumpDistance" Canvas.Left="965" Canvas.Top="279" Width="144" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Fix Jump Distance" />
+                    <Border x:Name="headingGroupBox" Canvas.Left="63" Canvas.Top="-26" Width="515" Height="132" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Heading" />
+                            <RadioButton x:Name="rbtnHeadingFix" Canvas.Left="387" Canvas.Top="44" Width="117" Height="82" GroupName="headingGroupBox" Classes="imageToggle" AutomationProperties.Name="Heading Fix">
+                                <Image Source="avares://AgOpenGPS/btnImages/Con_SourcesGPSSingle.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <RadioButton x:Name="rbtnHeadingHDT" Canvas.Left="6" Canvas.Top="44" Width="117" Height="82" GroupName="headingGroupBox" Classes="imageToggle" AutomationProperties.Name="Heading H D T">
+                                <Image Source="avares://AgOpenGPS/btnImages/Con_SourcesGPSDual.png" Stretch="Uniform" />
+                            </RadioButton>
+                        </Canvas>
+                    </Border>
+                    <Border x:Name="labelGboxSingle" Canvas.Left="394" Canvas.Top="116" Width="446" Height="451" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Single Antenna Setting" />
+                            <TextBlock x:Name="labelGpsStep" Canvas.Left="63" Canvas.Top="29" Width="292" Height="23" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="Minimum GPS Step" />
+                            <TextBlock x:Name="labelFix2Fix" Canvas.Left="83" Canvas.Top="102" Width="237" Height="23" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="Fix To Fix Distance" />
+                            <CheckBox x:Name="cboxIsReverseOn" Canvas.Left="118" Canvas.Top="372" Width="226" Height="52" FontSize="21" Content="Reverse Detection" />
+                            <TextBlock x:Name="labelIMUFusion" Canvas.Left="203" Canvas.Top="203" Width="72" Height="25" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Fusion" />
+                            <TextBlock x:Name="lblFusion" Canvas.Left="349" Canvas.Top="240" Width="95" Height="39" FontSize="32" FontWeight="Bold" TextWrapping="Wrap" Text="30%" />
+                            <Slider x:Name="hsbarFusion" Canvas.Left="109" Canvas.Top="233" Width="235" Height="58" Orientation="Horizontal" Minimum="0" Maximum="100" AutomationProperties.Name="Fusion" />
+                            <TextBlock x:Name="lblGPS" Canvas.Left="319" Canvas.Top="203" Width="69" Height="23" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="&gt; GPS" />
+                            <TextBlock x:Name="lblIMU" Canvas.Left="59" Canvas.Top="203" Width="76" Height="23" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="IMU &lt;" />
+                            <TextBlock x:Name="lblFusionIMU" Canvas.Left="12" Canvas.Top="240" Width="95" Height="39" FontSize="32" FontWeight="Bold" TextWrapping="Wrap" Text="90%" />
+                            <TextBlock x:Name="labelDefault70" Canvas.Left="109" Canvas.Top="296" Width="235" Height="23" FontSize="16" TextAlignment="Center" TextWrapping="Wrap" Text="Default: 70%" />
+                            <CheckBox x:Name="cboxMinGPSStep" Canvas.Left="109" Canvas.Top="52" Width="190" Height="39" FontSize="21" Content="10 cm" />
+                            <TextBlock x:Name="lblHeadingDistance" Canvas.Left="192" Canvas.Top="132" Width="25" Height="25" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="1" />
+                        </Canvas>
+                    </Border>
+                    <Border x:Name="labelGboxDual" Canvas.Left="3" Canvas.Top="116" Width="385" Height="304" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Dual Antenna Setting" />
+                            <TextBlock x:Name="labelHeadingOffset" Canvas.Left="155" Canvas.Top="41" Width="230" Height="23" FontSize="16" TextAlignment="Center" TextWrapping="Wrap" Text="Heading Offset (Degree)" />
+                            <Button x:Name="nudDualHeadingOffset" Canvas.Left="197" Canvas.Top="67" Width="144" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Dual Heading Offset" />
+                            <Image x:Name="pictureBox13" Canvas.Left="19" Canvas.Top="52" Width="130" Height="109" Source="avares://AgOpenGPS/btnImages/Config/Con_SourcesHead.png" Stretch="Uniform" />
+                            <Button x:Name="nudDualReverseDistance" Canvas.Left="197" Canvas.Top="148" Width="144" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Dual Reverse Distance" />
+                            <TextBlock x:Name="labelReverseDistance" Canvas.Left="159" Canvas.Top="122" Width="226" Height="23" FontSize="16" TextAlignment="Center" TextWrapping="Wrap" Text="Reverse Distance (m)" />
+                            <CheckBox x:Name="cboxIsAutoSwitchDualFixOn" Canvas.Left="15" Canvas.Top="215" Width="326" Height="33" FontSize="19" Content="Auto Dual &lt;-&gt; Fix" />
+                            <Button x:Name="nudAutoSwitchDualFixSpeed" Canvas.Left="242" Canvas.Top="260" Width="97" Height="33" Classes="numeric" FontSize="21" AutomationProperties.Name="Auto Switch Dual Fix Speed" />
+                            <TextBlock x:Name="labelAutoSwitchDualFixSpeed" Canvas.Left="15" Canvas.Top="265" Width="121" Height="23" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="Switch speed" />
+                        </Canvas>
+                    </Border>
+                    <TextBlock x:Name="labelFixAlarm" Canvas.Left="47" Canvas.Top="465" Width="127" Height="28" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="RTK Fix Alarm" />
+                    <TextBlock x:Name="label113" Canvas.Left="961" Canvas.Top="226" Width="152" Height="47" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="Fix Jump Distance (cm) " />
+                    <TextBlock x:Name="label118" Canvas.Left="965" Canvas.Top="338" Width="144" Height="29" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="0 to Disable" />
+                    <TextBlock x:Name="labelFixAlarmStop" Canvas.Left="200" Canvas.Top="438" Width="142" Height="53" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="Alarm Stops Autosteer" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabDRoll">
+                <Canvas Width="859" Height="584">
+                    <CheckBox x:Name="cboxDataInvertRoll" Canvas.Left="593" Canvas.Top="201" Width="130" Height="95" Classes="imageToggle" AutomationProperties.Name="Data Invert Roll">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConDa_InvertRoll.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <Button x:Name="btnRemoveZeroOffset" Canvas.Left="86" Canvas.Top="46" Width="130" Height="95" Classes="flatImage" AutomationProperties.Name="Remove Zero Offset">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConDa_RemoveOffset.png" Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="btnZeroRoll" Canvas.Left="86" Canvas.Top="202" Width="130" Height="95" Classes="flatImage" AutomationProperties.Name="Zero Roll">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConDa_RollSetZero.png" Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="btnResetIMU" Canvas.Left="593" Canvas.Top="45" Width="130" Height="95" Classes="flatImage" AutomationProperties.Name="Reset I M U">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConDa_ResetIMU.png" Stretch="Uniform" />
+                    </Button>
+                    <Slider x:Name="hsbarRollFilter" Canvas.Left="55" Canvas.Top="454" Width="335" Height="43" Orientation="Horizontal" Minimum="0" Maximum="100" AutomationProperties.Name="Roll Filter" />
+                    <TextBlock x:Name="labelRollFilter" Canvas.Left="102" Canvas.Top="428" Width="237" Height="23" FontSize="19" TextAlignment="Center" TextWrapping="Wrap" Text="Roll Filter" />
+                    <TextBlock x:Name="lblRollFilterPercent" Canvas.Left="185" Canvas.Top="505" Width="95" Height="39" FontSize="32" FontWeight="Bold" TextWrapping="Wrap" Text="65%" />
+                    <TextBlock x:Name="labelMore" Canvas.Left="343" Canvas.Top="428" Width="137" Height="23" FontSize="19" TextAlignment="Left" TextWrapping="Wrap" Text="More" />
+                    <TextBlock x:Name="labelLess" Canvas.Left="3" Canvas.Top="428" Width="93" Height="23" FontSize="19" TextAlignment="Right" TextWrapping="Wrap" Text="Less" />
+                    <TextBlock x:Name="lblRollZeroOffset" Canvas.Left="229" Canvas.Top="230" Width="100" Height="33" FontSize="27" TextWrapping="Wrap" Text="label11" />
+                    <TextBlock x:Name="labelRemoveOffset" Canvas.Left="86" Canvas.Top="27" Width="130" Height="16" TextWrapping="Wrap" Text="Remove Offset" />
+                    <TextBlock x:Name="labelZeroRoll" Canvas.Left="86" Canvas.Top="183" Width="130" Height="16" TextWrapping="Wrap" Text="Zero Roll" />
+                    <TextBlock x:Name="labelInvertRoll" Canvas.Left="593" Canvas.Top="182" Width="130" Height="16" TextWrapping="Wrap" Text="Invert Roll" />
+                    <Image x:Name="pictureBox9" Canvas.Left="577" Canvas.Top="343" Width="154" Height="217" Source="avares://AgOpenGPS/btnImages/Config/ConD_RollHelper.png" Stretch="Uniform" />
+                    <RepeatButton x:Name="btnRollOffsetDown" Canvas.Left="342" Canvas.Top="215" Width="59" Height="69" Classes="flatImage" AutomationProperties.Name="Roll Offset Down">
+                        <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png" Stretch="Uniform" />
+                    </RepeatButton>
+                    <RepeatButton x:Name="btnRollOffsetUp" Canvas.Left="416" Canvas.Top="214" Width="59" Height="69" Classes="flatImage" AutomationProperties.Name="Roll Offset Up">
+                        <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png" Stretch="Uniform" />
+                    </RepeatButton>
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabAMachine">
+                <Canvas Width="859" Height="584">
+                    <Button x:Name="btnSendMachinePGN" Canvas.Left="704" Canvas.Top="494" Width="103" Height="62" Classes="flatImage" AutomationProperties.Name="Send Machine P G N">
+                        <Image Source="avares://AgOpenGPS/btnImages/ToolAcceptChange.png" Stretch="Uniform" />
+                    </Button>
+                    <CheckBox x:Name="cboxMachInvertRelays" Canvas.Left="116" Canvas.Top="462" Width="192" Height="98" Classes="imageToggle" AutomationProperties.Name="Mach Invert Relays">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConSt_InvertRelay.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <Image x:Name="pboxSendMachine" Canvas.Left="712" Canvas.Top="412" Width="88" Height="79" Stretch="Uniform" />
+                    <Button x:Name="nudUser1" Canvas.Left="659" Canvas.Top="75" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="User 1" />
+                    <Button x:Name="nudUser2" Canvas.Left="659" Canvas.Top="164" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="User 2" />
+                    <Button x:Name="nudUser3" Canvas.Left="659" Canvas.Top="253" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="User 3" />
+                    <Button x:Name="nudUser4" Canvas.Left="659" Canvas.Top="342" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="User 4" />
+                    <TextBlock x:Name="labelMachineMod" Canvas.Left="3" Canvas.Top="3" Width="853" Height="25" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Machine Module" />
+                    <TextBlock x:Name="labelSendSaveHydraulicLift" Canvas.Left="519" Canvas.Top="507" Width="172" Height="37" FontSize="21" TextAlignment="Right" TextWrapping="Wrap" Text="Send + Save" />
+                    <TextBlock x:Name="labelHydLiftInvert" Canvas.Left="116" Canvas.Top="443" Width="192" Height="16" TextWrapping="Wrap" Text="Invert Relays" />
+                    <Border x:Name="labelGroupHyd" Canvas.Left="30" Canvas.Top="41" Width="548" Height="394" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Hydraulic Lift Config" />
+                            <Button x:Name="nudRaiseTime" Canvas.Left="226" Canvas.Top="75" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Raise Time" />
+                            <Image x:Name="pictureBox7" Canvas.Left="352" Canvas.Top="26" Width="177" Height="154" Source="avares://AgOpenGPS/btnImages/Config/ConMa_LiftRaiseTime.png" Stretch="Uniform" />
+                            <Button x:Name="nudLowerTime" Canvas.Left="226" Canvas.Top="279" Width="114" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Lower Time" />
+                            <Image x:Name="pictureBox6" Canvas.Left="352" Canvas.Top="226" Width="177" Height="154" Source="avares://AgOpenGPS/btnImages/Config/ConMa_LiftLowerTime.png" Stretch="Uniform" />
+                            <CheckBox x:Name="cboxIsHydOn" Canvas.Left="34" Canvas.Top="74" Width="123" Height="74" Classes="imageToggle" AutomationProperties.Name="Is Hyd On">
+                                <Image Source="avares://AgOpenGPS/btnImages/SwitchOn.png" Stretch="Uniform" />
+                            </CheckBox>
+                            <TextBlock x:Name="labelLowTime" Canvas.Left="223" Canvas.Top="260" Width="123" Height="16" FontSize="13" TextWrapping="Wrap" Text="Lower Time (secs)" />
+                            <TextBlock x:Name="labelEnable" Canvas.Left="31" Canvas.Top="52" Width="126" Height="16" FontSize="13" TextWrapping="Wrap" Text="Enable" />
+                            <TextBlock x:Name="labelRaiseTime" Canvas.Left="223" Canvas.Top="55" Width="123" Height="16" FontSize="13" TextWrapping="Wrap" Text="Raise Time (secs)" />
+                            <TextBlock x:Name="labelHydLiftSec" Canvas.Left="30" Canvas.Top="200" Width="151" Height="73" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Hydraulic Lift Look Ahead (secs)" />
+                            <Button x:Name="nudHydLiftLookAhead" Canvas.Left="34" Canvas.Top="278" Width="148" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Hyd Lift Look Ahead" />
+                            <TextBlock x:Name="labelPlantPop" Canvas.Left="226" Canvas.Top="133" Width="110" Height="16" FontSize="13" TextAlignment="Right" TextWrapping="Wrap" Text="Plant Pop" />
+                        </Canvas>
+                    </Border>
+                    <TextBlock x:Name="labelUser1" Canvas.Left="662" Canvas.Top="56" Width="111" Height="16" FontSize="13" TextWrapping="Wrap" Text="User 1" />
+                    <TextBlock x:Name="labelUser2" Canvas.Left="662" Canvas.Top="147" Width="111" Height="16" FontSize="13" TextWrapping="Wrap" Text="User 2" />
+                    <TextBlock x:Name="labelUser3" Canvas.Left="662" Canvas.Top="234" Width="111" Height="16" FontSize="13" TextWrapping="Wrap" Text="User 3" />
+                    <TextBlock x:Name="labelUser4" Canvas.Left="662" Canvas.Top="326" Width="111" Height="16" FontSize="13" TextWrapping="Wrap" Text="User 4" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabRelay">
+                <Canvas Width="859" Height="584">
+                    <Button x:Name="btnSendRelayConfigPGN" Canvas.Left="616" Canvas.Top="507" Width="133" Height="62" Classes="flatImage" AutomationProperties.Name="Send Relay Config P G N">
+                        <Image Source="avares://AgOpenGPS/btnImages/ToolAcceptChange.png" Stretch="Uniform" />
+                    </Button>
+                    <Image x:Name="pboxSendRelay" Canvas.Left="751" Canvas.Top="494" Width="93" Height="85" Stretch="Uniform" />
+                    <Button x:Name="btnRelayResetConfigToNone" Canvas.Left="0" Canvas.Top="502" Width="133" Height="85" AutomationProperties.Name="Relay Reset Config To None" />
+                    <Button x:Name="btnRelaySetDefaultConfig" Canvas.Left="148" Canvas.Top="500" Width="133" Height="85" Classes="flatImage" AutomationProperties.Name="Relay Set Default Config">
+                        <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png" Stretch="Uniform" />
+                    </Button>
+                    <TextBlock x:Name="label123" Canvas.Left="22" Canvas.Top="-6" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 1" />
+                    <ComboBox x:Name="cboxPin0" Canvas.Left="10" Canvas.Top="26" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 0" />
+                    <TextBlock x:Name="labelSendandSave" Canvas.Left="460" Canvas.Top="507" Width="172" Height="62" FontSize="21" TextAlignment="Right" TextWrapping="Wrap" Text="Send +  Save" />
+                    <TextBlock x:Name="label124" Canvas.Left="541" Canvas.Top="85" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 9" />
+                    <TextBlock x:Name="label125" Canvas.Left="366" Canvas.Top="85" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 8" />
+                    <TextBlock x:Name="label126" Canvas.Left="193" Canvas.Top="85" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 7" />
+                    <TextBlock x:Name="label127" Canvas.Left="22" Canvas.Top="85" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 6" />
+                    <TextBlock x:Name="label128" Canvas.Left="713" Canvas.Top="-6" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 5" />
+                    <TextBlock x:Name="label129" Canvas.Left="541" Canvas.Top="-6" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 4" />
+                    <TextBlock x:Name="label130" Canvas.Left="366" Canvas.Top="-6" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 3" />
+                    <TextBlock x:Name="label131" Canvas.Left="193" Canvas.Top="-6" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 2" />
+                    <TextBlock x:Name="label132" Canvas.Left="713" Canvas.Top="85" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 10" />
+                    <TextBlock x:Name="label137" Canvas.Left="541" Canvas.Top="177" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 14" />
+                    <TextBlock x:Name="label136" Canvas.Left="366" Canvas.Top="177" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 13" />
+                    <TextBlock x:Name="label135" Canvas.Left="193" Canvas.Top="177" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 12" />
+                    <TextBlock x:Name="label134" Canvas.Left="22" Canvas.Top="177" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 11" />
+                    <TextBlock x:Name="label133" Canvas.Left="713" Canvas.Top="177" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 15" />
+                    <TextBlock x:Name="label142" Canvas.Left="541" Canvas.Top="269" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 19" />
+                    <TextBlock x:Name="label141" Canvas.Left="366" Canvas.Top="269" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 18" />
+                    <TextBlock x:Name="label140" Canvas.Left="193" Canvas.Top="269" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 17" />
+                    <TextBlock x:Name="label139" Canvas.Left="22" Canvas.Top="269" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 16" />
+                    <TextBlock x:Name="label138" Canvas.Left="713" Canvas.Top="269" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 20" />
+                    <ComboBox x:Name="cboxPin1" Canvas.Left="183" Canvas.Top="26" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1" />
+                    <ComboBox x:Name="cboxPin2" Canvas.Left="356" Canvas.Top="26" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 2" />
+                    <ComboBox x:Name="cboxPin3" Canvas.Left="529" Canvas.Top="26" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 3" />
+                    <ComboBox x:Name="cboxPin4" Canvas.Left="702" Canvas.Top="26" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 4" />
+                    <ComboBox x:Name="cboxPin5" Canvas.Left="10" Canvas.Top="118" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 5" />
+                    <ComboBox x:Name="cboxPin6" Canvas.Left="183" Canvas.Top="118" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 6" />
+                    <ComboBox x:Name="cboxPin7" Canvas.Left="356" Canvas.Top="118" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 7" />
+                    <ComboBox x:Name="cboxPin8" Canvas.Left="529" Canvas.Top="118" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 8" />
+                    <ComboBox x:Name="cboxPin9" Canvas.Left="702" Canvas.Top="118" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 9" />
+                    <ComboBox x:Name="cboxPin10" Canvas.Left="10" Canvas.Top="210" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 0" />
+                    <ComboBox x:Name="cboxPin11" Canvas.Left="183" Canvas.Top="210" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 1" />
+                    <ComboBox x:Name="cboxPin12" Canvas.Left="356" Canvas.Top="210" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 2" />
+                    <ComboBox x:Name="cboxPin13" Canvas.Left="529" Canvas.Top="210" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 3" />
+                    <ComboBox x:Name="cboxPin14" Canvas.Left="702" Canvas.Top="210" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 4" />
+                    <ComboBox x:Name="cboxPin15" Canvas.Left="10" Canvas.Top="302" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 5" />
+                    <ComboBox x:Name="cboxPin16" Canvas.Left="183" Canvas.Top="302" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 6" />
+                    <ComboBox x:Name="cboxPin17" Canvas.Left="356" Canvas.Top="302" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 7" />
+                    <ComboBox x:Name="cboxPin18" Canvas.Left="529" Canvas.Top="302" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 8" />
+                    <ComboBox x:Name="cboxPin19" Canvas.Left="702" Canvas.Top="302" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 1 9" />
+                    <TextBlock x:Name="label146" Canvas.Left="541" Canvas.Top="364" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 24" />
+                    <TextBlock x:Name="label145" Canvas.Left="366" Canvas.Top="364" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 23" />
+                    <TextBlock x:Name="label144" Canvas.Left="193" Canvas.Top="364" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 22" />
+                    <TextBlock x:Name="label143" Canvas.Left="22" Canvas.Top="364" Width="116" Height="29" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Pin 21" />
+                    <ComboBox x:Name="cboxPin20" Canvas.Left="10" Canvas.Top="394" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 2 0" />
+                    <ComboBox x:Name="cboxPin21" Canvas.Left="183" Canvas.Top="394" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 2 1" />
+                    <ComboBox x:Name="cboxPin22" Canvas.Left="356" Canvas.Top="394" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 2 2" />
+                    <ComboBox x:Name="cboxPin23" Canvas.Left="529" Canvas.Top="394" Width="139" Height="33" FontSize="21" AutomationProperties.Name="Pin 2 3" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabUTurn">
+                <Canvas Width="859" Height="584">
+                    <RepeatButton x:Name="btnDistanceDn" Canvas.Left="67" Canvas.Top="317" Width="59" Height="69" Classes="flatImage" AutomationProperties.Name="Distance Dn">
+                        <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png" Stretch="Uniform" />
+                    </RepeatButton>
+                    <RepeatButton x:Name="btnDistanceUp" Canvas.Left="160" Canvas.Top="317" Width="59" Height="69" Classes="flatImage" AutomationProperties.Name="Distance Up">
+                        <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png" Stretch="Uniform" />
+                    </RepeatButton>
+                    <TextBlock x:Name="lblWhenTrig" Canvas.Left="84" Canvas.Top="141" Width="116" Height="133" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" />
+                    <TextBlock x:Name="label58" Canvas.Left="602" Canvas.Top="308" Width="109" Height="119" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" />
+                    <TextBlock x:Name="label59" Canvas.Left="313" Canvas.Top="141" Width="109" Height="120" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" />
+                    <RepeatButton x:Name="btnTurnSmoothingDown" Canvas.Left="294" Canvas.Top="317" Width="59" Height="69" Classes="flatImage" AutomationProperties.Name="Turn Smoothing Down">
+                        <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png" Stretch="Uniform" />
+                    </RepeatButton>
+                    <RepeatButton x:Name="btnTurnSmoothingUp" Canvas.Left="387" Canvas.Top="317" Width="59" Height="69" Classes="flatImage" AutomationProperties.Name="Turn Smoothing Up">
+                        <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png" Stretch="Uniform" />
+                    </RepeatButton>
+                    <TextBlock x:Name="label64" Canvas.Left="602" Canvas.Top="27" Width="109" Height="107" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" />
+                    <Button x:Name="nudTurnDistanceFromBoundary" Canvas.Left="582" Canvas.Top="434" Width="160" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Turn Distance From Boundary" />
+                    <Button x:Name="nudYouTurnRadius" Canvas.Left="582" Canvas.Top="154" Width="160" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="You Turn Radius" />
+                    <TextBlock x:Name="lblDistance" Canvas.Left="96" Canvas.Top="274" Width="95" Height="45" FontSize="37" FontWeight="Bold" TextWrapping="Wrap" Text="XXX" />
+                    <TextBlock x:Name="lblSmoothing" Canvas.Left="323" Canvas.Top="274" Width="95" Height="45" FontSize="37" FontWeight="Bold" TextWrapping="Wrap" Text="XXX" />
+                    <TextBlock x:Name="lblFtMUTurn" Canvas.Left="645" Canvas.Top="489" Width="36" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="FF" />
+                    <TextBlock x:Name="lblFtMTurnRadius" Canvas.Left="645" Canvas.Top="209" Width="36" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="FF" />
+                    <TextBlock x:Name="labelUturnExtend" Canvas.Left="62" Canvas.Top="389" Width="175" Height="82" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="Set extension length to 2 or 3x Radius\r\n" />
+                    <TextBlock x:Name="labelUturnSmooth" Canvas.Left="298" Canvas.Top="389" Width="170" Height="77" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="Set Smoothing to 3 or 4x Radius" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabTram">
+                <Canvas Width="859" Height="584">
+                    <Image x:Name="pictureBox8" Canvas.Left="107" Canvas.Top="31" Width="179" Height="195" Source="avares://AgOpenGPS/btnImages/Config/ConT_TramSpacing.png" Stretch="Uniform" />
+                    <CheckBox x:Name="chkBoxOverrideTramControlPos" Canvas.Left="301" Canvas.Top="305" Width="282" Height="232" Classes="imageToggle" AutomationProperties.Name="Box Override Tram Control Pos">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConT_TramOverride.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxDisplayTramControl" Canvas.Left="594" Canvas.Top="31" Width="179" Height="195" Classes="imageToggle" AutomationProperties.Name="Display Tram Control">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConT_TramOverrideDisplay.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <Button x:Name="nudTramWidth" Canvas.Left="291" Canvas.Top="105" Width="157" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Tram Width" />
+                    <TextBlock x:Name="labelTramWidth" Canvas.Left="292" Canvas.Top="85" Width="156" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Tram Width" />
+                    <TextBlock x:Name="lblTramWidthUnits" Canvas.Left="452" Canvas.Top="120" Width="30" Height="19" FontSize="16" TextAlignment="Right" TextWrapping="Wrap" Text="cm" />
+                    <TextBlock x:Name="labelOverride" Canvas.Left="301" Canvas.Top="286" Width="282" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Overide" />
+                    <TextBlock x:Name="labelDisplay" Canvas.Left="594" Canvas.Top="13" Width="179" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Display?" />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabDisplay">
+                <Canvas Width="859" Height="584">
+                    <CheckBox x:Name="chkDisplayExtraGuides" Canvas.Left="425" Canvas.Top="278" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Display Extra Guides">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_ExtraGuides.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkDisplaySpeedo" Canvas.Left="231" Canvas.Top="39" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Display Speedo">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_Speedometer.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkDisplayGrid" Canvas.Left="231" Canvas.Top="282" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Display Grid">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_Grid.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkDisplayStartFullScreen" Canvas.Left="425" Canvas.Top="160" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Display Start Full Screen">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_FullScreenBegin.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkDisplayPolygons" Canvas.Left="37" Canvas.Top="39" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Display Polygons">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_Poligons.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkDisplayKeyboard" Canvas.Left="425" Canvas.Top="39" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Display Keyboard">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_KeyBoard.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkDisplayFloor" Canvas.Left="37" Canvas.Top="282" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Display Floor">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_FloorTexture.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkDisplayBrightness" Canvas.Left="37" Canvas.Top="160" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Display Brightness">
+                        <Image Source="avares://AgOpenGPS/btnImages/BrightnessUp.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkSvennArrow" Canvas.Left="231" Canvas.Top="160" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Svenn Arrow">
+                        <Image Source="avares://AgOpenGPS/btnImages/SvennArrow.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkDisplayLogElevation" Canvas.Left="612" Canvas.Top="160" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Display Log Elevation">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_LogElevation.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkDirectionMarkers" Canvas.Left="234" Canvas.Top="403" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Direction Markers">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_DirectionMarker.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkSectionLines" Canvas.Left="425" Canvas.Top="403" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Section Lines">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_SectionHighlights.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="chkLineSmooth" Canvas.Left="37" Canvas.Top="403" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="Line Smooth">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_LineSmooth.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <Button x:Name="nudNumGuideLines" Canvas.Left="531" Canvas.Top="285" Width="100" Height="52" Classes="numeric" FontSize="37" AutomationProperties.Name="Num Guide Lines" />
+                    <TextBlock x:Name="labelGridOnOff" Canvas.Left="231" Canvas.Top="354" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Grid" />
+                    <TextBlock x:Name="labelGuideLinesOnOff" Canvas.Left="398" Canvas.Top="350" Width="159" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Guidelines" />
+                    <TextBlock x:Name="labelSpeedoOnOff" Canvas.Left="231" Canvas.Top="112" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Speedo" />
+                    <TextBlock x:Name="labelFullscreenOnOff" Canvas.Left="395" Canvas.Top="232" Width="162" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Start Fullscreen" />
+                    <TextBlock x:Name="labelKeyboardOnOff" Canvas.Left="425" Canvas.Top="111" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Keyboard" />
+                    <TextBlock x:Name="labelPolyOnOff" Canvas.Left="37" Canvas.Top="111" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Polygons" />
+                    <TextBlock x:Name="labelFieldTextureOnOff" Canvas.Left="37" Canvas.Top="354" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Field Texture" />
+                    <TextBlock x:Name="labelBrightnessOnOff" Canvas.Left="37" Canvas.Top="232" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Brightness" />
+                    <TextBlock x:Name="labelSvenArrowOnOff" Canvas.Left="231" Canvas.Top="232" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Svenn Arrow" />
+                    <Border x:Name="unitsGroupBox" Canvas.Left="595" Canvas.Top="448" Width="250" Height="129" Classes="groupbox">
+                        <Canvas>
+                            <TextBlock Classes="groupHeader" Canvas.Left="8" Canvas.Top="1" Text="Units" />
+                            <RadioButton x:Name="rbtnDisplayMetric" Canvas.Left="8" Canvas.Top="37" Width="112" Height="64" GroupName="unitsGroupBox" Classes="imageToggle" AutomationProperties.Name="Display Metric">
+                                <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_Metric.png" Stretch="Uniform" />
+                            </RadioButton>
+                            <RadioButton x:Name="rbtnDisplayImperial" Canvas.Left="130" Canvas.Top="37" Width="112" Height="64" GroupName="unitsGroupBox" Classes="imageToggle" AutomationProperties.Name="Display Imperial">
+                                <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_Imperial.png" Stretch="Uniform" />
+                            </RadioButton>
+                        </Canvas>
+                    </Border>
+                    <TextBlock x:Name="labelElevationOnOff" Canvas.Left="612" Canvas.Top="232" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Elevation" />
+                    <TextBlock x:Name="labelDirectionMarkOnOff" Canvas.Left="207" Canvas.Top="475" Width="157" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Direction Markers" />
+                    <TextBlock x:Name="labelSectionLinesOnOff" Canvas.Left="398" Canvas.Top="475" Width="159" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Section Lines" />
+                    <TextBlock x:Name="labelLineSmoothOnOff" Canvas.Left="37" Canvas.Top="475" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Line Smooth" />
+                    <CheckBox x:Name="chkboxHeadlandDist" Canvas.Left="609" Canvas.Top="36" Width="100" Height="69" Classes="imageToggle" AutomationProperties.Name="box Headland Dist">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/HeadlandDistance.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <TextBlock x:Name="lblHeadlandDist" Canvas.Left="609" Canvas.Top="108" Width="100" Height="16" TextAlignment="Center" TextWrapping="Wrap" Text="Headland Dist." />
+                </Canvas>
+            </TabItem>
+            <TabItem x:Name="tabBtns">
+                <Canvas Width="859" Height="584">
+                    <CheckBox x:Name="cboxFeatureTram" Canvas.Left="33" Canvas.Top="59" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature Tram">
+                        <Image Source="avares://AgOpenGPS/btnImages/TramAll.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxFeatureHeadland" Canvas.Left="33" Canvas.Top="163" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature Headland">
+                        <Image Source="avares://AgOpenGPS/btnImages/HeadlandOn.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxFeatureBoundary" Canvas.Left="33" Canvas.Top="267" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature Boundary">
+                        <Image Source="avares://AgOpenGPS/btnImages/Boundary.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxFeatureRecPath" Canvas.Left="33" Canvas.Top="371" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature Rec Path">
+                        <Image Source="avares://AgOpenGPS/btnImages/RecPath.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxFeatureABSmooth" Canvas.Left="174" Canvas.Top="59" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature A B Smooth">
+                        <Image Source="avares://AgOpenGPS/btnImages/ABSmooth.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxFeatureHideContour" Canvas.Left="174" Canvas.Top="163" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature Hide Contour">
+                        <Image Source="avares://AgOpenGPS/btnImages/Trash.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxFeatureWebcam" Canvas.Left="174" Canvas.Top="267" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature Webcam">
+                        <Image Source="avares://AgOpenGPS/btnImages/Webcam.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxFeatureOffsetFix" Canvas.Left="174" Canvas.Top="371" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature Offset Fix">
+                        <Image Source="avares://AgOpenGPS/btnImages/YouTurnReverse.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxFeatureUTurn" Canvas.Left="368" Canvas.Top="59" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature U Turn">
+                        <Image Source="avares://AgOpenGPS/btnImages/Images/z_TurnManual.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxFeatureLateral" Canvas.Left="476" Canvas.Top="59" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature Lateral">
+                        <Image Source="avares://AgOpenGPS/btnImages/Images/z_LateralManual.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxSteerSound" Canvas.Left="719" Canvas.Top="59" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Steer Sound">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConF_SteerSound.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxTurnSound" Canvas.Left="719" Canvas.Top="174" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Turn Sound">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConF_TurnSound.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxHydLiftSound" Canvas.Left="719" Canvas.Top="289" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Hyd Lift Sound">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConF_HydLiftSound.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxAutoStartAgIO" Canvas.Left="219" Canvas.Top="495" Width="129" Height="77" Classes="imageToggle" AutomationProperties.Name="Auto Start Ag I O">
+                        <Image Source="avares://AgOpenGPS/btnImages/AgIO.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <Button x:Name="btnRightMenuOrder" Canvas.Left="415" Canvas.Top="344" Width="99" Height="95" Classes="flatImage" AutomationProperties.Name="Right Menu Order">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/Con_RightMenuEdit.png" Stretch="Uniform" />
+                    </Button>
+                    <CheckBox x:Name="cboxFeatureNudge" Canvas.Left="424" Canvas.Top="213" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Feature Nudge">
+                        <Image Source="avares://AgOpenGPS/btnImages/SnapToPivot.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxSectionsSound" Canvas.Left="719" Canvas.Top="404" Width="77" Height="77" Classes="imageToggle" AutomationProperties.Name="Sections Sound">
+                        <Image Source="avares://AgOpenGPS/btnImages/Config/ConF_SoundSections.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxAutoOffAgIO" Canvas.Left="372" Canvas.Top="495" Width="129" Height="77" Classes="imageToggle" AutomationProperties.Name="Auto Off Ag I O">
+                        <Image Source="avares://AgOpenGPS/btnImages/AgIO.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxShutdownWhenNoPower" Canvas.Left="38" Canvas.Top="495" Width="114" Height="77" Classes="imageToggle" AutomationProperties.Name="Shutdown When No Power">
+                        <Image Source="avares://AgOpenGPS/btnImages/ChargingNo.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <CheckBox x:Name="cboxHardwareMessages" Canvas.Left="561" Canvas.Top="495" Width="123" Height="77" Classes="imageToggle" AutomationProperties.Name="Hardware Messages">
+                        <Image Source="avares://AgOpenGPS/btnImages/HardwareMessage.png" Stretch="Uniform" />
+                    </CheckBox>
+                    <TextBlock x:Name="label93" Canvas.Left="515" Canvas.Top="377" Width="43" Height="29" FontSize="24" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="-&gt;" />
+                    <TextBlock x:Name="labelFieldMenu" Canvas.Left="6" Canvas.Top="2" Width="128" Height="25" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Field Menu" />
+                    <TextBlock x:Name="labelToolsMenu" Canvas.Left="144" Canvas.Top="2" Width="128" Height="25" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Tools Menu" />
+                    <TextBlock x:Name="labelScreenButtons" Canvas.Left="323" Canvas.Top="2" Width="284" Height="25" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Screen Buttons" />
+                    <TextBlock x:Name="labelHeadlandOnOff" Canvas.Left="10" Canvas.Top="144" Width="124" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Headland" />
+                    <TextBlock x:Name="labelTramlineOnOff" Canvas.Left="3" Canvas.Top="40" Width="131" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Tram Lines" />
+                    <TextBlock x:Name="labelBoundOnOff" Canvas.Left="6" Canvas.Top="248" Width="128" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Boundary" />
+                    <TextBlock x:Name="labelRecPathOnOff" Canvas.Left="9" Canvas.Top="352" Width="125" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Rec Path" />
+                    <TextBlock x:Name="labelABSmoothOnOff" Canvas.Left="140" Canvas.Top="40" Width="147" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="AB Smooth" />
+                    <TextBlock x:Name="labelContourOnOff" Canvas.Left="143" Canvas.Top="144" Width="144" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Hide Contour" />
+                    <TextBlock x:Name="labelCamOnOff" Canvas.Left="143" Canvas.Top="249" Width="144" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="WebCam" />
+                    <TextBlock x:Name="labelOffsetFixOnOff" Canvas.Left="143" Canvas.Top="352" Width="144" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Offset Fix" />
+                    <TextBlock x:Name="labelLateralOnOff" Canvas.Left="476" Canvas.Top="41" Width="77" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Lateral" />
+                    <TextBlock x:Name="labelUturnOnOff" Canvas.Left="367" Canvas.Top="40" Width="78" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="U-Turn" />
+                    <TextBlock x:Name="labelSounds" Canvas.Left="690" Canvas.Top="2" Width="128" Height="25" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Sound" />
+                    <TextBlock x:Name="labelUturnSoundOnOff" Canvas.Left="719" Canvas.Top="155" Width="77" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="You Turn" />
+                    <TextBlock x:Name="labelAutosteerSoundOnOff" Canvas.Left="716" Canvas.Top="40" Width="80" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Auto Steer" />
+                    <TextBlock x:Name="labelHydLiftSoundOnOff" Canvas.Left="719" Canvas.Top="270" Width="77" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Hyd Lift" />
+                    <TextBlock x:Name="labelStartAgIO" Canvas.Left="216" Canvas.Top="475" Width="132" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Auto Start AgIO?" />
+                    <TextBlock x:Name="labelRightMenu" Canvas.Left="368" Canvas.Top="316" Width="190" Height="25" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Right Menu" />
+                    <TextBlock x:Name="labelNudgeCtrlOnOff" Canvas.Left="372" Canvas.Top="185" Width="186" Height="25" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Nudge Controls" />
+                    <TextBlock x:Name="labelBottomMenu" Canvas.Left="363" Canvas.Top="159" Width="190" Height="25" FontSize="19" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Bottom Menu" />
+                    <TextBlock x:Name="labelSectionSoundOnOff" Canvas.Left="719" Canvas.Top="385" Width="77" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Sections" />
+                    <TextBlock x:Name="labelOffAgIO" Canvas.Left="372" Canvas.Top="475" Width="129" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Auto Off AgIO?" />
+                    <TextBlock x:Name="labelPowerLossOnOff" Canvas.Left="10" Canvas.Top="476" Width="174" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Power Loss Shutdown" />
+                    <TextBlock x:Name="labelHardwareMessage" Canvas.Left="530" Canvas.Top="475" Width="183" Height="16" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" Text="Hardware Messages" />
+                </Canvas>
+            </TabItem>
+        </TabControl>
+
+        <!-- ===================== BOTTOM STRIP (panelBottom) =====================
+             Global OK button + live unit/width/current-vehicle/current-tool readouts. -->
+        <Border x:Name="panelBottom" Canvas.Left="124" Canvas.Top="645" Width="867" Height="66"
+                Background="{DynamicResource AogFrameBrush}">
+            <Canvas>
+                <TextBlock x:Name="labelUnitsBottom" Canvas.Left="355" Canvas.Top="9" Width="85" Height="25" FontSize="15" TextAlignment="Right" TextWrapping="Wrap" Text="Units:" />
+                <TextBlock x:Name="labelCurrentTool" Canvas.Left="21" Canvas.Top="32" Width="138" Height="23" FontSize="19" TextAlignment="Left" TextWrapping="Wrap" Text="Current Tool" />
+                <TextBlock x:Name="labelCurrentVehicle" Canvas.Left="21" Canvas.Top="4" Width="138" Height="23" FontSize="19" TextAlignment="Left" TextWrapping="Wrap" Text="Current Vehicle" />
+                <TextBlock x:Name="lblSecTotalWidth" Canvas.Left="632" Canvas.Top="32" Width="32" Height="25" FontSize="21" FontWeight="Bold" TextWrapping="Wrap" Text="II" />
+                <TextBlock x:Name="lblInchesCm" Canvas.Left="455" Canvas.Top="37" Width="74" Height="25" FontSize="21" TextWrapping="Wrap" Text="Inches" />
+                <Button x:Name="btnOK" Canvas.Left="782" Canvas.Top="1" Width="80" Height="62" Classes="flatImage" AutomationProperties.Name="O K">
+                    <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+                </Button>
+                <TextBlock x:Name="labelToolWidthBottom" Canvas.Left="583" Canvas.Top="4" Width="128" Height="25" FontSize="15" TextAlignment="Right" TextWrapping="Wrap" Text="Tool Width:" />
+                <TextBlock x:Name="lblFeetMeters" Canvas.Left="455" Canvas.Top="9" Width="52" Height="25" FontSize="21" TextWrapping="Wrap" Text="Feet" />
+            </Canvas>
+        </Border>
+
+    </Canvas>
+</Window>

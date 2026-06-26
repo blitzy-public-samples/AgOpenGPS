@@ -1,4 +1,4 @@
-// [XPLAT] migrated from net48/WinForms Forms/FormPGN.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
+// [XPLAT] migrated from net48/WinForms FormPGN.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
@@ -7,45 +7,50 @@ namespace AgIO.Views
 {
     /// <summary>
     /// [XPLAT] Read-only "PGN Guide" reference dialog, reimplemented as an Avalonia
-    /// <see cref="Window"/> replacing the deleted WinForms <c>FormPGN : Form</c>. This is the
-    /// code-behind half of <c>FormPGN.axaml</c>; together they form a single view that is bound to a
-    /// <see cref="FormPGNViewModel"/> exposing the immutable PGN identifier/description reference
-    /// table and the frozen PGN wire-protocol summary (header 0x80 0x81 0x7F, additive CRC,
-    /// loopback ports 15555/17777 — see docs/pgn-protocol.md).
+    /// <see cref="Window"/> replacing the deleted WinForms <c>FormPGN : Form</c>
+    /// (<c>Forms/FormPGN.cs</c> + <c>FormPGN.designer.cs</c>). This is the code-behind half of
+    /// <c>FormPGN.axaml</c>; together they form a single view whose <see cref="StyledElement.DataContext"/>
+    /// is a <see cref="FormPGNViewModel"/> exposing the immutable PGN identifier/description reference
+    /// table and the frozen PGN wire-protocol summary (header <c>0x80 0x81 0x7F</c>, additive CRC,
+    /// loopback ports 15555/17777 — see <c>docs/pgn-protocol.md</c>).
     /// </summary>
     /// <remarks>
-    /// The WinForms original (<c>Forms/FormPGN.cs</c>) carried no behaviour beyond an OK button
-    /// (<c>btnSerialOK</c>) whose <c>btnSerialOK_Click</c> handler called <c>Close()</c>; this view
-    /// reproduces that exactly. The dialog owns no result and no mutable state — it is a passive
-    /// reference window — so the OK button simply closes it. This follows the same convention as the
-    /// sibling Avalonia views in this folder (<c>FormYes</c>, <c>FormTimedMessage</c>) and the
-    /// old-naming twin <c>FormPGNView</c>: a parameterless constructor for the XAML loader plus a
-    /// view-model overload that assigns <see cref="StyledElement.DataContext"/>.
+    /// The WinForms original carried no behaviour beyond an OK button (<c>btnSerialOK</c>) whose
+    /// <c>btnSerialOK_Click</c> handler called <c>Close()</c>; this view reproduces that exactly via
+    /// <see cref="OnOkClick"/>. The dialog is a passive reference window — it owns no mutable state and
+    /// no result — and is opened non-modally by callers as <c>new FormPGN().Show(ownerWindow)</c>,
+    /// mirroring the WinForms <c>new FormPGN().Show(this)</c> used by the AgIO UDP monitors. Because the
+    /// parameterless constructor is the only entry point, it both loads the XAML and assigns the
+    /// display-only view-model so the bound reference data renders without any caller having to supply it.
     /// </remarks>
     public partial class FormPGN : Window
     {
-        /// <summary>Parameterless constructor (required for the XAML loader / designer).</summary>
+        /// <summary>
+        /// Initializes a new instance of the <see cref="FormPGN"/> class, loading the XAML and binding
+        /// the read-only <see cref="FormPGNViewModel"/> that supplies the PGN reference data. This is the
+        /// sole constructor: callers open the guide with <c>new FormPGN().Show(ownerWindow)</c>.
+        /// </summary>
         public FormPGN()
         {
             InitializeComponent();
+            DataContext = new FormPGNViewModel();
         }
 
         /// <summary>
-        /// Creates the dialog bound to the supplied <paramref name="viewModel"/>.
+        /// Loads the compiled XAML for this window. Defined explicitly (rather than relying on a
+        /// generated method) to match the convention used by the sibling Avalonia views in this folder.
         /// </summary>
-        /// <param name="viewModel">The view-model supplying the read-only PGN reference data.</param>
-        public FormPGN(FormPGNViewModel viewModel)
-            : this()
-        {
-            DataContext = viewModel;
-        }
-
         private void InitializeComponent()
         {
             AvaloniaXamlLoader.Load(this);
         }
 
-        // [XPLAT] WinForms btnSerialOK_Click -> Close(); the guide carries no result.
+        /// <summary>
+        /// Handles the OK button's <c>Click</c> (wired in <c>FormPGN.axaml</c>) by closing the dialog,
+        /// reproducing the WinForms <c>btnSerialOK_Click</c> handler. The guide carries no result.
+        /// </summary>
+        /// <param name="sender">The OK button raising the event.</param>
+        /// <param name="e">The routed event data.</param>
         private void OnOkClick(object sender, RoutedEventArgs e)
         {
             Close();

@@ -1,20 +1,10 @@
-// [XPLAT] migrated from net48/WinForms Forms/UDP.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
-//
-// UDP-transport half of the ModSim simulator. Ported from the WinForms FormSim "UDP" partial:
-// the loopback socket plumbing, the outbound PGN/NMEA senders, and the inbound AgIO PGN decoder
-// (AutoSteer 254/252/251/200/201/202, Machine 239/229/238). The PGN byte layouts, additive
-// checksums, the 256-entry bit-reversal table and the module config defaults are reproduced exactly
-// so the bytes exchanged with AgIO are identical to the original program.
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
-using System.Diagnostics;
-using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Threading;
-using ModSim.Properties;
 
 namespace ModSim.Views
 {
@@ -26,21 +16,21 @@ namespace ModSim.Views
 
         public bool isUDPNetworkConnected;
 
-        // UDP Endpoints
+        //UDP Endpoints
         public IPEndPoint epAgIO = new IPEndPoint(IPAddress.Parse(
-                Settings.Default.etIP_SubnetOne.ToString(CultureInfo.InvariantCulture) + "." +
-                Settings.Default.etIP_SubnetTwo.ToString(CultureInfo.InvariantCulture) + "." +
-                Settings.Default.etIP_SubnetThree.ToString(CultureInfo.InvariantCulture) + ".255"), 9999);
+                Properties.Settings.Default.etIP_SubnetOne.ToString() + "." +
+                Properties.Settings.Default.etIP_SubnetTwo.ToString() + "." +
+                Properties.Settings.Default.etIP_SubnetThree.ToString() + ".255"), 9999);
 
         // Data stream
         private byte[] buffer = new byte[1024];
 
-        // used to send communication check pgn= C8 or 200
+        //used to send communication check pgn= C8 or 200
         private byte[] helloFromAgIO = { 0x80, 0x81, 0x7F, 200, 3, 56, 0, 0, 0x47 };
 
         public IPAddress ipCurrent;
 
-        // initialize udp network
+        //initialize udp network
         public void LoadUDPNetwork()
         {
             helloFromAgIO[5] = 56;
@@ -48,10 +38,12 @@ namespace ModSim.Views
             lblIP.Text = "";
             try //udp network
             {
+                string bob = Dns.GetHostName();
                 foreach (IPAddress IPA in Dns.GetHostAddresses(Dns.GetHostName()))
                 {
                     if (IPA.AddressFamily == AddressFamily.InterNetwork)
                     {
+                        string data = IPA.ToString();
                         lblIP.Text += IPA.ToString().Trim() + "\r\n";
                     }
                 }
@@ -64,13 +56,20 @@ namespace ModSim.Views
                     new AsyncCallback(ReceiveDataUDPAsync), null);
 
                 isUDPNetworkConnected = true;
+
+                //if (!isFound)
+                //{
+                //    MessageBox.Show("Network Address of Modules -> " + Properties.Settings.Default.setIP_localAOG+"[2 - 254] May not exist. \r\n"
+                //    + "Are you sure ethernet is connected?\r\n" + "Go to UDP Settings to fix.\r\n\r\n", "Network Connection Error",
+                //    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                //    //btnUDP.BackColor = Color.Red;
+                //    lblIP.Text = "Not Connected";
+                //}
             }
-            catch (Exception ex)
+            catch (Exception e)
             {
-                // [XPLAT] WinForms popped a MessageBox here; on a cross-platform host that hides the
-                // failure from a head-less/operator surface, so the error is surfaced on the always-
-                // visible lblIP readout and additionally written to the diagnostic trace.
-                Debug.WriteLine("ModSim UDP network error: " + ex.Message);
+                //WriteErrorLog("UDP Server" + e);
+                TimedMessageBox(3000, "Serious Network Connection Error", e.Message);   // [XPLAT] modal MessageBox -> non-modal timed popup
                 lblIP.Text = "Error";
             }
         }
@@ -92,6 +91,9 @@ namespace ModSim.Views
                 }
                 catch (Exception)
                 {
+                    //WriteErrorLog("Sending UDP Message" + e.ToString());
+                    //MessageBox.Show("Send Error: " + e.Message, "UDP Client", MessageBoxButtons.OK,
+                    //MessageBoxIcon.Error);
                 }
             }
         }
@@ -114,6 +116,7 @@ namespace ModSim.Views
             }
         }
 
+
         private void SendDataUDPAsync(IAsyncResult asyncResult)
         {
             try
@@ -122,6 +125,9 @@ namespace ModSim.Views
             }
             catch (Exception)
             {
+                //WriteErrorLog(" UDP Send Data" + e.ToString());
+                //MessageBox.Show("SendData Error: " + e.Message, "UDP Server", MessageBoxButtons.OK,
+                //MessageBoxIcon.Error);
             }
         }
 
@@ -143,61 +149,77 @@ namespace ModSim.Views
                 UDPSocket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref endPointUDP,
                     new AsyncCallback(ReceiveDataUDPAsync), null);
 
-                // [XPLAT] WinForms Control.BeginInvoke -> marshal onto the Avalonia UI thread.
-                Dispatcher.UIThread.Post(() => ReceiveFromUDP(localMsg));
+                Dispatcher.UIThread.Post(() => ReceiveFromUDP(localMsg));   // [XPLAT] BeginInvoke -> Dispatcher.UIThread.Post
+
             }
             catch (Exception)
             {
+                //WriteErrorLog("UDP Recv data " + e.ToString());
+                //MessageBox.Show("ReceiveData Error: " + e.Message, "UDP Server", MessageBoxButtons.OK,
+                //MessageBoxIcon.Error);
             }
         }
 
-        private static byte[] PGN_253 = { 128, 129, 126, 253, 8, 0, 0, 0, 0, 0, 0, 0, 0, 12 };
-        private int PGN_253_Size = PGN_253.Length - 1;
 
-        // Heart beat hello AgIO
-        private static byte[] helloFromAutoSteer = { 128, 129, 126, 126, 5, 0, 0, 0, 0, 0, 71 };
+        // [XPLAT] CS0414: these PGN-decode fields are retained byte-verbatim from net48 UDP.designer.cs for
+        // protocol-parity documentation; ModSim's sender never reads them. Suppress narrowly so the frozen
+        // receive-switch stays unchanged while keeping the Release build (TreatWarningsAsErrors) warning-clean.
+#pragma warning disable CS0414
 
-        // hello from AgIO
-        private static byte[] helloFromMachine = { 128, 129, 123, 123, 5, 0, 0, 0, 0, 0, 71 };
+        static byte[] PGN_253 = { 128, 129, 126, 253, 8, 0, 0, 0, 0, 0, 0, 0, 0, 12 };
+        int PGN_253_Size = PGN_253.Length - 1;
 
-        // hello from AgIO
-        private static byte[] helloFromIMU = { 128, 129, 121, 121, 5, 0, 0, 0, 0, 0, 71 };
+        //Heart beat hello AgIO
+        static byte[] helloFromAutoSteer = { 128, 129, 126, 126, 5, 0, 0, 0, 0, 0, 71 };
+        //short helloSteerPosition = 0;
 
-        // settings pgn (carried verbatim from the WinForms original for byte-for-byte parity)
-        private static byte[] PGN_237 = { 0x80, 0x81, 0x7f, 237, 8, 1, 2, 3, 4, 0, 0, 0, 0, 0xCC };
-        private int PGN_237_Size = PGN_237.Length - 1;
+        //hello from AgIO
+        static byte[] helloFromMachine = { 128, 129, 123, 123, 5, 0, 0, 0, 0, 0, 71 };
 
-        // Relays
-        private byte relay = 0, relayHi = 0, uTurn = 0;
-        private byte xte = 0;
+        //hello from AgIO
+        static byte[] helloFromIMU = { 128, 129, 121, 121, 5, 0, 0, 0, 0, 0, 71 };
 
-        // Switches
-        private int remoteSwitch = 1, workSwitch = 1, steerSwitch = 1, switchByte = 0;
+        //settings pgn
+        static byte[] PGN_237 = { 0x80, 0x81, 0x7f, 237, 8, 1, 2, 3, 4, 0, 0, 0, 0, 0xCC };
+        int PGN_237_Size = PGN_237.Length - 1;
 
-        // On Off
-        private byte guidanceStatus = 0;
-        private byte prevGuidanceStatus = 0;
-        private bool guidanceStatusChanged = false;
 
-        // speed sent as *10
-        private double gpsSpeed = 0, gpsSpeedMM = 0;
+        //Relays
+        //bool isRelayActiveHigh = true;
+        byte relay = 0, relayHi = 0, uTurn = 0;
+        byte xte = 0;
 
-        // steering variables
-        private double steerAngleActual = 0;
-        private double steerAngleSetPoint = 0; //the desired angle from AgOpen
+        //Switches
+        int remoteSwitch = 1, workSwitch = 1, steerSwitch = 1, switchByte = 0;
 
-        // Machine module
-        private int hydLift = 0;
-        private int tramline = 0;
+        //On Off
+        byte guidanceStatus = 0;
+        byte prevGuidanceStatus = 0;
+        bool guidanceStatusChanged = false;
 
-        private int relayLoM = 0;
-        private int relayHiM = 0;
+        //speed sent as *10
+        double gpsSpeed = 0, gpsSpeedMM = 0;
+
+        //steering variables
+        double steerAngleActual = 0;
+        double steerAngleSetPoint = 0; //the desired angle from AgOpen
+        //int steeringPosition = 0; //from steering sensor
+        //double steerAngleError = 0; //setpoint - actual
+
+        //Machine module
+        int hydLift = 0;
+        int tramline = 0;
+
+        int relayLoM = 0;
+        int relayHiM = 0;
+
+#pragma warning restore CS0414
 
         private void ReceiveFromUDP(byte[] data)
         {
             try
             {
-                // Hello and scan reply
+                //Hello and scan reply
                 if (data[0] == 0x80 && data[1] == 0x81 && data[2] == 0x7F)
                 {
                     switch (data[3])
@@ -211,8 +233,13 @@ namespace ModSim.Views
                                 guidanceStatus = data[7];
                                 guidanceStatusChanged = (guidanceStatus != prevGuidanceStatus);
 
-                                lblGuidanceStatus.Text = guidanceStatus.ToString(CultureInfo.InvariantCulture);
-                                lblSteerSwitchStatus.Text = steerSwitch.ToString(CultureInfo.InvariantCulture);
+                                lblGuidanceStatus.Text = guidanceStatus.ToString();
+                                lblSteerSwitchStatus.Text = steerSwitch.ToString();
+
+                                //if (steerConfig.SteerButton == 1)
+                                //{
+                                //    if (guidanceStatus == 1) steerSwitch = 0;
+                                //}
 
                                 int temp = (data[9] << 8);
                                 temp |= data[8];
@@ -269,12 +296,10 @@ namespace ModSim.Views
 
                                 SendUDPMessage(PGN_253);
 
-                                // [XPLAT] track the momentary steer-button "green" state with a flag
-                                // instead of comparing BackColor brushes (see MainSimView.axaml.cs).
-                                if (_steerButtonRemoteGreen)
+                                if (_steerButtonRemoteGreen)                       // [XPLAT] BackColor==Color.Green -> bool flag
                                 {
-                                    btnSteerButtonRemote.Background = Brushes.White;
                                     _steerButtonRemoteGreen = false;
+                                    btnSteerButtonRemote.Background = Brushes.White; // [XPLAT] BackColor -> Background (Avalonia)
                                 }
 
                                 break;
@@ -284,31 +309,31 @@ namespace ModSim.Views
                             {
                                 //PID values
                                 steerSettings.Kp = data[5];   // read Kp from AgOpenGPS
-                                lblKp.Text = steerSettings.Kp.ToString(CultureInfo.InvariantCulture);
+                                lblKp.Text = steerSettings.Kp.ToString();
 
                                 steerSettings.highPWM = data[6]; // read high pwm
-                                lblHighPWM.Text = steerSettings.highPWM.ToString(CultureInfo.InvariantCulture);
+                                lblHighPWM.Text = steerSettings.highPWM.ToString();
 
                                 steerSettings.lowPWM = data[7];   // read lowPWM from AgOpenGPS
 
                                 steerSettings.minPWM = data[8]; //read the minimum amount of PWM for instant on\
-                                lblMinPWM.Text = steerSettings.minPWM.ToString(CultureInfo.InvariantCulture);
+                                lblMinPWM.Text = steerSettings.minPWM.ToString();
 
                                 float temp = steerSettings.minPWM;
                                 temp *= 1.2f;
                                 steerSettings.lowPWM = (byte)temp;
-                                lblLowPWM.Text = steerSettings.lowPWM.ToString(CultureInfo.InvariantCulture);
+                                lblLowPWM.Text = steerSettings.lowPWM.ToString();
 
                                 steerSettings.steerSensorCounts = data[9]; //sent as setting displayed in AOG
-                                lblWAS_Counts.Text = steerSettings.steerSensorCounts.ToString(CultureInfo.InvariantCulture);
+                                lblWAS_Counts.Text = steerSettings.steerSensorCounts.ToString();
 
                                 steerSettings.wasOffset = (data[10]);  //read was zero offset Lo
 
                                 steerSettings.wasOffset |= (data[11] << 8);  //read was zero offset Hi
-                                lblWAS_Offset.Text = steerSettings.wasOffset.ToString(CultureInfo.InvariantCulture);
+                                lblWAS_Offset.Text = steerSettings.wasOffset.ToString();
 
                                 steerSettings.AckermanFix = (float)data[12] * 0.01;
-                                lblAckerman.Text = (steerSettings.AckermanFix * 100).ToString("N0", CultureInfo.InvariantCulture) + "%";
+                                lblAckerman.Text = (steerSettings.AckermanFix * 100).ToString("N0") + "%";
 
                                 break;
                             }
@@ -318,31 +343,31 @@ namespace ModSim.Views
                                 int sett = data[5]; //setting0
 
                                 if ((sett & (1 << 0)) != 0) steerConfig.InvertWAS = 1; else steerConfig.InvertWAS = 0;
-                                lblInvertWAS.Text = steerConfig.InvertWAS.ToString(CultureInfo.InvariantCulture);
+                                lblInvertWAS.Text = steerConfig.InvertWAS.ToString();
 
                                 if ((sett & (1 << 1)) != 0) steerConfig.IsRelayActiveHigh = 1; else steerConfig.IsRelayActiveHigh = 0;
-                                lblRelayActHigh.Text = steerConfig.IsRelayActiveHigh.ToString(CultureInfo.InvariantCulture);
+                                lblRelayActHigh.Text = steerConfig.IsRelayActiveHigh.ToString();
 
                                 if ((sett & (1 << 2)) != 0) steerConfig.MotorDriveDirection = 1; else steerConfig.MotorDriveDirection = 0;
-                                lblMotorDirection.Text = steerConfig.MotorDriveDirection.ToString(CultureInfo.InvariantCulture);
+                                lblMotorDirection.Text = steerConfig.MotorDriveDirection.ToString();
 
                                 if ((sett & (1 << 3)) != 0) steerConfig.SingleInputWAS = 1; else steerConfig.SingleInputWAS = 0;
-                                lblSingleInputWAS.Text = steerConfig.SingleInputWAS.ToString(CultureInfo.InvariantCulture);
+                                lblSingleInputWAS.Text = steerConfig.SingleInputWAS.ToString();
 
                                 if ((sett & (1 << 4)) != 0) steerConfig.CytronDriver = 1; else steerConfig.CytronDriver = 0;
-                                lblCytron.Text = steerConfig.CytronDriver.ToString(CultureInfo.InvariantCulture);
+                                lblCytron.Text = steerConfig.CytronDriver.ToString();
 
                                 if ((sett & (1 << 5)) != 0) steerConfig.SteerSwitch = 1; else steerConfig.SteerSwitch = 0;
-                                lblSteerSw.Text = steerConfig.SteerSwitch.ToString(CultureInfo.InvariantCulture);
+                                lblSteerSw.Text = steerConfig.SteerSwitch.ToString();
 
                                 if ((sett & (1 << 6)) != 0) steerConfig.SteerButton = 1; else steerConfig.SteerButton = 0;
-                                lblSteerBtn.Text = steerConfig.SteerButton.ToString(CultureInfo.InvariantCulture);
+                                lblSteerBtn.Text = steerConfig.SteerButton.ToString();
 
                                 if ((sett & (1 << 7)) != 0) steerConfig.ShaftEncoder = 1; else steerConfig.ShaftEncoder = 0;
-                                lblShaftEnc.Text = steerConfig.ShaftEncoder.ToString(CultureInfo.InvariantCulture);
+                                lblShaftEnc.Text = steerConfig.ShaftEncoder.ToString();
 
                                 steerConfig.PulseCountMax = data[6];
-                                lblPulseCounts.Text = steerConfig.PulseCountMax.ToString(CultureInfo.InvariantCulture);
+                                lblPulseCounts.Text = steerConfig.PulseCountMax.ToString();
 
                                 //was speed
                                 //data[7];
@@ -350,16 +375,16 @@ namespace ModSim.Views
                                 sett = data[8]; //setting1 - Danfoss valve etc
 
                                 if ((sett & (1 << 0)) != 0) steerConfig.IsDanfoss = 1; else steerConfig.IsDanfoss = 0;
-                                lblDanfoss.Text = steerConfig.IsDanfoss.ToString(CultureInfo.InvariantCulture);
+                                lblDanfoss.Text = steerConfig.IsDanfoss.ToString();
 
                                 if ((sett & (1 << 1)) != 0) steerConfig.PressureSensor = 1; else steerConfig.PressureSensor = 0;
-                                lblPressure.Text = steerConfig.PressureSensor.ToString(CultureInfo.InvariantCulture);
+                                lblPressure.Text = steerConfig.PressureSensor.ToString();
 
                                 if ((sett & (1 << 2)) != 0) steerConfig.CurrentSensor = 1; else steerConfig.CurrentSensor = 0;
-                                lblCurrent.Text = steerConfig.CurrentSensor.ToString(CultureInfo.InvariantCulture);
+                                lblCurrent.Text = steerConfig.CurrentSensor.ToString();
 
                                 if ((sett & (1 << 3)) != 0) steerConfig.IsUseY_Axis = 1; else steerConfig.IsUseY_Axis = 0;
-                                lblUseY_Axis.Text = steerConfig.IsUseY_Axis.ToString(CultureInfo.InvariantCulture);
+                                lblUseY_Axis.Text = steerConfig.IsUseY_Axis.ToString();
                                 break;
                             }
 
@@ -391,12 +416,19 @@ namespace ModSim.Views
                                 //make really sure this is the subnet pgn
                                 if (data[4] == 5 && data[5] == 201 && data[6] == 201)
                                 {
-                                    // [XPLAT] The original ran the label updates, the toast, the save,
-                                    // the modal Yes dialog and Application.Restart() synchronously inside
-                                    // the receive marshal. Avalonia's ShowDialog is awaitable, so the
-                                    // sequence is driven by an async helper that does not block the
-                                    // UI-thread post.
-                                    _ = HandleSubnetChangeAsync(data[7], data[8], data[9]);
+                                    lblIPSet1.Text = data[7].ToString();
+                                    lblIPSet2.Text = data[8].ToString();
+                                    lblIPSet3.Text = data[9].ToString();
+
+                                    TimedMessageBox(2000, "IP Set", "New Values Changed");
+
+                                    Properties.Settings.Default.etIP_SubnetOne = data[7];
+                                    Properties.Settings.Default.etIP_SubnetTwo = data[8];
+                                    Properties.Settings.Default.etIP_SubnetThree = data[9];
+                                    Properties.Settings.Default.Save();
+
+                                    _ = RestartForSubnetChangeAsync();          // [XPLAT] await YesMessageBox then cross-platform restart
+
                                 }
 
                                 break;
@@ -409,17 +441,18 @@ namespace ModSim.Views
                                 if (data[4] == 3 && data[5] == 202 && data[6] == 202)
                                 {
                                     byte[] scanReply = { 128, 129, 126, 203, 7,
-                                        Settings.Default.etIP_SubnetOne,
-                                        Settings.Default.etIP_SubnetTwo,
-                                        Settings.Default.etIP_SubnetThree, 126,
+                                        Properties.Settings.Default.etIP_SubnetOne,
+                                        Properties.Settings.Default.etIP_SubnetTwo,
+                                        Properties.Settings.Default.etIP_SubnetThree, 126,
 
                                         //source ips
 
-                                        Settings.Default.etIP_SubnetOne,
-                                        Settings.Default.etIP_SubnetTwo,
-                                        Settings.Default.etIP_SubnetThree, 23 };
+                                        Properties.Settings.Default.etIP_SubnetOne,
+                                        Properties.Settings.Default.etIP_SubnetTwo,
+                                        Properties.Settings.Default.etIP_SubnetThree, 23 };
 
                                     lblScanReply.Text = "Yes";
+
 
                                     //checksum
                                     int CK_A = 0;
@@ -458,6 +491,7 @@ namespace ModSim.Views
                                     scanReply[scanReply.Length - 1] = unchecked((byte)((int)(CK_A)));
 
                                     SendUDPMessage(scanReply);
+
                                 }
                                 break;
                             }
@@ -467,17 +501,17 @@ namespace ModSim.Views
                         case 239:  //machine data
                             {
                                 uTurn = data[5];
-                                lblUTurn.Text = uTurn.ToString(CultureInfo.InvariantCulture);
+                                lblUTurn.Text = uTurn.ToString();
 
                                 gpsSpeedMM = (double)data[6];//actual speed times 4, single uint8_t
                                 gpsSpeedMM *= 0.1;
-                                lblGPSSpeedMM.Text = gpsSpeedMM.ToString("N1", CultureInfo.InvariantCulture);
+                                lblGPSSpeedMM.Text = gpsSpeedMM.ToString("N1");
 
                                 hydLift = data[7];
-                                lblHydLift.Text = hydLift.ToString(CultureInfo.InvariantCulture);
+                                lblHydLift.Text = hydLift.ToString();
 
                                 tramline = data[8];  //bit 0 is right bit 1 is left
-                                lblTram.Text = tramline.ToString(CultureInfo.InvariantCulture);
+                                lblTram.Text = tramline.ToString();
 
                                 relayLoM = data[11];          // read relay control from AgOpenGPS
                                 relayHiM = data[12];
@@ -523,41 +557,44 @@ namespace ModSim.Views
                         case 238:
                             {
                                 aogConfig.raiseTime = data[5];
-                                lblRaiseTime.Text = aogConfig.raiseTime.ToString(CultureInfo.InvariantCulture);
+                                lblRaiseTime.Text = aogConfig.raiseTime.ToString();
 
                                 aogConfig.lowerTime = data[6];
-                                lblLowerTime.Text = aogConfig.lowerTime.ToString(CultureInfo.InvariantCulture);
+                                lblLowerTime.Text = aogConfig.lowerTime.ToString();
 
                                 aogConfig.enableToolLift = data[7];
-                                lblLiftEnable.Text = aogConfig.enableToolLift.ToString(CultureInfo.InvariantCulture);
+                                lblLiftEnable.Text = aogConfig.enableToolLift.ToString();
 
                                 //set1
                                 int sett = data[8];  //setting0
                                 if ((sett & (1 << 0)) != 0)
                                     aogConfig.isRelayActiveHigh = 1;
-                                else
-                                    aogConfig.isRelayActiveHigh = 0;
-                                lblRelayActiveHigh.Text = aogConfig.isRelayActiveHigh.ToString(CultureInfo.InvariantCulture);
+                                else aogConfig.isRelayActiveHigh = 0;
+                                lblRelayActiveHigh.Text = aogConfig.isRelayActiveHigh.ToString();
 
                                 aogConfig.user1 = data[9];
-                                lblUser1.Text = data[9].ToString(CultureInfo.InvariantCulture);
+                                lblUser1.Text = data[9].ToString();
 
                                 aogConfig.user2 = data[10];
-                                lblUser2.Text = data[10].ToString(CultureInfo.InvariantCulture);
+                                lblUser2.Text = data[10].ToString();
 
                                 aogConfig.user3 = data[11];
-                                lblUser3.Text = data[11].ToString(CultureInfo.InvariantCulture);
+                                lblUser3.Text = data[11].ToString();
 
                                 aogConfig.user4 = data[12];
-                                lblUser4.Text = data[12].ToString(CultureInfo.InvariantCulture);
+                                lblUser4.Text = data[12].ToString();
 
                                 break;
                             }
+
 
                         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
                         default:
                             {
+                                //module return via udp sent to AOG
+                                //SendToLoopBackMessageAOG(data);
+
                                 break;
                             }
                     }
@@ -565,39 +602,29 @@ namespace ModSim.Views
             }
             catch
             {
+
             }
         }
 
-        // [XPLAT] Async port of the WinForms case-201 subnet-change handler. Mirrors the original
-        // ordering exactly: update the readouts, show the 2 s "IP Set" toast, persist the new subnet,
-        // confirm via the modal Yes dialog, then relaunch the program (Application.Restart()) and exit.
-        private async Task HandleSubnetChangeAsync(byte one, byte two, byte three)
+        // [XPLAT] cross-platform restart replacing WinForms Application.Restart()+Environment.Exit(0)+Close().
+        // Mirrors the source semantics: user confirms, settings persisted, process relaunched to apply the new
+        // subnet octets (data[7..9]). The private process-owned named Mutex in ../Program.cs is released by the OS
+        // on process termination, allowing the new instance to acquire it (same benign restart race as the original
+        // Application.Restart). Do NOT change ../Program.cs.
+        private async System.Threading.Tasks.Task RestartForSubnetChangeAsync()
         {
-            lblIPSet1.Text = one.ToString(CultureInfo.InvariantCulture);
-            lblIPSet2.Text = two.ToString(CultureInfo.InvariantCulture);
-            lblIPSet3.Text = three.ToString(CultureInfo.InvariantCulture);
-
-            TimedMessageBox(2000, "IP Set", "New Values Changed");
-
-            Settings.Default.etIP_SubnetOne = one;
-            Settings.Default.etIP_SubnetTwo = two;
-            Settings.Default.etIP_SubnetThree = three;
-            Settings.Default.Save();
-
             await YesMessageBox("ModSim will Restart to Enable UDP Networking Changes");
-
-            // [XPLAT] WinForms Application.Restart() -> relaunch this executable, then exit.
-            string exePath = Environment.ProcessPath;
-            if (!string.IsNullOrEmpty(exePath))
-            {
-                Process.Start(exePath);
-            }
-            Environment.Exit(0);
+            Properties.Settings.Default.Save();
+            try { System.Diagnostics.Process.Start(Environment.ProcessPath!); } catch { /* best effort */ }
+            if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+                desktop.Shutdown();
+            else
+                Environment.Exit(0);
         }
 
         #endregion
 
-        private static readonly byte[] swapBits = {
+        static byte[] swapBits = {
         0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,
         0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0,
         0x08, 0x88, 0x48, 0xc8, 0x28, 0xa8, 0x68, 0xe8,
@@ -630,12 +657,13 @@ namespace ModSim.Views
         0x17, 0x97, 0x57, 0xd7, 0x37, 0xb7, 0x77, 0xf7,
         0x0f, 0x8f, 0x4f, 0xcf, 0x2f, 0xaf, 0x6f, 0xef,
         0x1f, 0x9f, 0x5f, 0xdf, 0x3f, 0xbf, 0x7f, 0xff,  };
-    }
 
-    // [XPLAT] Module configuration mirrors ported 1:1 from the WinForms ModSim namespace. These are
-    // module-internal simulator state (not new public architectural surface), so they are scoped
-    // internal to the standalone ModSim executable.
-    internal static class steerConfig
+    }
+}
+
+namespace ModSim
+{
+    public static class steerConfig
     {
         public static byte InvertWAS = 0;
         public static byte IsRelayActiveHigh = 0; //if zero, active low (default)
@@ -652,7 +680,7 @@ namespace ModSim.Views
         public static byte IsUseY_Axis = 0;
     }
 
-    internal static class steerSettings
+    public static class steerSettings
     {
         public static byte Kp = 120;  //proportional gain
         public static byte lowPWM = 30;  //band of no action
@@ -664,7 +692,7 @@ namespace ModSim.Views
     }
 
     //relay module config
-    internal static class aogConfig
+    public static class aogConfig
     {
         public static byte raiseTime = 2;
         public static byte lowerTime = 4;

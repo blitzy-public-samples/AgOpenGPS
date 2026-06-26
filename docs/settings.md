@@ -23,21 +23,33 @@ ToolSettings.Default.Save(RegistrySettings.toolFileName);
 Settings.Default.Save(); // uses environmentFileName internally
 ```
 
-## Registry Storage
+## Settings Storage
 
-All settings are stored in Windows Registry (not .config files).
+Profile settings (Vehicle/Tool/Environment) are stored as **XML files** under a per-user application-data/config root that is resolved at runtime by `IPlatformServices` (defined in `AgOpenGPS.Core`) and selected per operating system by `PlatformServicesFactory` using `RuntimeInformation.IsOSPlatform`. The application no longer depends on the **Windows Registry** for its configuration root; on Windows the Registry is now read only **once**, during a one-time migration for users upgrading from the legacy net48/WinForms build (see the [Migration](#migration) section below). The settings XML **schema is unchanged** across this migration. (See [TRANSITION_MAP.md](../MIGRATION_DOCS/TRANSITION_MAP.md) for the full cross-platform transition map.)
 
 ## File Locations
 
-| Type | Directory | File Pattern |
-|------|-----------|--------------|
-| Vehicle | `%AppData%\AgOpenGPS\VehicleProfiles\` | `{ProfileName}.xml` |
-| Tool | `%AppData%\AgOpenGPS\ToolProfiles\` | `{ProfileName}.xml` |
-| Environment | `%AppData%\AgOpenGPS\Environment\` | `environment.xml` or `DefaultEnvironment.xml` |
+The application-data / config root is resolved per operating system by `IPlatformServices`:
+
+| OS | Application-data / config root |
+|----|--------------------------------|
+| Windows | `%AppData%\AgOpenGPS` |
+| Linux | `~/.config/AgOpenGPS` |
+| macOS | `~/Library/Application Support/AgOpenGPS` |
+
+Each profile type is stored relative to that config root (the full path is `{config root}` + the subdirectory listed below):
+
+| Type | Subdirectory (under config root) | File Pattern |
+|------|----------------------------------|--------------|
+| Vehicle | `VehicleProfiles/` | `{ProfileName}.xml` |
+| Tool | `ToolProfiles/` | `{ProfileName}.xml` |
+| Environment | `Environment/` | `environment.xml` or `DefaultEnvironment.xml` |
 
 ## Migration
 
 `Classes/CSettingsMigration.cs` handles migration from the old single-file format.
+
+On Windows, the first run after upgrading from the legacy net48/WinForms build performs a **one-time** read of legacy settings from the former Windows Registry / `%AppData%` location and writes them into the new config-root XML files; thereafter the Registry is no longer used. On Linux and macOS there is no legacy Registry, so settings start from the cross-platform config root (or from defaults). This Windows registry-read path lives behind `IPlatformServices` (the Windows implementation, `WindowsPlatformServices`, compiled for `net8.0-windows`). This migration **preserves the split Vehicle/Tool/Environment XML schema and the `CSettingsMigration` round-trip exactly** — there is no schema drift.
 
 ---
 

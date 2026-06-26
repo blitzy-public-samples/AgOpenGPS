@@ -76,8 +76,10 @@ namespace AgIO.Views
         // dialog (non-modal, so the editor stays open for correction), mirroring the original behaviour.
         private void OnRequestTimedMessage(int timeInMsec, string title, string message)
         {
-            FormTimedMessage toast = new FormTimedMessage(
-                new FormTimedMessageViewModel(title, message), timeInMsec);
+            // [XPLAT] FormTimedMessage now exposes the (milliseconds, title, message) constructor directly
+            // (the FormTimedMessageViewModel-based constructor was retired in the toast reimplementation);
+            // behaviour is unchanged — same duration/title/message shown over this dialog.
+            FormTimedMessage toast = new FormTimedMessage(timeInMsec, title, message);
             toast.Show(this);
         }
 

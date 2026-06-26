@@ -97,12 +97,21 @@ namespace GPS_Out.Views
             // [XPLAT] clsTools is now parameterless (the frmStart back-reference was removed; the help
             // window resolves its owner from the Avalonia application lifetime). See clsTools.ShowHelp.
             Tls = new clsTools();
-            AGIOcomm = new UDPComm(this, 15555, 8000, 7120, "AGIO", "127.103.104.105", "127.255.255.255");
-            AOGcomm = new UDPComm(this, 17777, 8500, 9010, "AOG", "127.100.101.102", "127.255.255.255");
+            // [XPLAT] inject clsTools + the two sub-PGN route delegates (replaces the former view
+            // back-reference). Both comm instances receive the SAME pair so HandleData routes by
+            // sub-PGN (54908 -> AGIOdata, 25727 -> AOGdata) regardless of which socket received the
+            // datagram. The lambdas capture `this` and read the fields at invoke-time (after
+            // StartUDPServer), so construction order vs AGIOdata/AOGdata below is not a hazard.
+            AGIOcomm = new UDPComm(Tls, 15555, 8000, 7120, "AGIO", "127.103.104.105",
+                d => AGIOdata.ParseByteData(d), d => AOGdata.ParseByteData(d), "127.255.255.255");
+            AOGcomm = new UDPComm(Tls, 17777, 8500, 9010, "AOG", "127.100.101.102",
+                d => AGIOdata.ParseByteData(d), d => AOGdata.ParseByteData(d), "127.255.255.255");
             AGIOdata = new PGN54908(this);
             GGA = new PGN_GGA(this);
             VTG = new PGN_VTG(this);
-            SER = new SerialSend(this);
+            // [XPLAT] SerialSend is decoupled from the view: it takes the clsTools helper and the
+            // ISerialStatusSink contract (this window) instead of a window back-reference.
+            SER = new SerialSend(Tls, this);
             RMC = new PGN_RMC(this);
             AOGdata = new PGN100(this);
             backgroundWorker1.WorkerSupportsCancellation = true;

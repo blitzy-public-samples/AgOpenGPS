@@ -1,0 +1,139 @@
+<!-- [XPLAT] migrated from net48/WinForms FormKeyboard.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgIO — on-screen touch keyboard dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/FormKeyboard`
+    (FormKeyboard.cs + FormKeyboard.Designer.cs). Per AAP §0.3.3 this faithfully reproduces the
+    currently rendered Windows Forms UI — never a redesign: no new colors, no relayout, no UX
+    changes. The original hosted a `keyboardString` TextBox (Tahoma 24pt Bold) above the migrated
+    `Keypad.Keyboard` UserControl; this view adds the explicit OK / Cancel command buttons called
+    for by the file specification (the embedded keyboard's own OK/Cancel command keys remain a
+    second, equivalent dismissal path).
+
+    MVVM CONTRACT (this view is data-bound, unlike the imperative GPS sibling):
+      * DataContext is a FormKeyboardViewModel (set by the code-behind). x:DataType below enables
+        Avalonia compiled bindings (AgIO.csproj sets AvaloniaUseCompiledBindingsByDefault=true), so
+        every {Binding} is type-checked at build time against FormKeyboardViewModel.
+      * keyboardString.Text is two-way bound to FormKeyboardViewModel.EntryText — the running entry
+        string the WinForms code-behind kept in keyboardString.Text. Characters raised by the
+        on-screen keyboard flow through FormKeyboardViewModel.AppendKey (the original
+        RegisterKeyboard1_ButtonPressed text transitions).
+
+    WIRING CONTRACT — the partner code-behind (FormKeyboard.axaml.cs) owns dialog behaviour:
+      * keyboard1.ButtonPressed (EventHandler<Keypad.KeypadKeyPressedEventArgs>) — the on-screen key
+        broadcast — is subscribed in the code-behind (reproducing
+        `keyboard1.ButtonPressed += RegisterKeyboard1_ButtonPressed`), NOT wired here, because it is
+        a plain CLR event resolved against the x:Name="keyboard1" field.
+      * btnOK closes the dialog returning the entered text (WinForms DialogResult.OK +
+        ReturnString); btnCancel closes returning null (WinForms DialogResult.Cancel). Their Click
+        handlers (OnOkClick / OnCancelClick) live in the code-behind — matching the sibling FormYes.
+      * The named controls below MUST keep the exact x:Names `keyboardString`, `keyboard1`, `btnOK`,
+        `btnCancel` to match the fields/handlers the code-behind addresses.
+
+    WINDOW SHELL — mirrors FormKeyboard.Designer.cs:
+      Text "Keyboard"                              -> Title (the code-behind may retitle to
+                                                      "Enter Something", as the WinForms ctor did)
+      ClientSize 940 x 460                         -> Grid MinWidth 940 under SizeToContent
+      BackColor SystemColors.ActiveCaption         -> Background "#99B4D1"
+      keyboard1 BackColor GradientActiveCaption    -> "#B9D1EA"
+        (Windows system colors are platform-specific, so fixed literal approximations are used; they
+         are theme-INDEPENDENT — correct for parity with the fixed WinForms system colors — and
+         follow the App.axaml legacy parity-color convention shared with the GPS FormKeyboard view
+         and the Keypad controls. AgIO is light-only, so a literal keeps the colors consistent.)
+      ControlBox=false / FixedDialog / not sizable -> CanResize="False"
+      (shown modally over the owner)               -> WindowStartupLocation="CenterOwner"
+      Font Tahoma                                  -> FontFamily="Tahoma" (children override sizes)
+
+    Buttons render as TEXT (no System.Drawing, no avares imagery): the migrated AgIO.csproj
+    registers no btnImages assets as <AvaloniaResource>, and every migrated AgIO view renders button
+    affordances as text — consistent with the file specification and the sibling FormYes.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        xmlns:keypad="clr-namespace:Keypad;assembly=Keypad"
+        x:Class="AgIO.Views.FormKeyboard"
+        x:DataType="vm:FormKeyboardViewModel"
+        Title="Keyboard"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        Background="#99B4D1">
+
+    <!--
+        Three-row layout: the entry field spans the top, the on-screen keyboard fills the body, and
+        the OK / Cancel command row pins to the bottom-right. The outer Margin (5,4,9,5) aligns the
+        content with the WinForms coordinates (left 5 == keyboard1.Location.X, top 4 == keyboardString
+        top). MinWidth 940 reproduces the WinForms ClientSize width under SizeToContent; the keyboard
+        already measures ~925 wide so this is a parity floor. The star body row sizes to the keyboard's
+        content under SizeToContent (the same star-row + SizeToContent pattern proven in FormYes).
+    -->
+    <Grid Margin="5,4,9,5"
+          RowDefinitions="Auto,*,Auto"
+          MinWidth="940">
+
+        <!-- keyboardString — WinForms TextBox (98,4) 751x46, Tahoma 24pt Bold, editable, TabIndex 0.
+             Stretched across the top row so it spans the full dialog width. Tahoma 24pt renders at
+             32 DIP (24 * 96/72), matching the identical GPS FormKeyboard entry field. Two-way bound
+             to FormKeyboardViewModel.EntryText; the code-behind assigns the initial caret position. -->
+        <TextBox x:Name="keyboardString"
+                 Grid.Row="0"
+                 Height="46"
+                 HorizontalAlignment="Stretch"
+                 VerticalAlignment="Top"
+                 FontSize="32"
+                 FontWeight="Bold"
+                 VerticalContentAlignment="Center"
+                 Text="{Binding EntryText, Mode=TwoWay}"
+                 AutomationProperties.Name="Entered text" />
+
+        <!-- keyboard1 — the migrated Keypad.Keyboard UserControl (WinForms keyboard1, Location (5,55)
+             Size 930x400, BackColor GradientActiveCaption). The control has a fixed intrinsic size
+             (925x525 in Keyboard.axaml) which its own code-behind shrinks at load; anchoring it
+             Top|Left places it at the body-row top-left exactly like the WinForms Location, and under
+             SizeToContent the window grows to fit it. ButtonPressed is subscribed in the code-behind,
+             not wired here. -->
+        <keypad:Keyboard x:Name="keyboard1"
+                         Grid.Row="1"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Top"
+                         Margin="0,4,0,0"
+                         Background="#B9D1EA" />
+
+        <!-- OK / Cancel command row. Cancel precedes OK so OK stays right-most (the sibling FormYes
+             ordering). Touch-friendly 110x56 text buttons. btnOK is the accept button (Enter -> OK
+             via IsDefault); btnCancel is the cancel button (Esc -> Cancel via IsCancel). The Click
+             handlers (OnOkClick / OnCancelClick) are defined in the code-behind: OK closes returning
+             the entered text, Cancel closes returning null. -->
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Spacing="12"
+                    Margin="0,8,0,0">
+
+            <Button x:Name="btnCancel"
+                    Content="Cancel"
+                    IsCancel="True"
+                    Width="110"
+                    Height="56"
+                    FontSize="18"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Click="OnCancelClick" />
+
+            <Button x:Name="btnOK"
+                    Content="OK"
+                    IsDefault="True"
+                    Width="110"
+                    Height="56"
+                    FontSize="18"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Click="OnOkClick" />
+        </StackPanel>
+    </Grid>
+</Window>

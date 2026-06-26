@@ -1,0 +1,636 @@
+<!-- [XPLAT] migrated from net48/WinForms FormSteerWiz — see TRANSITION_MAP.md -->
+<!--
+    [XPLAT] Avalonia 1:1 parity reimplementation of the WinForms AutoSteer Configuration WIZARD
+    (Forms/Settings/FormSteerWiz.cs + FormSteerWiz.Designer.cs). Per AAP §0.3.3 this is a faithful
+    layout port: the markup reproduces the original control tree, x:Names, geometry and ordering;
+    all behaviour (PGN encode/decode, calibration, defaults, tab navigation, status colouring,
+    button imagery) lives in the code-behind FormSteerWizView.axaml.cs and is reached by x:Name —
+    so this view declares NO x:DataType, NO DataContext and NO {Binding}, exactly like the WinForms
+    Form which used direct member access.
+
+    Faithful to FormSteerWiz.Designer.cs: ClientSize 805x558. A top status strip (Progress bar +
+    side-bar readouts), the central tabbed wizard (tabWiz — 26 pages, headers HIDDEN, navigated
+    programmatically via SelectedIndex), a bottom telemetry strip (panel2), a free-drive overlay
+    (panel1) and a parked gain-slider TabControl (tabControl1). Every control keeps its exact
+    WinForms Location/Size on an absolute Canvas; WinForms point fonts are converted to Avalonia
+    DIPs (x96/72). HScrollBar->Slider, ProgressBar->ProgressBar, NudlessNumericUpDown->numeric
+    Button, CheckBox(Appearance.Button)->imageToggle CheckBox, ComboBox(DropDownList)->ComboBox,
+    Button(Flat)->flatImage Button, Label->TextBlock, PictureBox->Image, Panel->Border+Canvas.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gStr="clr-namespace:AgOpenGPS.Core.Translations;assembly=AgOpenGPS.Core"
+        x:Class="AgOpenGPS.Views.Settings.FormSteerWizView"
+        Title="Auto Steer Wizard"
+        Width="805" Height="558"
+        CanResize="False"
+        SystemDecorations="None"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <Window.Styles>
+        <!-- WinForms labels render Black / ActiveCaptionText. -->
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+
+        <!-- Image-toggle CheckBoxes (WinForms Appearance.Button): flat image whose Background
+             turns MediumAquamarine when :checked (FlatAppearance.CheckedBackColor). -->
+        <Style Selector="CheckBox.imageToggle">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Black" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="Stretch"
+                                      VerticalContentAlignment="Stretch" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="CheckBox.imageToggle:checked">
+            <Setter Property="Background" Value="MediumAquamarine" />
+        </Style>
+
+        <!-- Flat, image-only push buttons (FlatStyle.Flat). -->
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+        <Style Selector="RepeatButton.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+
+        <!-- Numeric-entry buttons (WinForms NudlessNumericUpDown look). -->
+        <Style Selector="Button.numeric">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Section heading labels. -->
+        <Style Selector="TextBlock.heading">
+            <Setter Property="Foreground" Value="SteelBlue" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+
+        <!-- tabWiz: hide the tab strip entirely (WinForms ItemSize=(0,1), headers invisible;
+             navigation is driven programmatically via SelectedIndex). -->
+        <Style Selector="TabControl#tabWiz /template/ ItemsPresenter#PART_ItemsPresenter">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+    </Window.Styles>
+
+    <!-- WinForms FormSteerWiz ClientSize 805 x 558; absolute positioning preserves every Location/Size. -->
+    <Canvas Width="805" Height="558">
+
+        <Button x:Name="btnCloseAll" AutomationProperties.Name="Close All" Classes="flatImage" Canvas.Left="688" Canvas.Top="479" Width="104" Height="72" FontSize="19" />
+        <TextBlock x:Name="label67" Canvas.Left="675" Canvas.Top="72" Width="104" FontSize="19" TextAlignment="Right" Text="WAS Offset" />
+        <TextBlock x:Name="lblBarWasOffset" Canvas.Left="675" Canvas.Top="93" Width="51" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="888" />
+        <TextBlock x:Name="label65" Canvas.Left="675" Canvas.Top="176" Width="104" FontSize="19" TextAlignment="Right" Text="Ackermann" />
+        <TextBlock x:Name="lblBarAck" Canvas.Left="675" Canvas.Top="198" Width="51" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="888" />
+        <TextBlock x:Name="label66" Canvas.Left="675" Canvas.Top="124" Width="123" FontSize="19" TextAlignment="Right" Text="Counts P Deg" />
+        <TextBlock x:Name="lblBarCPD" Canvas.Left="675" Canvas.Top="146" Width="51" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="888" />
+        <TextBlock x:Name="label71" Canvas.Left="235" Canvas.Top="12" Width="100" FontSize="19" FontWeight="Bold" TextAlignment="Right" Text="Progress:" />
+        <ProgressBar x:Name="pbarProgress" Canvas.Left="336" Canvas.Top="18" Width="323" Height="15" Minimum="0" Maximum="100" />
+        <Border x:Name="panel3" Canvas.Left="5" Canvas.Top="51" Width="665" Height="373" BorderBrush="Gray" BorderThickness="1">
+            <Canvas>
+                <TabControl x:Name="tabWiz" Canvas.Left="0" Canvas.Top="0" Width="663" Height="371" FontSize="16">
+                    <TabItem x:Name="tabStart">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Button x:Name="btnStartWizard" AutomationProperties.Name="Start Wizard" Canvas.Left="226" Canvas.Top="106" Width="199" Height="80" FontSize="19" Background="PaleGreen" Content="Start Wizard" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabLoadDef">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label81" Canvas.Left="115" Canvas.Top="188" Width="436" FontSize="21" TextAlignment="Center" Text="Highly Recommended" />
+                                <TextBlock x:Name="label80" Canvas.Left="6" Canvas.Top="5" Width="157" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="Load Defaults" />
+                                <Button x:Name="btnOkNext_LoadDefault" AutomationProperties.Name="Ok Next Load Default" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnLoadDefaults" AutomationProperties.Name="Load Defaults" Canvas.Left="234" Canvas.Top="225" Width="199" Height="80" FontSize="19" Background="LightSteelBlue" Content="Load Defaults" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabWheelBase">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label117" Canvas.Left="3" Canvas.Top="8" Width="455" FontSize="21" TextAlignment="Center" Background="White" />
+                                <TextBlock x:Name="label89" Canvas.Left="385" Canvas.Top="5" Width="224" FontSize="21" TextAlignment="Center" Background="White" />
+                                <Button x:Name="button1" AutomationProperties.Name="button1" Classes="flatImage" Canvas.Left="486" Canvas.Top="268" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label90" Canvas.Left="6" Canvas.Top="6" Width="126" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Wheelbase" />
+                                <Button x:Name="nudWheelbase" Classes="numeric" Canvas.Left="90" Canvas.Top="231" Width="143" Height="65" FontSize="48" FontWeight="Bold" Content="333" />
+                                <TextBlock x:Name="label91" Canvas.Left="67" Canvas.Top="153" Width="180" FontSize="21" FontWeight="Bold" TextAlignment="Center" Background="Linen" Text="Set Wheelbase" />
+                                <Button x:Name="button2" AutomationProperties.Name="button2" Classes="flatImage" Canvas.Left="577" Canvas.Top="268" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabWheelTrack">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label118" Canvas.Left="2" Canvas.Top="6" Width="294" FontSize="21" TextAlignment="Center" Background="White" />
+                                <Button x:Name="nudVehicleTrack" Classes="numeric" Canvas.Left="423" Canvas.Top="185" Width="157" Height="65" FontSize="48" FontWeight="Bold" Content="333" />
+                                <TextBlock x:Name="label95" Canvas.Left="380" Canvas.Top="144" Width="255" FontSize="24" FontWeight="Bold" TextAlignment="Center" Background="Linen" Text="Set Track Width" />
+                                <TextBlock x:Name="label96" Canvas.Left="300" Canvas.Top="20" Width="57" FontSize="21" TextAlignment="Center" Background="White" />
+                                <Button x:Name="button7" AutomationProperties.Name="button7" Classes="flatImage" Canvas.Left="486" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label94" Canvas.Left="6" Canvas.Top="6" Width="142" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Wheel Track" />
+                                <Button x:Name="button8" AutomationProperties.Name="button8" Classes="flatImage" Canvas.Left="577" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabAntennaDistance">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label100" Canvas.Left="315" Canvas.Top="0" Width="151" FontSize="21" TextAlignment="Center" Background="White" />
+                                <Button x:Name="button9" AutomationProperties.Name="button9" Classes="flatImage" Canvas.Left="486" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label98" Canvas.Left="6" Canvas.Top="6" Width="99" Height="50" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Antenna&#10;Position" />
+                                <Button x:Name="nudAntennaPivot" Classes="numeric" Canvas.Left="230" Canvas.Top="226" Width="165" Height="65" FontSize="48" FontWeight="Bold" Content="333" />
+                                <Button x:Name="button10" AutomationProperties.Name="button10" Classes="flatImage" Canvas.Left="577" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label99" Canvas.Left="133" Canvas.Top="155" Width="352" Height="185" FontSize="24" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Background="Linen" Text="Set Distance Antenna Is From Pivot Axle" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabAntennaHeight">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label114" Canvas.Left="163" Canvas.Top="0" Width="162" FontSize="21" TextAlignment="Center" Background="White" />
+                                <TextBlock x:Name="label97" Canvas.Left="109" Canvas.Top="185" Width="371" FontSize="21" TextAlignment="Center" Background="White" />
+                                <Button x:Name="button13" AutomationProperties.Name="button13" Classes="flatImage" Canvas.Left="486" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label92" Canvas.Left="6" Canvas.Top="6" Width="99" Height="50" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Antenna&#10;Height" />
+                                <Button x:Name="nudAntennaHeight" Classes="numeric" Canvas.Left="465" Canvas.Top="87" Width="145" Height="65" FontSize="48" FontWeight="Bold" Content="333" />
+                                <TextBlock x:Name="label93" Canvas.Left="436" Canvas.Top="12" Width="198" FontSize="24" FontWeight="Bold" TextAlignment="Center" Background="Linen" Text="Set Antenna Height" />
+                                <Button x:Name="button14" AutomationProperties.Name="button14" Classes="flatImage" Canvas.Left="577" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabAntennaOffset">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Button x:Name="button11" AutomationProperties.Name="button11" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label102" Canvas.Left="0" Canvas.Top="6" Width="169" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Antenna Offset" />
+                                <Button x:Name="nudAntennaOffset" Classes="numeric" Canvas.Left="250" Canvas.Top="65" Width="165" Height="65" FontSize="48" FontWeight="Bold" Content="333" />
+                                <TextBlock x:Name="label104" Canvas.Left="471" Canvas.Top="247" Width="86" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="0 = Off" />
+                                <Button x:Name="button12" AutomationProperties.Name="button12" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label103" Canvas.Left="171" Canvas.Top="1" Width="313" FontSize="24" FontWeight="Bold" TextAlignment="Center" Background="Linen" Text="Set Antenna Offset" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabButtonSwitch">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Button x:Name="button15" AutomationProperties.Name="button15" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label53" Canvas.Left="5" Canvas.Top="4" Width="144" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="Steer Switch" />
+                                <ComboBox x:Name="cboxSteerEnable" AutomationProperties.Name="Steer Enable" Canvas.Left="195" Canvas.Top="111" Width="175" Height="37" FontSize="24" FontWeight="Bold">
+                                    <ComboBoxItem>None</ComboBoxItem>
+                                    <ComboBoxItem>Switch</ComboBoxItem>
+                                    <ComboBoxItem>Button</ComboBoxItem>
+                                </ComboBox>
+                                <TextBlock x:Name="label28" Canvas.Left="182" Canvas.Top="167" Width="218" Height="95" FontSize="16" TextWrapping="Wrap" Text="Button - Push Release, On.   &#10;               Push Release, Off&#10;&#10;Switch - While Pushed is On. &#10;               Released is Off." />
+                                <TextBlock x:Name="label62" Canvas.Left="84" Canvas.Top="76" Width="396" FontSize="21" TextAlignment="Center" Text="Steer Enable Mode" />
+                                <Button x:Name="btnOkNext_ButtonSwitch" AutomationProperties.Name="Ok Next Button Switch" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabA2DConv">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Button x:Name="btnPrev_A2D" AutomationProperties.Name="Prev A2 D" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label52" Canvas.Left="5" Canvas.Top="4" Width="164" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="A/D Convertor" />
+                                <ComboBox x:Name="cboxConv" AutomationProperties.Name="Conv" Canvas.Left="238" Canvas.Top="176" Width="175" Height="37" FontSize="24" FontWeight="Bold">
+                                    <ComboBoxItem>Single</ComboBoxItem>
+                                    <ComboBoxItem>Differential</ComboBoxItem>
+                                </ComboBox>
+                                <TextBlock x:Name="label64" Canvas.Left="114" Canvas.Top="138" Width="436" FontSize="21" TextAlignment="Center" Text="A/D Convertor Connection?" />
+                                <Button x:Name="btnOkNext_A2D" AutomationProperties.Name="Ok Next A2 D" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabMotorDriver">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Button x:Name="btnPrev_MotorDriver" AutomationProperties.Name="Prev Motor Driver" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label43" Canvas.Left="4" Canvas.Top="4" Width="213" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="Motor Driver Board" />
+                                <ComboBox x:Name="cboxMotorDrive" AutomationProperties.Name="Motor Drive" Canvas.Left="238" Canvas.Top="176" Width="175" Height="37" FontSize="24" FontWeight="Bold">
+                                    <ComboBoxItem>Cytron</ComboBoxItem>
+                                    <ComboBoxItem>IBT2</ComboBoxItem>
+                                </ComboBox>
+                                <TextBlock x:Name="label63" Canvas.Left="67" Canvas.Top="139" Width="529" FontSize="21" TextAlignment="Center" Text="What Style of Motor Driver?" />
+                                <Button x:Name="btnOkNext_MotorDriver" AutomationProperties.Name="Ok Next Motor Driver" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabInvertRelays">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label59" Canvas.Left="282" Canvas.Top="236" Width="95" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Invert Relays" />
+                                <Button x:Name="btnPrev_InvertRelays" AutomationProperties.Name="Prev Invert Relays" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label51" Canvas.Left="5" Canvas.Top="4" Width="223" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="Driver Control Relay" />
+                                <TextBlock x:Name="label29" Canvas.Left="60" Canvas.Top="109" Width="541" FontSize="21" TextAlignment="Center" Text="Invert Hydraulic Enable Relay?" />
+                                <Button x:Name="btnOkNext_InvertRelays" AutomationProperties.Name="Ok Next Invert Relays" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <CheckBox x:Name="chkSteerInvertRelays" AutomationProperties.Name="Steer Invert Relays" Classes="imageToggle" Canvas.Left="274" Canvas.Top="155" Width="109" Height="78" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabDanfoss">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Button x:Name="btnPrev_Danfoss" AutomationProperties.Name="Prev Danfoss" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label50" Canvas.Left="5" Canvas.Top="4" Width="160" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="Danfoss Valve" />
+                                <TextBlock x:Name="label55" Canvas.Left="77" Canvas.Top="109" Width="501" Height="31" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Do you have use a Danfoss Valve?" />
+                                <Button x:Name="btnOkNext_Danfoss" AutomationProperties.Name="Ok Next Danfoss" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <CheckBox x:Name="cboxDanfoss" AutomationProperties.Name="Danfoss" Classes="imageToggle" Canvas.Left="274" Canvas.Top="155" Width="114" Height="78" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabRollInv">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label115" Canvas.Left="139" Canvas.Top="105" Width="268" FontSize="21" TextAlignment="Right" Text="If not Select Invert Roll" />
+                                <TextBlock x:Name="lblRoll" Canvas.Left="274" Canvas.Top="274" Width="100" FontSize="27" FontWeight="Bold" TextAlignment="Left" Text="-55.5" />
+                                <Image x:Name="pictureBox9" Canvas.Left="486" Canvas.Top="38" Width="154" Height="217" Stretch="Uniform" />
+                                <CheckBox x:Name="cboxDataInvertRoll" AutomationProperties.Name="Data Invert Roll" Classes="imageToggle" Canvas.Left="218" Canvas.Top="169" Width="130" Height="95" />
+                                <TextBlock x:Name="label36" Canvas.Left="64" Canvas.Top="50" Width="401" Height="56" FontSize="21" TextAlignment="Right" TextWrapping="Wrap" Text="Put vehicle leaning strongly to the right. Roll to the right must be POSITIVE." />
+                                <Button x:Name="button4" AutomationProperties.Name="button4" Classes="flatImage" Canvas.Left="486" Canvas.Top="270" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label46" Canvas.Left="6" Canvas.Top="6" Width="148" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Roll Function" />
+                                <Button x:Name="button18" AutomationProperties.Name="button18" Classes="flatImage" Canvas.Left="577" Canvas.Top="270" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label107" Canvas.Left="181" Canvas.Top="274" Width="100" FontSize="27" TextAlignment="Right" Text="Roll:" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabRollZero">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="lblRoll2" Canvas.Left="274" Canvas.Top="263" Width="100" FontSize="27" FontWeight="Bold" TextAlignment="Left" Text="-2.5" />
+                                <TextBlock x:Name="label110" Canvas.Left="181" Canvas.Top="263" Width="100" FontSize="27" TextAlignment="Right" Text="Roll:" />
+                                <TextBlock x:Name="label47" Canvas.Left="334" Canvas.Top="117" Width="57" FontSize="11" FontWeight="Bold" Text="Zero Roll" />
+                                <TextBlock x:Name="label57" Canvas.Left="111" Canvas.Top="117" Width="91" FontSize="11" FontWeight="Bold" Text="Remove Offset" />
+                                <TextBlock x:Name="lblRollZeroOffset" Canvas.Left="469" Canvas.Top="164" Width="87" FontSize="27" Text="Offset" />
+                                <Button x:Name="btnZeroRoll" AutomationProperties.Name="Zero Roll" Classes="flatImage" Canvas.Left="326" Canvas.Top="136" Width="130" Height="95" FontSize="16" />
+                                <Button x:Name="btnRemoveZeroOffset" AutomationProperties.Name="Remove Zero Offset" Classes="flatImage" Canvas.Left="103" Canvas.Top="136" Width="130" Height="95" FontSize="64" FontWeight="Bold" />
+                                <TextBlock x:Name="label48" Canvas.Left="69" Canvas.Top="44" Width="484" Height="56" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Park on level surface and touch &quot;Zero Roll&quot;" />
+                                <Button x:Name="button3" AutomationProperties.Name="button3" Classes="flatImage" Canvas.Left="486" Canvas.Top="270" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label56" Canvas.Left="6" Canvas.Top="6" Width="105" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Roll Zero" />
+                                <Button x:Name="button19" AutomationProperties.Name="button19" Classes="flatImage" Canvas.Left="577" Canvas.Top="270" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabWAS">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label45" Canvas.Left="290" Canvas.Top="236" Width="83" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Invert WAS" />
+                                <Button x:Name="btnPrev_InvertWAS" AutomationProperties.Name="Prev Invert WAS" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label42" Canvas.Left="4" Canvas.Top="4" Width="233" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="Invert WAS Direction" />
+                                <TextBlock x:Name="label30" Canvas.Left="12" Canvas.Top="84" Width="635" Height="56" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Steer Angle must be POSITIVE when turning to the RIGHT.&#10;If not, select the Invert WAS." />
+                                <Button x:Name="btnOkWAS" AutomationProperties.Name="Ok WAS" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <CheckBox x:Name="chkInvertWAS" AutomationProperties.Name="Invert WAS" Classes="imageToggle" Canvas.Left="274" Canvas.Top="155" Width="109" Height="78" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabWAS_Zero">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label112" Canvas.Left="75" Canvas.Top="161" Width="45" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Reset" />
+                                <TextBlock x:Name="lblCurrentHeading" Canvas.Left="278" Canvas.Top="290" Width="102" FontSize="27" FontWeight="Bold" TextAlignment="Left" Text="358.8" />
+                                <TextBlock x:Name="label37" Canvas.Left="33" Canvas.Top="289" Width="248" FontSize="27" TextAlignment="Right" Text="Current Heading:" />
+                                <Button x:Name="button6" AutomationProperties.Name="button6" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnRemoveWasOffset" AutomationProperties.Name="Remove Was Offset" Classes="flatImage" Canvas.Left="71" Canvas.Top="180" Width="100" Height="72" FontSize="19" FontWeight="Bold" />
+                                <TextBlock x:Name="label40" Canvas.Left="3" Canvas.Top="4" Width="146" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="WAS Zeroing" />
+                                <Slider x:Name="hsbarWasOffset" AutomationProperties.Name="Was Offset" Orientation="Horizontal"
+                                        Canvas.Left="188" Canvas.Top="192" Width="270" Height="50" Minimum="-4000" Maximum="4000" SmallChange="2" LargeChange="20" />
+                                <TextBlock x:Name="lblSteerAngleSensorZero" Canvas.Left="461" Canvas.Top="200" Width="109" FontSize="27" FontWeight="Bold" TextAlignment="Right" Text="-55.88" />
+                                <TextBlock x:Name="label10" Canvas.Left="50" Canvas.Top="52" Width="544" Height="28" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Drive straight forward and Touch Zero" />
+                                <Button x:Name="btnOkNext_WAS_Zero" AutomationProperties.Name="Ok Next WAS Zero" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnZeroWAS" AutomationProperties.Name="Zero WAS" Classes="flatImage" Canvas.Left="273" Canvas.Top="97" Width="100" Height="77" FontSize="19" FontWeight="Bold" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabMotorDirection">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label58" Canvas.Left="274" Canvas.Top="236" Width="110" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Invert Direction" />
+                                <TextBlock x:Name="label41" Canvas.Left="3" Canvas.Top="4" Width="237" FontSize="21" FontWeight="Bold" TextAlignment="Center" Text="Steer Motor Direction" />
+                                <TextBlock x:Name="label17" Canvas.Left="174" Canvas.Top="241" Width="33" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Left" />
+                                <TextBlock x:Name="label33" Canvas.Left="442" Canvas.Top="241" Width="41" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Right" />
+                                <TextBlock x:Name="label70" Canvas.Left="8" Canvas.Top="70" Width="626" Height="52" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Drive slowly and enable Auto Steer. Invert Direction if steer motor turns the wrong way.&#10;Test with Arrows." />
+                                <Button x:Name="btnPrev_MotorDirection" AutomationProperties.Name="Prev Motor Direction" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnOkNext_MotorDirection" AutomationProperties.Name="Ok Next Motor Direction" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnSteerLeft" AutomationProperties.Name="Steer Left" Classes="flatImage" Canvas.Left="150" Canvas.Top="158" Width="76" Height="81" FontSize="19" />
+                                <Button x:Name="btnSteerRight" AutomationProperties.Name="Steer Right" Classes="flatImage" Canvas.Left="425" Canvas.Top="158" Width="76" Height="80" FontSize="19" />
+                                <CheckBox x:Name="chkInvertSteer" AutomationProperties.Name="Invert Steer" Classes="imageToggle" Canvas.Left="274" Canvas.Top="155" Width="109" Height="78" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabCPD_Setup">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label60" Canvas.Left="13" Canvas.Top="263" Width="468" FontSize="21" TextAlignment="Right" Text="* Begin * Calibration" />
+                                <Button x:Name="btnPrev_CountsPerDegree" AutomationProperties.Name="Prev Counts Per Degree" Classes="flatImage" Canvas.Left="485" Canvas.Top="244" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label74" Canvas.Left="5" Canvas.Top="5" Width="182" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="WAS Calibration" />
+                                <TextBlock x:Name="label75" Canvas.Left="79" Canvas.Top="97" Width="402" Height="86" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" Text="* SKIP *  Counts Per Degree and Ackermann Setting?" />
+                                <Button x:Name="btnSkipCPD_Setup" AutomationProperties.Name="Skip CPD Setup" Classes="flatImage" Canvas.Left="487" Canvas.Top="112" Width="72" Height="61" FontSize="19" />
+                                <Button x:Name="btnOKNext_CPDSetup" AutomationProperties.Name="OK Next CPD Setup" Classes="flatImage" Canvas.Left="576" Canvas.Top="244" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabCountsPerDeg">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label109" Canvas.Left="300" Canvas.Top="125" Width="124" FontSize="21" TextAlignment="Right" Text="Start Angle:" />
+                                <TextBlock x:Name="lblRightStartAngle" Canvas.Left="419" Canvas.Top="125" Width="45" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="0.0" />
+                                <Button x:Name="button5" AutomationProperties.Name="button5" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="lblCPDError" Canvas.Left="155" Canvas.Top="235" Width="33" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="..." />
+                                <TextBlock x:Name="label39" Canvas.Left="3" Canvas.Top="3" Width="258" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="Counts per Degree" />
+                                <Slider x:Name="hsbarCountsPerDegree" AutomationProperties.Name="Counts Per Degree" Orientation="Horizontal"
+                                        Canvas.Left="134" Canvas.Top="271" Width="270" Height="50" Minimum="1" Maximum="255" Value="20" LargeChange="1" />
+                                <TextBlock x:Name="label8" Canvas.Left="296" Canvas.Top="157" Width="128" FontSize="21" TextAlignment="Right" Text="Steer Angle:" />
+                                <TextBlock x:Name="lblCountsPerDegree" Canvas.Left="39" Canvas.Top="278" Width="86" FontSize="27" FontWeight="Bold" TextAlignment="Right" Text="888" />
+                                <TextBlock x:Name="label7" Canvas.Left="17" Canvas.Top="43" Width="632" Height="57" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Turn steering wheel to RIGHT about 20 degrees.&#10;While driving in a steady circle, Press Rec and wait." />
+                                <TextBlock x:Name="lblDiameter" Canvas.Left="419" Canvas.Top="190" Width="71" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="0.0 m" />
+                                <TextBlock x:Name="lblCalcSteerAngleInner" Canvas.Left="419" Canvas.Top="158" Width="45" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="0.0" />
+                                <TextBlock x:Name="label1" Canvas.Left="320" Canvas.Top="189" Width="104" FontSize="21" TextAlignment="Right" Text="Diameter:" />
+                                <Button x:Name="btnOkNext_CountsPerDeg" AutomationProperties.Name="Ok Next Counts Per Deg" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnStartSA" AutomationProperties.Name="Start SA" Classes="flatImage" Canvas.Left="188" Canvas.Top="129" Width="73" Height="78" FontSize="16" FontWeight="Bold" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabAckCPD">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Button x:Name="btnAckReset" AutomationProperties.Name="Ack Reset" Classes="flatImage" Canvas.Left="113" Canvas.Top="130" Width="73" Height="78" FontSize="16" FontWeight="Bold" Content="Reset To 100%" />
+                                <TextBlock x:Name="label101" Canvas.Left="337" Canvas.Top="125" Width="124" FontSize="21" TextAlignment="Right" Text="Start Angle:" />
+                                <TextBlock x:Name="lblStartAngleLeft" Canvas.Left="456" Canvas.Top="125" Width="45" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="0.0" />
+                                <TextBlock x:Name="label32" Canvas.Left="165" Canvas.Top="254" Width="266" FontSize="21" TextAlignment="Center" Text="Ackermann Value:" />
+                                <Slider x:Name="hsbarAckerman" AutomationProperties.Name="Ackerman" Orientation="Horizontal"
+                                        Canvas.Left="164" Canvas.Top="285" Width="270" Height="50" Minimum="1" Maximum="200" Value="100" LargeChange="1" />
+                                <TextBlock x:Name="lblAckerman" Canvas.Left="64" Canvas.Top="290" Width="91" FontSize="29" FontWeight="Bold" TextAlignment="Right" Text="888" />
+                                <Button x:Name="button16" AutomationProperties.Name="button16" Classes="flatImage" Canvas.Left="486" Canvas.Top="271" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="lblAckermannError" Canvas.Left="18" Canvas.Top="219" Width="33" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="..." />
+                                <TextBlock x:Name="label105" Canvas.Left="4" Canvas.Top="5" Width="258" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="Ackermann" />
+                                <TextBlock x:Name="label106" Canvas.Left="333" Canvas.Top="155" Width="128" FontSize="21" TextAlignment="Right" Text="Steer Angle:" />
+                                <TextBlock x:Name="label108" Canvas.Left="18" Canvas.Top="43" Width="632" Height="57" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Turn steering wheel to LEFT roughly the same degrees as right.&#10;While driving in a steady circle, Press Rec and wait." />
+                                <TextBlock x:Name="lblDiameterLeft" Canvas.Left="456" Canvas.Top="185" Width="71" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="0.0 m" />
+                                <TextBlock x:Name="lblCalcSteerAngleLeft" Canvas.Left="456" Canvas.Top="155" Width="45" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="0.0" />
+                                <TextBlock x:Name="label111" Canvas.Left="357" Canvas.Top="185" Width="104" FontSize="21" TextAlignment="Right" Text="Diameter:" />
+                                <Button x:Name="button17" AutomationProperties.Name="button17" Classes="flatImage" Canvas.Left="577" Canvas.Top="271" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnStartSA_Left" AutomationProperties.Name="Start SA Left" Classes="flatImage" Canvas.Left="238" Canvas.Top="130" Width="73" Height="78" FontSize="16" FontWeight="Bold" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabMaxSteerAngle">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label113" Canvas.Left="503" Canvas.Top="166" Width="29" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Set" />
+                                <Button x:Name="btnOkSetMaximumSteerAngle" AutomationProperties.Name="Ok Set Maximum Steer Angle" Classes="flatImage" Canvas.Left="464" Canvas.Top="92" Width="104" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label73" Canvas.Left="44" Canvas.Top="99" Width="401" Height="56" FontSize="21" TextAlignment="Right" TextWrapping="Wrap" Text="Turn steering to your desired limit for guidance and touch OK -&gt;" />
+                                <Button x:Name="btnPrev_MaxSteerAngle" AutomationProperties.Name="Prev Max Steer Angle" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label49" Canvas.Left="5" Canvas.Top="5" Width="293" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Guidance Steer Angle Limit" />
+                                <TextBlock x:Name="label23" Canvas.Left="21" Canvas.Top="206" Width="572" Height="29" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Or Manually Set Guidance Steer Angle Limit" />
+                                <TextBlock x:Name="lblMaxSteerAngle" Canvas.Left="66" Canvas.Top="255" Width="92" FontSize="27" FontWeight="Bold" TextAlignment="Right" Text="888" />
+                                <Slider x:Name="hsbarMaxSteerAngle" AutomationProperties.Name="Max Steer Angle" Orientation="Horizontal"
+                                        Canvas.Left="172" Canvas.Top="247" Width="270" Height="50" Minimum="10" Maximum="80" Value="10" LargeChange="1" />
+                                <Button x:Name="btnOkNextMaxSteerAngle" AutomationProperties.Name="Ok Next Max Steer Angle" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabCancelGuidance">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Button x:Name="btnPrev_CancelGuidance" AutomationProperties.Name="Prev Cancel Guidance" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnOkNextCancelGuidance" AutomationProperties.Name="Ok Next Cancel Guidance" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label44" Canvas.Left="3" Canvas.Top="5" Width="557" FontSize="21" FontWeight="Bold" TextAlignment="Left" Text="Automatic Canceling Feature" />
+                                <TextBlock x:Name="labelEncoder" Canvas.Left="158" Canvas.Top="93" Width="65" Text="Turn Sensor" />
+                                <TextBlock x:Name="labelCurrentTurnSensor" Canvas.Left="282" Canvas.Top="93" Width="105" Text="Current Turn Sensor" />
+                                <TextBlock x:Name="labelPressureTurnSensor" Canvas.Left="429" Canvas.Top="93" Width="110" Text="Pressure Turn Sensor" />
+                                <ProgressBar x:Name="pbarSensor" Canvas.Left="37" Canvas.Top="295" Width="280" Height="26" Minimum="0" Maximum="255" />
+                                <Button x:Name="nudMaxCounts" Classes="numeric" Canvas.Left="58" Canvas.Top="239" Width="107" Height="52" FontSize="37" Content="15" />
+                                <TextBlock x:Name="label61" Canvas.Left="53" Canvas.Top="204" Width="112" FontSize="16" TextAlignment="Center" Text="Turn Counts" />
+                                <Slider x:Name="hsbarSensor" AutomationProperties.Name="Sensor" Orientation="Horizontal"
+                                        Canvas.Left="37" Canvas.Top="247" Width="280" Height="30" Minimum="0" Maximum="255" LargeChange="1" />
+                                <TextBlock x:Name="lblPercentFS" Canvas.Left="336" Canvas.Top="295" Width="57" FontSize="24" FontWeight="Bold" TextAlignment="Center" Text="0%" />
+                                <TextBlock x:Name="lblhsbarSensor" Canvas.Left="336" Canvas.Top="250" Width="57" FontSize="24" FontWeight="Bold" TextAlignment="Center" Text="0%" />
+                                <CheckBox x:Name="cboxPressureSensor" AutomationProperties.Name="Pressure Sensor" Classes="imageToggle" Canvas.Left="427" Canvas.Top="110" Width="114" Height="78" />
+                                <CheckBox x:Name="cboxEncoder" AutomationProperties.Name="Encoder" Classes="imageToggle" Canvas.Left="129" Canvas.Top="109" Width="114" Height="78" />
+                                <CheckBox x:Name="cboxCurrentSensor" AutomationProperties.Name="Current Sensor" Classes="imageToggle" Canvas.Left="278" Canvas.Top="109" Width="114" Height="78" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabPanicStop">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <Button x:Name="btnPrev_Panic" AutomationProperties.Name="Prev Panic" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <TextBlock x:Name="label54" Canvas.Left="5" Canvas.Top="5" Width="192" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Panic Stop Speed" />
+                                <Button x:Name="btnOkNext_PanicStop" AutomationProperties.Name="Ok Next Panic Stop" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tab_MinimumGain">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label72" Canvas.Left="516" Canvas.Top="106" Width="36" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Zero" />
+                                <TextBlock x:Name="label79" Canvas.Left="576" Canvas.Top="212" Width="41" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Right" />
+                                <TextBlock x:Name="label78" Canvas.Left="457" Canvas.Top="212" Width="33" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Left" />
+                                <Button x:Name="btnMinGainLeft" AutomationProperties.Name="Min Gain Left" Classes="flatImage" Canvas.Left="433" Canvas.Top="142" Width="76" Height="68" FontSize="19" />
+                                <Button x:Name="btnZeroMinMovementSetting" AutomationProperties.Name="Zero Min Movement Setting" Classes="flatImage" Canvas.Left="496" Canvas.Top="37" Width="76" Height="68" FontSize="19" FontWeight="Bold" />
+                                <TextBlock x:Name="label77" Canvas.Left="26" Canvas.Top="97" Width="369" Height="137" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Change Setpoint with steer buttons. &#10;&#10;Adjust Minumum Movement as high as possible without steer motor or hydraulics moving steering" />
+                                <TextBlock x:Name="label76" Canvas.Left="26" Canvas.Top="36" Width="371" Height="55" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Drive slowly straight forward, Allow system to steer" />
+                                <Button x:Name="btnMinGainRight" AutomationProperties.Name="Min Gain Right" Classes="flatImage" Canvas.Left="557" Canvas.Top="142" Width="76" Height="68" FontSize="19" />
+                                <TextBlock x:Name="label68" Canvas.Left="5" Canvas.Top="5" Width="306" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Minimum Movement Setting" />
+                                <TextBlock x:Name="label15" Canvas.Left="169" Canvas.Top="255" Width="228" FontSize="19" TextAlignment="Center" Text="PWM Minimum Movement" />
+                                <Button x:Name="btnPrev_Gain" AutomationProperties.Name="Prev Gain" Classes="flatImage" Canvas.Left="485" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnOK_Next" AutomationProperties.Name="OK Next" Classes="flatImage" Canvas.Left="576" Canvas.Top="269" Width="72" Height="72" FontSize="19" />
+                                <Slider x:Name="hsbarMinPWM" AutomationProperties.Name="Min PWM" Orientation="Horizontal"
+                                        Canvas.Left="115" Canvas.Top="281" Width="309" Height="44" Minimum="0" Maximum="100" Value="10" LargeChange="1" />
+                                <TextBlock x:Name="lblMinPWM" Canvas.Left="27" Canvas.Top="284" Width="82" FontSize="27" FontWeight="Bold" TextAlignment="Right" Text="888" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabPGain">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label88" Canvas.Left="586" Canvas.Top="228" Width="41" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Right" />
+                                <TextBlock x:Name="label83" Canvas.Left="515" Canvas.Top="60" Width="77" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Zero or +5" />
+                                <TextBlock x:Name="label84" Canvas.Left="492" Canvas.Top="228" Width="33" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Left" />
+                                <TextBlock x:Name="label4" Canvas.Left="213" Canvas.Top="261" Width="118" FontSize="16" TextAlignment="Center" Text="PWM Maximum" />
+                                <Button x:Name="btnLeftPGain" AutomationProperties.Name="Left P Gain" Classes="flatImage" Canvas.Left="468" Canvas.Top="158" Width="76" Height="68" FontSize="19" />
+                                <Button x:Name="btnZeroPGain" AutomationProperties.Name="Zero P Gain" Classes="flatImage" Canvas.Left="520" Canvas.Top="72" Width="76" Height="67" FontSize="19" FontWeight="Bold" />
+                                <TextBlock x:Name="label2" Canvas.Left="204" Canvas.Top="181" Width="133" FontSize="16" TextAlignment="Center" Text="Proportional Gain" />
+                                <TextBlock x:Name="label85" Canvas.Left="27" Canvas.Top="95" Width="435" Height="56" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Set Proportional for good response. &#10;Set PWM Maximum to limit turning speed." />
+                                <TextBlock x:Name="label86" Canvas.Left="27" Canvas.Top="50" Width="435" Height="33" FontSize="21" TextAlignment="Center" TextWrapping="Wrap" Text="Drive forward and enable Auto Steer" />
+                                <Button x:Name="btnRightPGain" AutomationProperties.Name="Right P Gain" Classes="flatImage" Canvas.Left="568" Canvas.Top="158" Width="76" Height="68" FontSize="19" />
+                                <TextBlock x:Name="label87" Canvas.Left="6" Canvas.Top="6" Width="141" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Gain Setting" />
+                                <Slider x:Name="hsbarHighSteerPWM" AutomationProperties.Name="High Steer PWM" Orientation="Horizontal"
+                                        Canvas.Left="136" Canvas.Top="280" Width="270" Height="41" Minimum="0" Maximum="255" Value="50" LargeChange="2" />
+                                <Button x:Name="btnPrev_PGain" AutomationProperties.Name="Prev P Gain" Classes="flatImage" Canvas.Left="486" Canvas.Top="270" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnNext_PGain" AutomationProperties.Name="Next P Gain" Classes="flatImage" Canvas.Left="577" Canvas.Top="270" Width="72" Height="72" FontSize="19" />
+                                <Slider x:Name="hsbarProportionalGain" AutomationProperties.Name="Proportional Gain" Orientation="Horizontal"
+                                        Canvas.Left="136" Canvas.Top="203" Width="270" Height="41" Minimum="0" Maximum="200" Value="4" LargeChange="1" />
+                                <TextBlock x:Name="lblProportionalGain" Canvas.Left="46" Canvas.Top="207" Width="83" FontSize="27" FontWeight="Bold" TextAlignment="Right" Text="888" />
+                                <TextBlock x:Name="lblHighSteerPWM" Canvas.Left="46" Canvas.Top="283" Width="83" FontSize="27" FontWeight="Bold" TextAlignment="Right" Text="888" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                    <TabItem x:Name="tabEnd">
+                        <Grid Background="White">
+                            <Canvas Width="655" Height="348" ClipToBounds="True"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top">
+                                <TextBlock x:Name="label116" Canvas.Left="50" Canvas.Top="114" Width="530" Height="152" FontSize="21" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap" Text="Now go drive an AB Line and fine tune settings based on your speed and soil conditions.&#10;&#10;Remember: CPD, Min PWM, and Look Ahead are critical settings. " />
+                                <Button x:Name="btnRestartWizard" AutomationProperties.Name="Restart Wizard" Canvas.Left="222" Canvas.Top="53" Width="178" Height="33" FontSize="19" Background="LightBlue" Content="Restart Wizard" />
+                                <TextBlock x:Name="label69" Canvas.Left="258" Canvas.Top="20" Width="111" FontSize="21" FontWeight="Bold" TextAlignment="Right" Text="Finished !" />
+                                <Button x:Name="btnPrev_End" AutomationProperties.Name="Prev End" Classes="flatImage" Canvas.Left="451" Canvas.Top="271" Width="72" Height="72" FontSize="19" />
+                                <Button x:Name="btnExit" AutomationProperties.Name="Exit" Classes="flatImage" Canvas.Left="546" Canvas.Top="271" Width="104" Height="72" FontSize="19" />
+                            </Canvas>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
+            </Canvas>
+        </Border>
+
+        <Button x:Name="btnStopWizard" AutomationProperties.Name="Stop Wizard" Canvas.Left="18" Canvas.Top="7" Width="148" Height="38" FontSize="19" Background="LightCoral" Content="Restart Wizard" />
+        <Border x:Name="panel2" Canvas.Left="5" Canvas.Top="430" Width="665" Height="123" Background="White" BorderBrush="Gray" BorderThickness="1">
+            <Canvas ClipToBounds="True">
+                <Button x:Name="btnSteerStatus" AutomationProperties.Name="Steer Status" Canvas.Left="14" Canvas.Top="4" Width="135" Height="118" FontSize="19" Background="White" />
+                <TextBlock x:Name="label35" Canvas.Left="194" Canvas.Top="74" Width="33" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Left" />
+                <TextBlock x:Name="label34" Canvas.Left="572" Canvas.Top="74" Width="41" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Right" />
+                <TextBlock x:Name="lblError" Canvas.Left="352" Canvas.Top="84" Width="101" FontSize="27" FontWeight="Bold" TextAlignment="Left" Text="-30.0" />
+                <TextBlock x:Name="label12" Canvas.Left="217" Canvas.Top="2" Width="68" FontSize="24" TextAlignment="Right" Text="Set:" />
+                <TextBlock x:Name="lblSteerAngle" Canvas.Left="278" Canvas.Top="4" Width="100" FontSize="27" FontWeight="Bold" TextAlignment="Left" Text="-55.5" />
+                <TextBlock x:Name="label9" Canvas.Left="547" Canvas.Top="95" Width="64" FontSize="19" TextAlignment="Right" Background="White" Text="PWM:" />
+                <TextBlock x:Name="lblPWMDisplay" Canvas.Left="607" Canvas.Top="96" Width="46" FontSize="19" FontWeight="Bold" TextAlignment="Left" Background="White" Text="255" />
+                <TextBlock x:Name="lblSteerAngleActual" Canvas.Left="484" Canvas.Top="4" Width="100" FontSize="27" FontWeight="Bold" TextAlignment="Left" Text="-55.5" />
+                <TextBlock x:Name="label13" Canvas.Left="286" Canvas.Top="84" Width="75" FontSize="24" TextAlignment="Right" Text="Error:" />
+                <ProgressBar x:Name="pbarLeft" Canvas.Left="187" Canvas.Top="36" Width="212" Height="35" Minimum="0" Maximum="49" FlowDirection="RightToLeft" />
+                <ProgressBar x:Name="pbarRight" Canvas.Left="401" Canvas.Top="36" Width="212" Height="35" Minimum="0" Maximum="49" />
+                <TextBlock x:Name="label11" Canvas.Left="411" Canvas.Top="4" Width="81" FontSize="24" TextAlignment="Right" Text="WAS:" />
+            </Canvas>
+        </Border>
+
+        <Border x:Name="panel1" Canvas.Left="915" Canvas.Top="43" Width="429" Height="100" ZIndex="50" Background="WhiteSmoke">
+            <Canvas ClipToBounds="True">
+                <TextBlock x:Name="label38" Canvas.Left="13" Canvas.Top="72" Width="73" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Free Drive" />
+                <Button x:Name="btnFreeDriveZero" AutomationProperties.Name="Free Drive Zero" Classes="flatImage" Canvas.Left="340" Canvas.Top="13" Width="73" Height="56" FontSize="19" FontWeight="Bold" />
+                <RepeatButton x:Name="btnSteerAngleUp" AutomationProperties.Name="Steer Angle Up" Classes="flatImage" Canvas.Left="230" Canvas.Top="14" Width="73" Height="74" FontSize="19" />
+                <Button x:Name="btnFreeDrive" AutomationProperties.Name="Free Drive" Canvas.Left="13" Canvas.Top="13" Width="73" Height="56" FontSize="16" FontWeight="Bold" Background="WhiteSmoke" />
+                <RepeatButton x:Name="btnSteerAngleDown" AutomationProperties.Name="Steer Angle Down" Classes="flatImage" Canvas.Left="124" Canvas.Top="13" Width="73" Height="74" FontSize="19" />
+                <TextBlock x:Name="label14" Canvas.Left="355" Canvas.Top="71" Width="45" FontSize="13" FontWeight="Bold" TextAlignment="Right" Text="Or +5" />
+            </Canvas>
+        </Border>
+
+        <!-- tabControl1: parked OFF-SCREEN (WinForms @ (988,204)); holds the gain sliders/labels
+             that the wizard surfaces during PGain/Stanley/Integral tuning. -->
+        <TabControl x:Name="tabControl1" Canvas.Left="988" Canvas.Top="204" Width="356" Height="379" FontSize="16">
+            <TabItem x:Name="tabSteer">
+                <Grid Background="Gainsboro">
+                    <Canvas Width="348" Height="323" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <Slider x:Name="hsbarLowSteerPWM" AutomationProperties.Name="Low Steer PWM" Orientation="Horizontal"
+                                Canvas.Left="65" Canvas.Top="225" Width="195" Height="30" Minimum="0" Maximum="255" Value="1" LargeChange="1" />
+                        <TextBlock x:Name="label6" Canvas.Left="196" Canvas.Top="203" Width="38" FontSize="16" TextAlignment="Center" Text="Low" />
+                        <TextBlock x:Name="lblLowSteerPWM" Canvas.Left="5" Canvas.Top="223" Width="61" FontSize="24" TextAlignment="Right" Text="888" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+            <TabItem x:Name="tabGain">
+                <Grid Background="Gainsboro">
+                    <Canvas Width="348" Height="323" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                    </Canvas>
+                </Grid>
+            </TabItem>
+            <TabItem x:Name="tabStan">
+                <Grid Background="Gainsboro">
+                    <Canvas Width="348" Height="323" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <TextBlock x:Name="lblIntegralPercent" Canvas.Left="3" Canvas.Top="245" Width="60" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarIntegral" AutomationProperties.Name="Integral" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="247" Width="202" Height="30" Minimum="0" Maximum="100" Value="5" LargeChange="1" />
+                        <TextBlock x:Name="label27" Canvas.Left="63" Canvas.Top="218" Width="204" FontSize="16" TextAlignment="Center" Text="Integral" />
+                        <TextBlock x:Name="label25" Canvas.Left="117" Canvas.Top="3" Width="114" FontSize="21" FontWeight="Bold" TextAlignment="Center" Foreground="SandyBrown" Text="Stanley" />
+                        <TextBlock x:Name="lblHeadingErrorGain" Canvas.Left="9" Canvas.Top="152" Width="54" FontSize="24" TextAlignment="Right" Text="888" />
+                        <TextBlock x:Name="lblStanleyGain" Canvas.Left="9" Canvas.Top="64" Width="54" FontSize="24" TextAlignment="Right" Text="888" />
+                        <TextBlock x:Name="label5" Canvas.Left="62" Canvas.Top="126" Width="204" FontSize="16" TextAlignment="Center" Text="Heading" />
+                        <TextBlock x:Name="label3" Canvas.Left="63" Canvas.Top="37" Width="204" FontSize="16" TextAlignment="Center" Text="Distance" />
+                        <Slider x:Name="hsbarStanleyGain" AutomationProperties.Name="Stanley Gain" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="66" Width="200" Height="30" Minimum="1" Maximum="40" Value="10" LargeChange="1" />
+                        <Slider x:Name="hsbarHeadingErrorGain" AutomationProperties.Name="Heading Error Gain" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="156" Width="200" Height="30" Minimum="1" Maximum="15" Value="10" LargeChange="1" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+            <TabItem x:Name="tabInt">
+                <Grid Background="Gainsboro">
+                    <Canvas Width="348" Height="323" ClipToBounds="True"
+                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <TextBlock x:Name="lblSideHillComp" Canvas.Left="6" Canvas.Top="209" Width="60" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarSideHillComp" AutomationProperties.Name="Side Hill Comp" Orientation="Horizontal"
+                                Canvas.Left="69" Canvas.Top="208" Width="217" Height="30" Minimum="0" Maximum="100" Value="5" LargeChange="1" />
+                        <TextBlock x:Name="label22" Canvas.Left="73" Canvas.Top="187" Width="210" FontSize="16" TextAlignment="Center" Text="Sidehill Deg per Deg of Roll" />
+                        <TextBlock x:Name="lblPureIntegral" Canvas.Left="5" Canvas.Top="279" Width="60" FontSize="24" TextAlignment="Right" Text="888" />
+                        <Slider x:Name="hsbarIntegralPurePursuit" AutomationProperties.Name="Integral Pure Pursuit" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="280" Width="217" Height="30" Minimum="0" Maximum="100" Value="5" LargeChange="1" />
+                        <TextBlock x:Name="label26" Canvas.Left="88" Canvas.Top="4" Width="172" FontSize="21" FontWeight="Bold" TextAlignment="Center" Foreground="SteelBlue" Text="Pure Pursuit" />
+                        <TextBlock x:Name="label24" Canvas.Left="74" Canvas.Top="257" Width="204" FontSize="16" TextAlignment="Center" Text="Integral" />
+                        <TextBlock x:Name="label21" Canvas.Left="74" Canvas.Top="42" Width="204" FontSize="16" TextAlignment="Center" Text="Look Ahead (m)" />
+                        <TextBlock x:Name="label20" Canvas.Left="579" Canvas.Top="228" Width="204" FontSize="16" TextAlignment="Center" Foreground="#FFF0F0F0" Text="Look Ahead Min" />
+                        <TextBlock x:Name="label19" Canvas.Left="74" Canvas.Top="114" Width="204" FontSize="16" TextAlignment="Center" Text="Look Ahead Speed Gain" />
+                        <TextBlock x:Name="label18" Canvas.Left="561" Canvas.Top="13" Width="204" FontSize="16" TextAlignment="Center" Foreground="#FFF0F0F0" Text="Look Ahead" />
+                        <Slider x:Name="hsbarLookAheadMult" AutomationProperties.Name="Look Ahead Mult" Orientation="Horizontal"
+                                Canvas.Left="68" Canvas.Top="136" Width="217" Height="30" Minimum="5" Maximum="30" Value="6" LargeChange="1" />
+                        <TextBlock x:Name="lblLookAhead" Canvas.Left="4" Canvas.Top="61" Width="60" FontSize="24" TextAlignment="Right" Text="888" />
+                        <TextBlock x:Name="lblLookAheadMult" Canvas.Left="4" Canvas.Top="141" Width="60" FontSize="24" TextAlignment="Right" Text="888" />
+                    </Canvas>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+
+        <!-- [XPLAT] Parked phantom controls: required by the agent control-surface contract but not
+             present in FormSteerWiz.Designer.cs (hsbarSteerAngleSensorZero is an event-handler name
+             aliased to hsbarWasOffset; btnOkNext/btnPrev are generic aliases of the per-tab
+             btnOkNext_*/btnPrev_* buttons). Kept off-canvas + collapsed so the code-behind surface
+             resolves without affecting layout. -->
+        <Slider x:Name="hsbarSteerAngleSensorZero" Orientation="Horizontal" IsVisible="False" Canvas.Left="-2000" Canvas.Top="-2000" Width="100" Minimum="-4000" Maximum="4000" SmallChange="2" LargeChange="20" />
+        <Button x:Name="btnOkNext" IsVisible="False" Canvas.Left="-2000" Canvas.Top="-2000" Width="1" Height="1" />
+        <Button x:Name="btnPrev" IsVisible="False" Canvas.Left="-2000" Canvas.Top="-2000" Width="1" Height="1" />
+
+    </Canvas>
+</Window>

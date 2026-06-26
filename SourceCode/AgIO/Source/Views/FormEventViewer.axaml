@@ -1,0 +1,126 @@
+<!-- [XPLAT] migrated from net48/WinForms FormEventViewer.cs + FormEventViewer.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormEventViewer"
+        x:DataType="vm:FormEventViewerViewModel"
+        Title="Event Log Viewer"
+        WindowStartupLocation="CenterOwner"
+        RequestedThemeVariant="Light"
+        Background="#FFDCDCDC"
+        Width="664"
+        Height="365"
+        MinWidth="360"
+        MinHeight="240"
+        CanResize="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms `Forms/FormEventViewer`
+        (FormEventViewer.Designer.cs + FormEventViewer.cs + FormEventViewer.resx) — the AgIO
+        "Event Log Viewer": a large, scrollable, read-only log surface with Refresh / Exit
+        buttons. Per AAP §0.3.3 this is a visual PARITY reimplementation of the original Windows
+        Forms look — never a redesign. No Figma was supplied (AAP §0.8); the rendered WinForms
+        dialog is the sole visual reference.
+
+        Root-attribute parity mapping (WinForms FormEventViewer.Designer.cs -> Avalonia):
+          • Form Text "Event Log Viewer"        -> Title="Event Log Viewer".
+          • BackColor Gainsboro (ARGB 220,220,220) -> Background="#FFDCDCDC" (the light-gray
+                                                   margin showing around the white log area).
+          • ClientSize 664 x 365                 -> Width="664" Height="365" (initial size);
+                                                   modest MinWidth/MinHeight keep the dialog usable
+                                                   when resized down.
+          • FormBorderStyle SizableToolWindow    -> CanResize="True" (the original was a resizable
+                                                   log window — match its resize behavior).
+          • ShowInTaskbar = false                -> ShowInTaskbar="False".
+          • StartPosition CenterParent           -> WindowStartupLocation="CenterOwner".
+          • Form Font (default) / control fonts  -> base FontFamily="Tahoma" FontSize="14.25"
+                                                   (sibling-view convention); the two child
+                                                   controls override their own fonts below.
+          • RequestedThemeVariant="Light"        -> AgIO is light-only (App.axaml pins Light); set
+                                                   explicitly here for self-documentation.
+          • ControlBox = false                   -> NOT reproduced: hiding only the title-bar
+                                                   system buttons is not portable across Windows /
+                                                   Linux / macOS and would risk trapping the user;
+                                                   SystemDecorations="Full" keeps a standard,
+                                                   usable, resizable frame and the operator closes
+                                                   via the Exit button (parity of intent).
+
+        Bound (compiled bindings, x:DataType="vm:FormEventViewerViewModel") to
+        FormEventViewerViewModel. The WinForms file-read + " **** Current Session Below ***** "
+        session append, btnRefresh_Click (clear + re-read) and btnExit_Click (Close) all moved
+        into the view-model (LogText / RefreshCommand / CloseCommand); this view is purely
+        declarative. CloseCommand raises FormEventViewerViewModel.RequestClose, to which the
+        hosting Window (FormEventViewer.axaml.cs code-behind) subscribes and calls Close() —
+        replacing the WinForms btnExit_Click -> Close().
+    -->
+    <DockPanel>
+
+        <!-- Bottom command bar — WinForms btnRefresh (244,336) + btnExit (473,336), both 179x28,
+             Tahoma 12 Bold, anchored Bottom|Right. Reproduced as a right-aligned horizontal bar
+             docked to the bottom (DockPanel.Dock="Bottom"), Refresh left of Exit to match the
+             original left-to-right order. The empty FormEventViewer.resx (no <data> entries) and
+             the migrated AgIO.csproj (no btnImages <AvaloniaResource>, no System.Drawing) confirm
+             these were TEXT buttons, so they render as text affordances — no avares:// imagery.
+             Parity WIDTH 179 is kept exactly; the height is raised from the WinForms 28 to a
+             touch-friendly 44 (AAP §0.3.3 "touch-friendly large controls"; sibling FormPGN uses
+             the same WCAG 44px floor). -->
+        <StackPanel DockPanel.Dock="Bottom"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="20"
+                    Margin="12,0,12,12">
+
+            <!-- WinForms btnRefresh.Click -> btnRefresh_Click (clear + re-read log).
+                 Bound to FormEventViewerViewModel.RefreshCommand (RelayCommand : ICommand). -->
+            <Button x:Name="btnRefresh"
+                    Content="Refresh"
+                    Command="{Binding RefreshCommand}"
+                    Width="179"
+                    Height="44"
+                    FontSize="12"
+                    FontWeight="Bold"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+
+            <!-- WinForms btnExit.Click -> btnExit_Click -> Close(). Bound to
+                 FormEventViewerViewModel.CloseCommand, which raises RequestClose; the code-behind
+                 closes the window. IsCancel maps Esc to the close affordance for keyboard parity. -->
+            <Button x:Name="btnExit"
+                    Content="Exit"
+                    Command="{Binding CloseCommand}"
+                    IsCancel="True"
+                    Width="179"
+                    Height="44"
+                    FontSize="12"
+                    FontWeight="Bold"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+        </StackPanel>
+
+        <!-- Log surface — WinForms `RichTextBox rtbLogViewer` (ReadOnly, Courier New 14.25 Bold,
+             WordWrap=false, anchored all sides). Reimplemented as a read-only multi-line TextBox
+             (the agent-prompt's preferred control: easy text selection/copy plus native
+             scrollbars) that fills the remaining DockPanel space (LastChildFill, so it grows and
+             shrinks with the window — parity with the all-sides anchor). TextWrapping="NoWrap"
+             reproduces WordWrap=false (long log lines scroll horizontally rather than wrap), and
+             the attached ScrollViewer.* visibilities give both scrollbars on demand, matching the
+             RichTextBox. Monospace font (Courier New first for Windows/macOS parity, then common
+             Linux monospaces) preserves the original fixed-pitch, readable log layout; FontSize
+             14.25 + Bold mirror the WinForms font. The white TextBox over the Gainsboro window
+             background reproduces the original white log area inside a gray frame. -->
+        <TextBox Text="{Binding LogText}"
+                 IsReadOnly="True"
+                 AcceptsReturn="True"
+                 TextWrapping="NoWrap"
+                 FontFamily="Courier New, DejaVu Sans Mono, Liberation Mono, Consolas, Menlo, monospace"
+                 FontSize="14.25"
+                 FontWeight="Bold"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 Margin="12,12,12,6" />
+    </DockPanel>
+</Window>

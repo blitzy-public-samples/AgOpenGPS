@@ -1,30 +1,22 @@
-// [XPLAT] migrated from net48/WinForms (Forms/Field/FormFieldExisting.cs) — see MIGRATION_DOCS/TRANSITION_MAP.md
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 
 namespace AgOpenGPS.Views.Field
 {
-    /// <summary>
-    /// [XPLAT] Code-behind for the "select near field" picker, bound to
-    /// <see cref="AgOpenGPS.Core.ViewModels.SelectNearFieldViewModel"/>. The .axaml declares no event
-    /// handlers, so this code-behind is the thin Avalonia adapter required for XAML compilation; the
-    /// nearby-field list (<c>lstFields</c>) is populated through bindings on the Core view-model.
-    /// </summary>
-    /// <remarks>
-    /// No fabricated calls to not-yet-projected FormGPS services are made here — distance/area ranking
-    /// is owned by the bound view-model. See MIGRATION_DOCS/TRANSITION_MAP.md.
-    /// </remarks>
     public partial class SelectNearFieldView : Window
     {
         public SelectNearFieldView()
         {
             InitializeComponent();
+            btnCancel.Click += OnCancelClick;
+        }
 
-            // [XPLAT] Cancel is intentionally NOT a view-model command (parity with the WinForms near-field
-            // picker Cancel button / DialogResult.Cancel). Its Click is wired imperatively to Close() the
-            // dialog (returns the default/null result = "no field chosen"); the Open path acts through the
-            // bound view-model + SelectFieldPanelPresenter. Combined with IsCancel="True" in the .axaml,
-            // this also restores the Escape-key dismissal the WinForms CancelButton provided.
-            btnCancel.Click += (_, _) => Close();
+        // [XPLAT] kiosk-safe dismissal: the near-field table VM exposes no cancel command;
+        // closing the window leaves ActiveField unchanged (selection only commits via SelectFieldCommand).
+        private void OnCancelClick(object sender, RoutedEventArgs e)
+        {
+            Close();
         }
     }
 }

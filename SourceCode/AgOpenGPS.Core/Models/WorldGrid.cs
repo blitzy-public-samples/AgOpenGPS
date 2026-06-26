@@ -1,6 +1,5 @@
 ﻿//Please, if you use this, share the improvements
 
-// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using AgOpenGPS.Core.Drawing;
 using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Core.Models;
@@ -15,9 +14,9 @@ namespace AgOpenGPS.Core
     {
         private BingMap _bingMap;
         private BingMapVisual _bingMapVisual;
-        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-        // Floor texture source is now a portable, tightly-packed RGBA byte buffer (4 bytes/pixel,
-        // row-major) with explicit dimensions, replacing the Windows-only GDI+ System.Drawing.Bitmap.
+        // [XPLAT] migrated from net48/WinForms — floor-texture source de-Windowsed from a
+        // Windows-only GDI+ raster image to a portable, tightly-packed RGBA byte buffer
+        // (4 bytes/pixel, row-major) plus explicit Width/Height; see MIGRATION_DOCS/TRANSITION_MAP.md
         private byte[] _floorRgbaPixels;
         private int _floorWidth;
         private int _floorHeight;
@@ -38,8 +37,7 @@ namespace AgOpenGPS.Core
 
         public double gridRotation = 0.0;
 
-        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-        // Accepts the floor texture as a portable RGBA buffer + dimensions instead of a GDI+ Bitmap.
+        // Accepts the floor texture as a portable RGBA buffer + dimensions (see field provenance note above).
         public WorldGrid(byte[] floorRgbaPixels, int floorWidth, int floorHeight)
         {
             _floorRgbaPixels = floorRgbaPixels;
