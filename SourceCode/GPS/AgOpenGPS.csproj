@@ -1,13 +1,33 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
 
   <PropertyGroup>
+    <!-- [XPLAT] GPS multi-targets: net8.0 (the cross-platform Linux/macOS target) and
+         net8.0-windows (so Platform/WindowsPlatformServices.cs — guarded by #if WINDOWS and using
+         WMI brightness + the legacy Registry migration-read — participates in the build). The
+         singular <TargetFramework> inherited from SourceCode/Directory.Build.props is blanked here
+         because MSBuild only honours the plural <TargetFrameworks> when <TargetFramework> is empty.
+         The win-x64 RID publishes against net8.0-windows; linux-x64/osx-x64/osx-arm64 publish
+         against net8.0 (the publish step in release.yml selects -f/-r). -->
+    <TargetFrameworks>net8.0;net8.0-windows</TargetFrameworks>
+    <TargetFramework></TargetFramework>
+    <!-- [XPLAT] KEEP WinExe: suppresses a console window on Windows and is the Avalonia desktop
+         template default; behaves like a normal process on Linux/macOS. -->
     <OutputType>WinExe</OutputType>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- [XPLAT] Per-OS self-contained publish targets for the tri-OS CI matrix; replaces the single
+         <RuntimeIdentifier>win-x64</RuntimeIdentifier>. A specific RID is selected at publish time. -->
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <PublishDir>..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>AOG.ico</ApplicationIcon>
-    <UseWindowsForms>true</UseWindowsForms>
-    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- [XPLAT] Multi-targeting requires the TFM in the output path so the net8.0 and net8.0-windows
+         outputs do not collide (was false on the single-target net48 project). -->
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+    <!-- [XPLAT] Compiled XAML bindings pair with x:DataType on the new Views/**/*.axaml. -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- [XPLAT] Properties/Resources.resx is retained (see the EmbeddedResource/Compile entries
+         below); these two settings let that resx — which carries object/binary (bitmap) resources —
+         build without a System.Drawing dependency on net8.0 by pre-serializing resources (pairs with
+         the System.Resources.Extensions package). -->
     <EmbeddedResourceUseDependentUponConvention>true</EmbeddedResourceUseDependentUponConvention>
     <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
   </PropertyGroup>
@@ -17,72 +37,91 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="System.Configuration" />
-    <Reference Include="System.Management" />
-    <Reference Include="System.Net.Http" />
-    <!-- [XPLAT] CP4: removed Windows-only <Reference Include="System.Windows.Forms.DataVisualization" />.
-         The GPS charting dialogs (FormGraphSteer / FormGraphXTE / FormGraphHeading) that consumed it
-         were deleted in CP4; their replacement is a cross-platform Avalonia charting control
-         (Deferred — see MIGRATION_DOCS/TRANSITION_MAP.md → "GPS — Charting Dialogs (CP4)"). No
-         remaining code references DataVisualization, so this Windows-only assembly is dropped (R10). -->
-  </ItemGroup>
-
-  <ItemGroup>
+    <!-- [XPLAT] GPLv3 license packaged alongside the application (carried unchanged). -->
     <Content Include="License.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
 
   <ItemGroup>
+    <!-- [XPLAT] Project dependencies retained (all three are themselves migrated cross-platform):
+         AgLibrary (logging + XmlSettingsHandler), AgOpenGPS.Core (portable domain + Drawing/GLW +
+         IPlatformServices; transitively supplies OpenTK 3.3.3 and SkiaSharp), and Keypad (Avalonia
+         on-screen keypad/keyboard UserControls). -->
     <ProjectReference Include="..\AgLibrary\AgLibrary.csproj" />
     <ProjectReference Include="..\AgOpenGPS.Core\AgOpenGPS.Core.csproj" />
     <ProjectReference Include="..\Keypad\Keypad.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <!-- [XPLAT] Avalonia cross-platform UI stack (replaces WinForms). All packages share one
+         version (11.3.18), aligned with every re-platformed UI project (AgIO/ModSim/AgDiag/GPS_Out/
+         Keypad/Updater) for restore consistency. Avalonia.OpenGL / OpenGlControlBase ship inside the
+         Avalonia core package, so no separate OpenGL package is needed. -->
+    <PackageReference Include="Avalonia" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.18" />
+    <!-- [XPLAT] Developer diagnostics overlay; Debug builds only. -->
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.18" Condition="'$(Configuration)' == 'Debug'" />
+    <!-- [XPLAT] Cross-platform serial communication (COMx on Windows; /dev/ttyUSB*, /dev/ttyACM*
+         on Linux; /dev/cu.* on macOS). In-box on net48; supplied by this package on net8.0. Only
+         port-name enumeration is abstracted behind IPlatformServices. -->
+    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+    <!-- [XPLAT] KEEP (frozen-contract versions — must not drift): ISOXML V3/V4 import/export, the
+         native SQLite engine for the tile cache (per-RID natives selected by self-contained publish),
+         the SQLite ADO.NET provider, and the pre-serialized-resource reader for the retained resx. -->
     <PackageReference Include="Dev4Agriculture.ISO11783.ISOXML" Version="0.23.1.1" />
-    <PackageReference Include="GMap.NET.WinForms" Version="2.1.7" />
-    <PackageReference Include="MechanikaDesign.WinForms.UI.ColorPicker" Version="2.0.0" />
-    <PackageReference Include="OpenTK.GLControl" Version="3.3.3" />
-    <PackageReference Include="SourceGear.sqlite3" Version="3.50.3"/>
+    <PackageReference Include="SourceGear.sqlite3" Version="3.50.3" />
     <PackageReference Include="System.Data.SQLite" Version="2.0.1" />
-    <PackageReference Include="System.Memory" Version="4.6.0" />
     <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
-    <PackageReference Include="System.ValueTuple" Version="4.6.1" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <!-- [XPLAT] Windows-only dependencies, restored/compiled only for the net8.0-windows target
+         (where the WINDOWS symbol is defined and Platform/WindowsPlatformServices.cs participates in
+         the build). System.Management backs WMI monitor brightness; Microsoft.Win32.Registry backs
+         the one-time legacy HKCU\SOFTWARE\AgOpenGPS migration-read. Absent from the net8.0
+         (Linux/macOS) target. -->
+    <PackageReference Include="System.Management" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md.
-         CP3: removed stale <Compile Update> metadata for the eight FormGPS partial files
-         (Controls, GUI, Position, SaveOpen, OpenGL, PGN, Sections, UDPComm .Designer.cs).
-         Those partials, and their DependentUpon target FormGPS.cs, were deleted in CP3; their
-         non-visual logic is extracted to GPS/Services/* (PositionService, PgnDispatcher,
-         SectionService, FieldIoService, RenderCoordinator) — Deferred, see TRANSITION_MAP.md.
-         CP4: removed the six Forms\Settings\Config*.Designer.cs <Compile Update> entries
-         (ConfigData / ConfigHelp / ConfigMenu / ConfigModule / ConfigTool / ConfigVehicle) — those
-         config tab-panel partials AND their DependentUpon target FormConfig.cs were all deleted in
-         CP4; their Avalonia replacements (FormConfigView composing ConfigDataView … ConfigVehicleView)
-         are Deferred, see TRANSITION_MAP.md → "GPS — Config Controls — Part 2 (CP4)". The
-         Resources / BrandImages resource metadata below is retained (the resx files remain). -->
+    <!-- [XPLAT] Cross-platform asset packaging: button glyphs, brand imagery, and the window icon
+         are addressed via avares:// URIs by the migrated texture/brand/icon loaders
+         (Classes/VehicleTextures.cs, ScreenTextures.cs, Brands.cs) instead of System.Drawing.Bitmap
+         (System.Drawing.Common is Windows-only on net8.0). The PNG/ico bytes are unchanged; only the
+         packaging mechanism changes here. -->
+    <AvaloniaResource Include="btnImages\**\*.png" />
+    <AvaloniaResource Include="ResourcesBrands\**\*.png" />
+    <AvaloniaResource Include="AOG.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- [XPLAT] Audio cues consumed by the migrated cross-platform Classes/CSound.cs at runtime
+         (replaces System.Media.SoundPlayer, which is Windows-only). -->
+    <Content Include="Resources\*.wav" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- [XPLAT] Properties/Resources.resx is retained (UPDATED in this migration) for its
+         non-image/string resources and provenance, so its strongly-typed accessor pairing is kept.
+         The former ResourcesBrands/BrandImages.resx (+ its Designer DependentUpon) entries were
+         REMOVED because that resx is deleted in favour of AvaloniaResource PNGs, and the 14 obsolete
+         Forms\*.Designer.cs DependentUpon entries were REMOVED because the WinForms Forms\ partials
+         were replaced by Views\ + Services\. -->
     <Compile Update="Properties\Resources.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
-    <Compile Update="ResourcesBrands\BrandImages.Designer.cs">
-      <DependentUpon>BrandImages.resx</DependentUpon>
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-    </Compile>
   </ItemGroup>
+
   <ItemGroup>
     <EmbeddedResource Update="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <EmbeddedResource Update="ResourcesBrands\BrandImages.resx">
-      <LastGenOutput>BrandImages.Designer.cs</LastGenOutput>
-      <Generator>ResXFileCodeGenerator</Generator>
     </EmbeddedResource>
   </ItemGroup>
 

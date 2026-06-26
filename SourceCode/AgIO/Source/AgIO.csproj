@@ -3,11 +3,28 @@
 
   <PropertyGroup>
     <!-- [XPLAT] Exe (not WinExe) so the Avalonia app launches as a normal cross-platform
-         process; Avalonia owns its windowing/message loop. -->
+         process; Avalonia owns its windowing/message loop. Matches the sibling migrated
+         Avalonia apps (ModSim/GPS_Out/AgDiag), which also use Exe. -->
     <OutputType>Exe</OutputType>
+    <!-- [XPLAT] Multi-target (AAP §0.3.2 / migration plan Phase 1). Directory.Build.props sets a
+         SINGULAR <TargetFramework>net8.0</TargetFramework>; MSBuild only honors the plural
+         <TargetFrameworks> when the singular is blank, so the empty element below overrides the
+         inherited value. The net8.0 head is the cross-platform (Windows/Linux/macOS) build; the
+         net8.0-windows head additionally compiles the Windows-only one-time legacy-Registry
+         migration-read — Properties/RegistrySettings.cs (MigrateFromRegistry) and
+         Services/WindowsPlatformServices.cs (ReadLegacyRegistryConfig), both fenced behind
+         #if WINDOWS using Microsoft.Win32.Registry. The SDK auto-defines the WINDOWS compilation
+         symbol for the net8.0-windows TFM (verified), so no manual <DefineConstants> is needed and
+         Microsoft.Win32.Registry resolves without an extra package. At publish the CI matrix pairs
+         win-x64 with net8.0-windows and linux-x64/osx-x64/osx-arm64 with net8.0 via -f/-r. -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net8.0;net8.0-windows</TargetFrameworks>
     <PublishDir>..\..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>AgIO_ico.ico</ApplicationIcon>
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- [XPLAT] Multi-targeting requires the TFM in the output path so the net8.0 and
+         net8.0-windows build outputs do not collide (AgIO is a leaf executable — nothing
+         references its build output — so this is safe). -->
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
     <!-- [XPLAT] compiled XAML + generated typed x:Name fields for the Views/*.axaml code-behind -->
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <!-- [XPLAT] per-OS self-contained publish targets for the tri-OS CI matrix (Windows/Linux/macOS) -->
@@ -44,12 +61,13 @@
 
   <ItemGroup>
     <!-- [XPLAT] Properties/Resources.Designer.cs is the retained net48 StronglyTypedResourceBuilder
-         accessor; its 165 members return System.Drawing.Bitmap. AgIO was re-platformed to a pure
-         cross-platform net8.0/Avalonia project (UseWindowsForms and the System.Drawing reference were
-         removed), and the migration introduces no System.Drawing.Common / GDI+ dependency (see the
-         convention documented in AgLibrary.csproj). The Avalonia views load their imagery via Avalonia
-         assets, so this generated accessor is unused. It is retained in source control for provenance
-         but excluded from compilation so AgIO builds on Windows, Linux, and macOS. -->
+         accessor; its 165 members return System.Drawing.Bitmap. AgIO was re-platformed to a
+         cross-platform Avalonia project (multi-targeting net8.0 + net8.0-windows; UseWindowsForms and
+         the System.Drawing reference were removed), and the migration introduces no
+         System.Drawing.Common / GDI+ dependency on EITHER target framework (see the convention
+         documented in AgLibrary.csproj). The Avalonia views load their imagery via Avalonia assets,
+         so this generated accessor is unused. It is retained in source control for provenance but
+         excluded from compilation so AgIO builds on Windows, Linux, and macOS. -->
     <Compile Remove="Properties\Resources.Designer.cs" />
   </ItemGroup>
 

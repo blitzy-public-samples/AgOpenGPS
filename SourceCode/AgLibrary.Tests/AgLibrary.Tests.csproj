@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- [XPLAT] migrated from net48 — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+
   <PropertyGroup>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
@@ -12,7 +14,6 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
-    <PackageReference Include="System.Memory" Version="4.6.0" />
   </ItemGroup>
 
   <ItemGroup>
