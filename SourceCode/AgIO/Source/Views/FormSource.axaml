@@ -1,0 +1,221 @@
+<!-- [XPLAT] migrated from net48/WinForms FormSource.cs + FormSource.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormSource"
+        x:DataType="vm:FormSourceViewModel"
+        Title="Source Data"
+        RequestedThemeVariant="Light"
+        Width="985" Height="610"
+        MinWidth="800" MinHeight="420"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+
+    <!-- [XPLAT] migrated from net48/WinForms FormSource.cs + FormSource.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms NTRIP "Source Data"
+        mountpoint picker (Forms/FormSource.Designer.cs + Forms/FormSource.cs). Opened by FormNtrip so
+        the operator can choose a caster mountpoint from the parsed source-table, ranked by the
+        great-circle distance from the current position to each base. This is a 1:1 PARITY rebuild,
+        never a redesign (AAP §0.3.3): same window title/size, same six list columns, same command set.
+
+        Parity mapping to FormSource.Designer.cs:
+          • Form Text "Source Data"            -> Title="Source Data".
+          • ClientSize 985 x 610               -> Width="985" Height="610" (CanResize="True" because the
+                                                  WinForms lvLines anchored Top|Bottom|Left|Right —
+                                                  the dialog was resizable).
+          • StartPosition CenterParent         -> WindowStartupLocation="CenterOwner".
+          • ShowInTaskbar = false              -> ShowInTaskbar="False".
+          • Form Font Tahoma 14.25             -> FontFamily="Tahoma" FontSize="14.25".
+          • ListView lvLines (View.Details,    -> ListBox x:Name="lvLines" with a six-column item
+            6 ColumnHeaders, FullRowSelect,       template (Distance | Mount Point | Lat | Lon |
+            GridLines, Tahoma 14.25 Bold)         Format | Network) + a matching header row; bold,
+                                                  light "InactiveCaption"-style background, full-row
+                                                  selection, large touch rows.
+          • tboxMount (read-only)              -> read-only TextBox bound to SelectedMount.
+          • lblCurrentAutoSteerPort "Mount:"   -> "Mount:" TextBlock.
+          • btnSort  (Sort image)              -> "Sort" Button  -> SortCommand.
+          • btnUseMount (OK64 image)           -> "OK" Button    -> OkCommand (IsDefault).
+          • btnSite  (www image)               -> "Visit Website" Button -> VisitSiteCommand.
+          • button1  (Cancel64 image)          -> "Cancel" Button -> CancelCommand (IsCancel).
+
+        Bound to FormSourceViewModel via COMPILED bindings (x:DataType). The view-model owns all
+        parsing/sorting/distance math and exposes Entries / SelectedEntry / SelectedMount and the
+        Ok/Cancel/VisitSite/Sort commands; the WinForms god-object write-back (nt.tboxMount.Text) is
+        gone — the dialog result is surfaced by the code-behind via the view-model's RequestClose
+        event and ShowDialog<string> (see FormSource.axaml.cs / FormSourceViewModel.cs).
+
+        Buttons render as TEXT, not the WinForms OK64 / Cancel64 / Sort / www bitmaps: the migrated
+        AgIO.csproj registers NO btnImages assets as <AvaloniaResource> (only GPS/AgOpenGPS.csproj
+        does), and Properties/Resources.Designer.cs is excluded from compilation (System.Drawing
+        purged). Every migrated AgIO view therefore renders affordances as text — referencing
+        avares://AgIO/btnImages/* here would not resolve and would render a broken image. This matches
+        the documented convention in the sibling FormYes.axaml — see MIGRATION_DOCS/TRANSITION_MAP.md.
+
+        Theme: Light only — App.axaml pins RequestedThemeVariant="Light" (AgIO has no day/night toggle);
+        it is restated on the window for explicitness/parity, mirroring FormTimedMessage.axaml.
+    -->
+    <DockPanel Margin="8" LastChildFill="True">
+
+        <!--
+            Bottom command bar. Reproduces the WinForms control row by horizontal position:
+            left group  = Sort button + "Mount:" label + the read-only selected-mount textbox
+                          (btnSort @x=12, lblCurrentAutoSteerPort @x=146, tboxMount @x=210);
+            right group = OK + Visit Website + Cancel
+                          (btnUseMount @x=480, btnSite @x=645, button1 @x=839, all near the
+                          bottom-right). The centre star column is the spacer between the two groups.
+        -->
+        <Grid DockPanel.Dock="Bottom"
+              ColumnDefinitions="Auto,*,Auto"
+              Margin="0,8,0,0">
+
+            <!-- Left group: Sort + selected-mount readout -->
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+
+                <!-- WinForms btnSort: toggles distance/name ordering -> SortCommand. -->
+                <Button x:Name="btnSort"
+                        Content="Sort"
+                        Command="{Binding SortCommand}"
+                        Width="96" Height="64"
+                        FontFamily="Tahoma" FontSize="14"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Toggle ordering between nearest-first and mountpoint name"
+                        AutomationProperties.Name="Sort list" />
+
+                <!-- WinForms lblCurrentAutoSteerPort "Mount:" (Tahoma 11.25 Bold). -->
+                <TextBlock Text="Mount:"
+                           FontFamily="Tahoma" FontSize="11.25" FontWeight="Bold"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
+
+                <!-- WinForms tboxMount: read-only display of the selected mountpoint (Tahoma 15.75 Bold). -->
+                <TextBox x:Name="tboxMount"
+                         Text="{Binding SelectedMount, Mode=OneWay}"
+                         IsReadOnly="True"
+                         Width="244"
+                         FontFamily="Tahoma" FontSize="16" FontWeight="Bold"
+                         VerticalAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         AutomationProperties.Name="Selected mountpoint" />
+            </StackPanel>
+
+            <!-- Right group: OK / Visit Website / Cancel -->
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="12"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
+
+                <!-- WinForms btnUseMount (the accept action): use the selected mountpoint -> OkCommand.
+                     IsDefault maps Enter to OK, mirroring the WinForms AcceptButton behaviour. -->
+                <Button x:Name="btnOK"
+                        Content="OK"
+                        Command="{Binding OkCommand}"
+                        IsDefault="True"
+                        Width="101" Height="64"
+                        FontFamily="Tahoma" FontSize="16"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Use the selected mountpoint"
+                        AutomationProperties.Name="Use selected mountpoint" />
+
+                <!-- WinForms btnSite: open the caster's website -> VisitSiteCommand. -->
+                <Button x:Name="btnSite"
+                        Content="Visit Website"
+                        Command="{Binding VisitSiteCommand}"
+                        Width="157" Height="64"
+                        FontFamily="Tahoma" FontSize="14"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Open the caster's website in your browser"
+                        AutomationProperties.Name="Visit caster website" />
+
+                <!-- WinForms button1: cancel/close without a selection -> CancelCommand.
+                     IsCancel maps Escape to this button, the conventional dialog-dismiss key. -->
+                <Button x:Name="btnCancel"
+                        Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True"
+                        Width="96" Height="64"
+                        FontFamily="Tahoma" FontSize="16"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Close without selecting"
+                        AutomationProperties.Name="Cancel" />
+            </StackPanel>
+        </Grid>
+
+        <!--
+            Column header band. Reproduces the WinForms ListView column headers
+            (Distance / Mount Point / Lat / Lon / Format / Network). The column widths mirror the
+            original ColumnHeader.Width values (150 / 250 / 100 / 100 / 150 / remainder) and are kept
+            identical to the item-template grid below so the header labels stay aligned with the rows.
+        -->
+        <Border DockPanel.Dock="Top"
+                Background="#D6DCE6"
+                BorderBrush="#40000000"
+                BorderThickness="0,0,0,1"
+                Padding="6,4">
+            <Grid ColumnDefinitions="150,250,100,100,150,*">
+                <TextBlock Grid.Column="0" Text="Distance"    FontWeight="Bold" />
+                <TextBlock Grid.Column="1" Text="Mount Point" FontWeight="Bold" />
+                <TextBlock Grid.Column="2" Text="Lat"         FontWeight="Bold" />
+                <TextBlock Grid.Column="3" Text="Lon"         FontWeight="Bold" />
+                <TextBlock Grid.Column="4" Text="Format"      FontWeight="Bold" />
+                <TextBlock Grid.Column="5" Text="Network"     FontWeight="Bold" />
+            </Grid>
+        </Border>
+
+        <!--
+            Mountpoint list (WinForms lvLines). ListBox is used rather than DataGrid because the AgIO
+            project does not reference the Avalonia.Controls.DataGrid package; the agent-prompt lists
+            ListBox as the primary option. Each row reproduces the six ListView sub-items via a Grid
+            whose ColumnDefinitions match the header above. FontWeight Bold + the light background
+            reproduce the WinForms Tahoma 14.25 Bold font over the InactiveCaption-tinted list; the
+            per-item bottom border reproduces the ListView GridLines; the 44px row min-height gives
+            large, touch-friendly rows (Phase 3 styling).
+        -->
+        <ListBox x:Name="lvLines"
+                 ItemsSource="{Binding Entries}"
+                 SelectedItem="{Binding SelectedEntry}"
+                 FontFamily="Tahoma" FontSize="14.25" FontWeight="Bold"
+                 Background="#EEF1F6"
+                 Padding="0"
+                 BorderBrush="#40000000"
+                 BorderThickness="1">
+            <ListBox.Styles>
+                <!-- Full-row selection (WinForms FullRowSelect=true) + large touch rows. -->
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="6,4" />
+                    <Setter Property="MinHeight" Value="44" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment" Value="Center" />
+                </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:SourceEntry">
+                    <!-- GridLines parity: a thin separator under each row. -->
+                    <Border BorderBrush="#20000000" BorderThickness="0,0,0,1">
+                        <Grid ColumnDefinitions="150,250,100,100,150,*">
+                            <TextBlock Grid.Column="0" Text="{Binding DistanceText}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Mount}"        VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="2" Text="{Binding Latitude}"     VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3" Text="{Binding Longitude}"    VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="4" Text="{Binding Format}"       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="5" Text="{Binding Network}"      VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+    </DockPanel>
+</Window>

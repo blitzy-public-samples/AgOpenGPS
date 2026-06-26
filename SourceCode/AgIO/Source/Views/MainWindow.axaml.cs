@@ -89,7 +89,10 @@ namespace AgIO.Views
             _nmea = new NmeaService(_udp);
             _udp.Nmea = _nmea;
 
-            _serial = new SerialCommService();
+            // [XPLAT] Inject the cross-platform port-name provider and the optional error presenter
+            // (replacing the WinForms MessageBox.Show), supplied by the Avalonia bootstrap. Both may be
+            // null until the platform layer is wired; SerialCommService null-guards them internally.
+            _serial = new SerialCommService(RegistrySettings.PlatformServices, RegistrySettings.ErrorPresenter);
             _serial.Udp = _udp;
             _serial.Nmea = _nmea;
             _udp.Serial = _serial;
@@ -102,7 +105,6 @@ namespace AgIO.Views
             // [XPLAT] Surface transport status through the services' events instead of the former direct
             // label/colour mutation inside the comm partials.
             _udp.StatusChanged += Udp_StatusChanged;
-            _serial.PortStatusChanged += Serial_PortStatusChanged;
             _ntrip.StatusChanged += Ntrip_StatusChanged;
             _ntrip.MessageRequested += Ntrip_MessageRequested;
 
@@ -421,7 +423,10 @@ namespace AgIO.Views
 
         private void RescanPorts()
         {
-            string[] ports = SerialCommService.GetAvailablePortNames();
+            // [XPLAT] Port-name discovery now goes through the instance method, which routes to
+            // IPlatformServices.GetSerialPortNames() (COMx / /dev/ttyUSB* / /dev/cu.*) instead of the
+            // Windows-leaning static SerialPort.GetPortNames(). It never returns null.
+            string[] ports = System.Linq.Enumerable.ToArray(_serial.GetAvailablePortNames());
             lblSerialPorts.Text = (ports == null || ports.Length == 0)
                 ? "None"
                 : string.Join("\r\n", ports);
@@ -441,20 +446,6 @@ namespace AgIO.Views
                 else if (!e.Connected)
                 {
                     ShowTimedMessage(2000, "AgIO Network", e.Message);
-                }
-            });
-        }
-
-        private void Serial_PortStatusChanged(object sender, SerialPortStatusEventArgs e)
-        {
-            RunOnUi(() =>
-            {
-                switch (e.Role)
-                {
-                    case "GPS": lblGPS1Comm.Text = e.Status; break;
-                    case "IMU": lblIMUComm.Text = e.Status; break;
-                    case "Steer": lblMod1Comm.Text = e.Status; break;
-                    case "Machine": lblMod2Comm.Text = e.Status; break;
                 }
             });
         }
@@ -567,7 +558,7 @@ namespace AgIO.Views
             }
 
             try { _ntrip.ShutDownNTRIP(); } catch (Exception ex) { Log.EventWriter("NTRIP shutdown error: " + ex.Message); }
-            try { _serial.CloseAll(); } catch (Exception ex) { Log.EventWriter("Serial close error: " + ex.Message); }
+            try { _serial.Dispose(); } catch (Exception ex) { Log.EventWriter("Serial close error: " + ex.Message); }
             _udp.Stop();
 
             // Close the GPS_Out helper if AgIO launched it (FormLoop_FormClosing behaviour).

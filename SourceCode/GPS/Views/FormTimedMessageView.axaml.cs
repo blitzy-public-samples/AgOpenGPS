@@ -17,7 +17,7 @@ namespace AgOpenGPS.Views
     /// Avalonia equivalents: the WinForms <c>Timer</c> becomes a <see cref="DispatcherTimer"/> (UI
     /// thread), and the manual <c>ClientSize</c> calculation from <c>PreferredWidth/Height</c> becomes
     /// <c>SizeToContent="WidthAndHeight"</c> declared in the XAML, which yields the same padded
-    /// auto-fit. The (20,20) placement maps to <see cref="WindowBase.Position"/>.
+    /// auto-fit. The (20,20) placement maps to <see cref="Window.Position"/>.
     ///
     /// Null-safety: the label assignments use <c>?? string.Empty</c>. This deliberately mirrors the
     /// fix applied to the ModSim timed-message view — a null title/message must never throw — and is
@@ -47,7 +47,13 @@ namespace AgOpenGPS.Views
             lblMessage.Text = titleString ?? string.Empty;
             lblMessage2.Text = messageString ?? string.Empty;
 
-            // [XPLAT] WinForms: this.Left = 20; this.Top = 20;
+            // [XPLAT] WinForms: this.StartPosition = FormStartPosition.Manual; this.Left = 20; this.Top = 20.
+            // WindowStartupLocation is also declared in the paired .axaml; it is re-asserted here so the
+            // manual placement is honoured even if that XAML attribute is ever changed, and the Position
+            // itself is applied a second time in OnOpened (below). A SizeToContent + Manual window can
+            // have its bounds settled by the windowing backend only after it is shown, so a single
+            // pre-open assignment is not guaranteed to stick on every OS.
+            WindowStartupLocation = WindowStartupLocation.Manual;
             Position = new PixelPoint(20, 20);
 
             // [XPLAT] WinForms timer1.Interval = timeInMsec; auto-close on tick.
@@ -67,7 +73,27 @@ namespace AgOpenGPS.Views
             Close();
         }
 
-        // [XPLAT] Defensive: ensure the timer is stopped if the window is closed before the tick.
+        /// <summary>
+        /// [XPLAT] Re-assert the manual (20,20) placement once the window has opened.
+        ///
+        /// The position is first set in the constructor for parity with the WinForms
+        /// <c>this.Left = 20; this.Top = 20;</c>. However, this window uses
+        /// <c>SizeToContent="WidthAndHeight"</c> together with <see cref="WindowStartupLocation.Manual"/>,
+        /// and some windowing backends finalise such a window's bounds only after it is shown — so the
+        /// value is applied again here to guarantee the toast lands at the screen's top-left on every OS.
+        /// </summary>
+        protected override void OnOpened(EventArgs e)
+        {
+            base.OnOpened(e);
+
+            // [XPLAT] WinForms parity: this.Left = 20; this.Top = 20;
+            Position = new PixelPoint(20, 20);
+        }
+
+        /// <summary>
+        /// [XPLAT] Defensive cleanup: stop and release the auto-close timer if the window is closed
+        /// before the tick fires (for example, the caller closes it early), preventing a timer leak.
+        /// </summary>
         protected override void OnClosed(EventArgs e)
         {
             if (_timer != null)

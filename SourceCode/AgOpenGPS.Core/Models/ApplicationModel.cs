@@ -56,6 +56,16 @@ namespace AgOpenGPS.Core
         // activation stays behavior-identical. See MIGRATION_DOCS/TRANSITION_MAP.md.
         public btnStates manualBtnState = btnStates.Off;
         public btnStates autoBtnState = btnStates.Off;
+
+        // [XPLAT] Keep-offsets flag relocated here from the WinForms host form (FormGPS) so the
+        // portable, cross-platform UI (the Avalonia FormShiftPosView drift-compensation editor) and
+        // the field life-cycle logic read and write the SAME canonical flag without any WinForms
+        // coupling. The name, type and default are preserved exactly from the original
+        // (FormGPS: `public bool isKeepOffsetsOn = false;`) so behavior stays identical: when a field
+        // is closed and isKeepOffsetsOn is false, SharedFieldProperties.DriftCompensation is reset to
+        // GeoDelta(0,0); when true, the operator-entered drift offset is preserved across field close.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public bool isKeepOffsetsOn;
     }
 
     // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md

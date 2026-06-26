@@ -46,6 +46,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="AgOpenGPS.Views.FormSavingView"
+        x:CompileBindings="False"
         Title="FormSaving"
         Width="933" Height="491"
         Background="{DynamicResource AogSavingGreenBrush}"

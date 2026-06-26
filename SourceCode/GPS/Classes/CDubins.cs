@@ -1,4 +1,5 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.Collections.Generic;
 
 /* Special thanks to erik.nordeus@gmail.com for his core dubins code originally written

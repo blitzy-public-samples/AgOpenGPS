@@ -1,4 +1,5 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 
 namespace AgOpenGPS
 {
@@ -51,7 +52,6 @@ namespace AgOpenGPS
             totalHeadWidth *= totalHeadWidth;
             spacing *= spacing;
 
-            //int headCount = mf.bndArr[inTurnNum].bndLine.Count;
             double distance;
 
             //remove the points too close to boundary
