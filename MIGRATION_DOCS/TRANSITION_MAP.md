@@ -16,9 +16,10 @@ the settings XML schema, guidance mathematics) are to be proven in a `PARITY_REP
 > **Accuracy contract.** This map records the **disposition** (the planned/applied transformation) of
 > every artifact and a **parity status** that reflects the artifact's *actual state in the repository
 > at the current checkpoint*. A row is marked `At parity` only when its replacement **exists on disk
-> and is build/test-verified**. Work whose destination source **exists on disk and is statically
-> validated but is not yet compiled in its own project** (e.g., the GPS Avalonia views, which are gated
-> by the pending GPS `csproj` conversion / `NETSDK1100`) is recorded `Scaffolded` — never `At parity`,
+> and is build/test-verified**. Work whose destination source **exists on disk but is not yet
+> build/CI/golden-verified** (e.g., the GPS Avalonia views, whose tri-OS CI matrix and golden evidence
+> do not exist yet, and the WinForms-`FormGPS`-coupled GPS sources temporarily gated out of the GPS
+> build via `<Compile Remove>` pending decoupling) is recorded `Scaffolded` — never `At parity`,
 > because no build/CI/golden evidence exists yet. Work whose destination file does **not** exist at all
 > is recorded `Deferred` with its named target and frozen-behavior contract. This contract exists to
 > prevent recording views/services as complete before they are proven. The GL-context rows are recorded
@@ -49,10 +50,24 @@ the settings XML schema, guidance mathematics) are to be proven in a `PARITY_REP
 > handlers implemented, `AutomationProperties.Name` accessibility labels added), the
 > `AvaloniaConfigMenuPanelPresenter`, and the two custom chart controls `RollChart` / `XteChartControl`.
 > These GPS views and impls are recorded **`Scaffolded`**: they are statically validated (XAML↔code-behind
-> consistency + well-formedness) but **not yet compiled**, because the **GPS** project is
-> **intentionally non-buildable** until the pending GPS Avalonia `csproj` conversion — it still declares
-> `UseWindowsForms=true`, so off-Windows builds stop at SDK target-resolution (`NETSDK1100`) before any
-> source compiles. Still genuinely **absent** (`Deferred`): `SourceCode/GPS/Services/` (the extracted
+> consistency + well-formedness) and the GPS Avalonia `csproj` conversion **has landed** — the project
+> targets `net8.0;net8.0-windows`, no longer declares `UseWindowsForms`, and `dotnet restore` +
+> `dotnet build` succeed for both `net8.0`/`linux-x64` and `net8.0-windows`/`win-x64` (0 errors). They
+> remain `Scaffolded` rather than `At parity` only because the tri-OS CI matrix and golden evidence do
+> not exist yet, and because the subset of GPS sources still coupled to the WinForms `FormGPS` god-object
+> is temporarily **gated out of the build via `<Compile Remove>` / `<AvaloniaXaml Remove>`** pending
+> decoupling. **Gated FormGPS-coupled sources (interim build-closure measure — authoritative complete
+> list is the `<Compile Remove>` block in `SourceCode/GPS/AgOpenGPS.csproj`, 27 entries across three
+> labelled groups):** (1) Windows-only imaging/audio — `Resources.Designer.cs`, `BrandImages.Designer.cs`,
+> `CSound.cs`, `Brands.cs`, `VehicleTextures.cs`, `ScreenTextures.cs`; (2) FormGPS-coupled domain classes
+> (each holds a `private readonly FormGPS mf;` back-reference) — `CABCurve`, `CABLine`, `CBoundary`,
+> `CFence`, `CHead`, `CTurn`, `CContour`, `CFieldData`, `CGuidance`, `CISOBUS`, `CPatches`,
+> `CRecordedPath`, `CTool`, `CTrack`, `CTram`, `CVehicle`, `CYouTurn`, and `AgShare/AgShareUploader`;
+> (3) their cascade dependents — `Protocols/ISOBUS/ISO11783_TaskFile.cs`, `Visuals/SectionsVisual.cs`,
+> and `Views/Field/FormFieldDataView.axaml(.cs)` (markup excluded in lockstep via `<AvaloniaXaml Remove>`
+> / `<AvaloniaResource Remove>`). The `TrackMode` enum + `CTrk` and `CRecPathPt` were extracted into
+> `CTrk.cs` / `CRecPathPt.cs` so the non-gated build closes. Each gated item is re-included once decoupled
+> into the injectable services below. Still genuinely **absent** (`Deferred`): `SourceCode/GPS/Services/` (the extracted
 > `PositionService` / `PgnDispatcher` / `SectionService` / `FieldIoService` / `RenderCoordinator`) and
 > `SourceCode/GPS/Controls/` (the `AvaloniaGeoViewport` GL-host adapter). The legacy GPS `Forms/` tree
 > has already been **retired**. The Avalonia package line on disk is **11.3.18** (the AAP's recommended
@@ -76,7 +91,7 @@ Every transition table below uses **exactly four columns** — **Original** | **
 
 - **At parity** — Replacement exists on disk and is build/test-verified to behave identically.
 - **At parity (pending CI verification)** — Replacement exists and compiles; full identity is pending the tri-OS CI matrix and/or runtime verification.
-- **Scaffolded** — Replacement source exists on disk and is **statically validated** (XAML↔code-behind consistency + well-formedness, or isolated-harness compile), but is **not yet build-verified in its own project** because that project's Avalonia `csproj` conversion is pending (the GPS project stops at `NETSDK1100`). Full behavioral parity is therefore **unproven** — distinct from both `At parity` (build/test-verified) and `Deferred` (destination does not exist).
+- **Scaffolded** — Replacement source exists on disk and is **statically validated** (XAML↔code-behind consistency + well-formedness, or isolated-harness compile), but is **not yet build/CI/golden-verified on the tri-OS matrix** (and, for the GPS surface, may still depend on WinForms-`FormGPS`-coupled GPS sources temporarily gated out of the build via `<Compile Remove>` pending decoupling). Full behavioral parity is therefore **unproven** — distinct from both `At parity` (build/test-verified) and `Deferred` (destination does not exist).
 - **Feature-gated (per-OS)** — Parity achieved by design via per-OS graceful degradation rather than full behavioral identity.
 - **Deferred** — The replacement is scheduled for a later checkpoint and its destination file does **not** exist yet; the WinForms/source artifact may already be removed.
 - **n/a (new surface)** — A net-new artifact with no pre-migration original (e.g., the platform-services interface).
@@ -90,13 +105,13 @@ Every transition table below uses **exactly four columns** — **Original** | **
 |---|---|---|---|
 | `SourceCode/Directory.Build.props` | same | Migrated (flipped `<TargetFramework>net48</TargetFramework>` → `net8.0` at line 4; shared baseline for 11 of 12 projects; retains `EnableNETAnalyzers` / `EnforceCodeStyleInBuild` + Release `TreatWarningsAsErrors`) | At parity |
 | `SourceCode/AgOpenGPS.sln` | same | Migrated (integrity pass; all 12 projects already SDK-style; GUIDs/paths preserved) | At parity |
-| `SourceCode/GPS/AgOpenGPS.csproj` | same *(Avalonia conversion — CP9)* | Migrated (target end-state: multi-target `net8.0;net8.0-windows`; add RIDs `win-x64;linux-x64;osx-x64;osx-arm64`; remove `UseWindowsForms`/`ImportWindowsDesktopTargets`; add Avalonia 11.3.18 + `System.IO.Ports`; drop polyfills; replace GMap/ColorPicker/GLControl; fix `Include` casing. **Still `UseWindowsForms=true` on disk → non-buildable, `NETSDK1100`**) | Deferred |
+| `SourceCode/GPS/AgOpenGPS.csproj` | same | Migrated (applied: multi-target `net8.0;net8.0-windows`; RIDs `win-x64;linux-x64;osx-x64;osx-arm64`; removed `UseWindowsForms`/`ImportWindowsDesktopTargets`; added Avalonia 11.3.18 + `System.IO.Ports`; dropped polyfills; replaced GMap/ColorPicker/GLControl; fixed `Include` casing. `dotnet restore` + `dotnet build` succeed for both targets, with the WinForms-`FormGPS`-coupled source subset gated via `<Compile Remove>`/`<AvaloniaXaml Remove>` pending decoupling — see the gated-source enumeration above) | At parity (pending CI) |
 | `SourceCode/AgIO/Source/AgIO.csproj` | same | Migrated (`WinExe`+WinForms → `Exe` + Avalonia 11.3.18 stack + `System.IO.Ports` 9.0.0; removed `UseWindowsForms`/`ImportWindowsDesktopTargets` and the `WindowsBase` ref; added RIDs `win-x64;linux-x64;osx-x64;osx-arm64`) | At parity |
 | `SourceCode/Updater/AgOpenGPS.Updater.csproj` | same | Migrated (flipped explicit `net48` → `net8.0`; removed `System.Windows.Forms`/`System.Management` GAC refs; reworked onto the Avalonia 11.3.18 stack; GPLv3 retained) | At parity |
 | `SourceCode/{ModSim,GPS_Out,AgDiag,Keypad,AgLibrary}/**/*.csproj` | same | Migrated (removed `UseWindowsForms`; modern TFM via the shared `Directory.Build.props`) | At parity |
 | `SourceCode/AgOpenGPS.Core/AgOpenGPS.Core.csproj` | same | Migrated (removed `PresentationCore` WPF ref, `System.Net.Http` GAC ref, and `System.Memory` 4.6.0 polyfill; kept `Newtonsoft.Json` 13.0.4, `OpenTK` 3.3.3, `SkiaSharp` 2.88.9, and the `AgLibrary` `ProjectReference`; stays single-target `net8.0`) | At parity |
 | `SourceCode/AgIO/Source/App.config` | (removed) | Migrated (`net48` startup section deleted; unused by SDK-style `net8.0` builds and a case-sensitive-filesystem hazard) | At parity |
-| `SourceCode/GPS/Program.cs` | same *(Avalonia bootstrap — CP9)* | Reimplemented (target end-state: Avalonia bootstrap + `IPlatformServices` single-instance replacing `[STAThread]` / named Mutex / `Application.Run(FormGPS)`; mutex identity GUID `{516-0AC5-B9A1-55fd-A8CE-72F04E6BDE8F}` preserved; `Application.Run` → `StartWithClassicDesktopLifetime`. **Still WinForms on disk** pending the GPS `csproj` conversion) | Deferred |
+| `SourceCode/GPS/Program.cs` | same | Reimplemented (Avalonia bootstrap landed: `[STAThread]` / `Application.Run(FormGPS)` → `BuildAvaloniaApp().StartWithClassicDesktopLifetime(args)`; single-instance retained as a named Mutex with the identity GUID `{516-0AC5-B9A1-55fd-A8CE-72F04E6BDE8F}` preserved; no WinForms `using` remains. Compiles in the GPS build; routing single-instance through `IPlatformServices.TryAcquireSingleInstance` is still pending — see the single-instance row) | Scaffolded |
 | `SourceCode/AgIO/Source/Program.cs` | same | Reimplemented (`[STAThread]` + `Application.Run(new FormLoop())` → `BuildAvaloniaApp().StartWithClassicDesktopLifetime(args)`; single-instance preserved with the same named-mutex GUID `{8F6F0AC4-B9A1-55fd-A8CF-72F04E6BDE8F}`; culture setup and `Restart()` preserved and made cross-platform) | At parity |
 
 ---
@@ -107,16 +122,18 @@ The operational Windows Forms surface (`FormGPS` + ~67 GPS dialogs, `FormLoop` +
 reimplemented as Avalonia views. **AgIO is complete and on disk** (`Source/Views/`, build-verified). The
 **GPS** view tree is now **`Scaffolded`**: `SourceCode/GPS/Views/` exists in full — the GPS shell
 `App.axaml(.cs)`, the `MainView` shell, and all 60 dialog/shell `.axaml` views each have a matching
-`.axaml.cs` code-behind — but it is **not yet compiled** (the GPS `csproj` Avalonia conversion is
-pending, so the project stops at `NETSDK1100`). The existing-but-null-wired Core **MVVM/Presenter
+`.axaml.cs` code-behind. The GPS `csproj` Avalonia conversion **has landed** and the project **builds
+cleanly** for `net8.0`/`linux-x64` and `net8.0-windows`/`win-x64`, with the subset of views/sources
+still coupled to the WinForms `FormGPS` god-object gated out via `<Compile Remove>`/`<AvaloniaXaml Remove>`
+pending decoupling; full tri-OS CI/golden verification is still outstanding. The existing-but-null-wired Core **MVVM/Presenter
 scaffold** (`RelayCommand`, `IPanelPresenter`, `IErrorPresenter`) is **wired up** to the Avalonia views
 (the AgIO `MainWindow` composition root already does this), replacing the legacy `FormGPS` constructing
 `ApplicationCore(dir, null, null)`.
 
 | Original | Replaced with | Disposition | Parity status |
 |---|---|---|---|
-| `SourceCode/GPS/Forms/FormGPS.cs` (+ `FormGPS.Designer.cs`, `.resx`) | `SourceCode/GPS/App.axaml(.cs)` + `SourceCode/GPS/Views/MainView.axaml(.cs)` | Reimplemented (kiosk main shell; Avalonia Fluent theme + day/night palette derived from `FormGPS`. `App.axaml(.cs)` and `MainView.axaml(.cs)` are on disk with code-behind; authored + consistency-validated, **not yet compiled** — GPS `csproj` conversion pending) | Scaffolded |
-| `SourceCode/GPS/Forms/**/*.cs` (~67 dialogs across `Settings/`, `Field/`, `Pickers/`, `Guidance/`, `Config/`, `Profiles/`, `Inputs/` + root dialogs) | `SourceCode/GPS/Views/**/*.axaml(.cs)` | Reimplemented (1:1 visual/behavioral parity; legacy `Forms/` already retired. All 60 GPS `.axaml` views have matching `.axaml.cs` code-behind on disk — declared handlers implemented, `AutomationProperties.Name` accessibility labels added, day/night theme tokens applied — authored + consistency-validated, **not yet compiled**) | Scaffolded |
+| `SourceCode/GPS/Forms/FormGPS.cs` (+ `FormGPS.Designer.cs`, `.resx`) | `SourceCode/GPS/App.axaml(.cs)` + `SourceCode/GPS/Views/MainView.axaml(.cs)` | Reimplemented (kiosk main shell; Avalonia Fluent theme + day/night palette derived from `FormGPS`. `App.axaml(.cs)` and `MainView.axaml(.cs)` are on disk with code-behind; authored + consistency-validated and **now compiling in the GPS build**; pending tri-OS CI/golden verification) | Scaffolded |
+| `SourceCode/GPS/Forms/**/*.cs` (~67 dialogs across `Settings/`, `Field/`, `Pickers/`, `Guidance/`, `Config/`, `Profiles/`, `Inputs/` + root dialogs) | `SourceCode/GPS/Views/**/*.axaml(.cs)` | Reimplemented (1:1 visual/behavioral parity; legacy `Forms/` already retired. All 60 GPS `.axaml` views have matching `.axaml.cs` code-behind on disk — declared handlers implemented, `AutomationProperties.Name` accessibility labels added, day/night theme tokens applied — authored + consistency-validated and **now compiling in the GPS build** (except `FormFieldDataView`, gated via `<AvaloniaXaml Remove>`); pending tri-OS CI/golden verification) | Scaffolded |
 | `SourceCode/AgIO/Source/Forms/**/*` (`FormLoop` shell + ~21 dialogs) | `SourceCode/AgIO/Source/Views/**/*.axaml(.cs)` (+ `App.axaml`) | Reimplemented (FormLoop → `MainWindow` composition root that wires the four transport services; 17 view files on disk and compiling; full tri-OS runtime parity pending CI) | At parity (pending CI verification) |
 | `SourceCode/Keypad/*.cs` (`GenericKeypad`/`NumKeypad`/`Keyboard` UserControls) | `SourceCode/Keypad/**/*.axaml` | Reimplemented (`Keyboard.axaml` + `NumKeypad.axaml` exist as Avalonia `UserControl`s, shared by GPS + AgIO; `GenericKeypad` retained as the shared base) | At parity (F-042) |
 | `SourceCode/ModSim/Source/Forms/**/*` | `SourceCode/ModSim/Source/Views/**/*.axaml(.cs)` (+ `App.axaml`) | Reimplemented (ModSim Avalonia shell `MainSimView` + `App.axaml` + `FormYesView`/`FormTimedMessageView` on disk) | At parity (F-039) |
@@ -175,16 +192,16 @@ at startup via `RuntimeInformation.IsOSPlatform`, using **delegate registration*
 references the GPS/AgIO concrete types (no `Core → app` dependency). **On disk and compiling within
 Core:** `IPlatformServices.cs` and `PlatformServicesFactory.cs`. The three per-OS implementations live
 in the application projects — **`SourceCode/AgIO/Source/Services/` (on disk and compiling)** and
-**`SourceCode/GPS/Platform/` (on disk, isolated-harness-verified; `Scaffolded`, since the GPS project is
-non-buildable until its `csproj` conversion)**. The factory's per-OS `Register(...)` call is **not yet
-wired into the GPS/AgIO bootstraps** — a required **CP6 integration item** — so `Create()` would throw
-until registration occurs.
+**`SourceCode/GPS/Platform/` (on disk and now compiling within the GPS build — `WindowsPlatformServices`
+under the `net8.0-windows` target; recorded `Scaffolded` pending tri-OS CI verification)**. The factory's
+per-OS `Register(...)` call is **not yet wired into the GPS/AgIO bootstraps** — a required integration
+item — so although the projects build, `Create()` would throw at runtime until registration occurs.
 
 | Original | Replaced with | Disposition | Parity status |
 |---|---|---|---|
 | (none — new interface) | `SourceCode/AgOpenGPS.Core/Platform/IPlatformServices.cs` | Reimplemented (new abstraction: `AppDataRoot`, `GetBrightness`/`SetBrightness`, `GetSerialPortNames`, `TryAcquireSingleInstance`; on disk and compiling within the portable Core) | n/a (new surface) |
 | (none — new) | `SourceCode/AgOpenGPS.Core/Platform/PlatformServicesFactory.cs` | Reimplemented (selects `Windows`/`Linux`/`Mac` impl via `RuntimeInformation.IsOSPlatform` using **delegate registration** — no `Core → GPS/AgIO` dependency; on disk and compiling within Core. **Per-OS `Register(...)` wiring into the app bootstraps is pending — CP6 integration item; `Create()` throws until registered**) | At parity (registration pending — CP6) |
-| `SourceCode/GPS/Classes/CBrightness.cs` + `SourceCode/GPS/Properties/RegistrySettings.cs` | `SourceCode/GPS/Platform/WindowsPlatformServices.cs` (+ `SourceCode/AgIO/Source/Services/WindowsPlatformServices.cs`) | Reimplemented (WMI brightness + named-mutex single-instance + Registry migration-read, Windows APIs confined under `#if WINDOWS`. AgIO copy compiles; GPS copy on disk + isolated-harness-verified, not yet compiled in the GPS project) | Scaffolded |
+| `SourceCode/GPS/Classes/CBrightness.cs` + `SourceCode/GPS/Properties/RegistrySettings.cs` | `SourceCode/GPS/Platform/WindowsPlatformServices.cs` (+ `SourceCode/AgIO/Source/Services/WindowsPlatformServices.cs`) | Reimplemented (WMI brightness + named-mutex single-instance + Registry migration-read, Windows APIs confined under `#if WINDOWS`. AgIO copy compiles; GPS copy now compiling in the GPS build under the `net8.0-windows` target) | Scaffolded |
 | (modeled on `WindowsPlatformServices`) | `SourceCode/GPS/Platform/LinuxPlatformServices.cs` (+ `SourceCode/AgIO/Source/Services/LinuxPlatformServices.cs`) | Feature-gated (sysfs `/sys/class/backlight` best-effort brightness; XDG `~/.config` config root; lockfile **+ advisory `FileStream.Lock` single-instance, fail-closed**). AgIO copy compiles; GPS copy on disk + harness-verified | Scaffolded |
 | (modeled on `WindowsPlatformServices`) | `SourceCode/GPS/Platform/MacPlatformServices.cs` (+ `SourceCode/AgIO/Source/Services/MacPlatformServices.cs`) | Feature-gated (`~/Library/Application Support` config root; brightness no-op; lockfile **+ `flock` advisory-lock single-instance, fail-closed**). AgIO copy on disk; GPS copy on disk + harness-verified | Scaffolded |
 
@@ -195,18 +212,20 @@ until registration occurs.
 
 These classes use Windows-only APIs (WMI, `System.Media`, `System.Drawing` from `.resx`,
 `System.Windows.Forms.DataVisualization`) or Windows-only packages. Their cross-platform disposition
-is fixed below; because the GPS project is non-buildable until CP9, the GPS-side rewrites are
-`Deferred` (still Windows-coupled on disk) while their target API/abstraction is already defined.
+is fixed below. The GPS project now builds for both targets; the Windows-coupled classes that cannot yet
+run cross-platform are gated out via `<Compile Remove>` (`CSound`, `Brands`, `VehicleTextures`,
+`ScreenTextures`) and recorded `Deferred`, while `CBrightness` is already migrated to route through
+`IPlatformServices` and compiles. Each target API/abstraction is defined below.
 
 | Original | Replaced with | Disposition | Parity status |
 |---|---|---|---|
-| `SourceCode/GPS/Classes/CBrightness.cs` | same *(routes through `IPlatformServices` — CP9)* | Feature-gated (routes through `IPlatformServices.SetBrightness`; WMI body relocated to `WindowsPlatformServices`; already returns `-1` gracefully when no controllable display exists. Still `System.Management`/WMI on disk pending GPS conversion) | Feature-gated (per-OS) (F-044) |
-| `SourceCode/GPS/Classes/CSound.cs` | same *(cross-platform audio — CP9)* | Reimplemented (`System.Media.SoundPlayer` → cross-platform audio abstraction. Still `System.Media` on disk pending GPS conversion) | Deferred (F-043) |
-| `SourceCode/GPS/Classes/VehicleTextures.cs`, `ScreenTextures.cs`, `Brands.cs` | same *(Avalonia/Skia images — CP9)* | Reimplemented (`System.Drawing.Bitmap`-from-`.resx` → Avalonia/Skia `avares://` images feeding the OpenGL textures) | Deferred |
-| `SourceCode/GPS/Classes/CExtensionMethods.cs` | same *(drop WinForms helpers — CP9)* | Migrated (drop WinForms-specific helpers; remaining helpers are framework-agnostic) | Deferred |
-| `System.Windows.Forms.DataVisualization` charting (`FormGraphHeading`/`FormGraphSteer`/`FormGraphXTE`/`FormCorrection`) | custom Avalonia drawing / cross-platform charting in `SourceCode/GPS/Views/Settings/` | Reimplemented (series/axes/zoom/autoscale + rolling-data buffer preserved as the custom `RollChart` / `XteChartControl` `Control`s plus the `FormGraph*View` / `FormCorrectionView` code-behind — **on disk, harness-verified, not yet compiled** in the GPS project; the Windows-only `DataVisualization` `<Reference>` is removed from the GPS `csproj` at the conversion) | Scaffolded |
+| `SourceCode/GPS/Classes/CBrightness.cs` | same *(routes through `IPlatformServices`)* | Feature-gated (routes through `IPlatformServices.SetBrightness`; WMI body relocated to `WindowsPlatformServices`; already returns `-1` gracefully when no controllable display exists. Migrated and compiling in the GPS build) | Feature-gated (per-OS) (F-044) |
+| `SourceCode/GPS/Classes/CSound.cs` | same *(cross-platform audio)* | Reimplemented (`System.Media.SoundPlayer` → cross-platform audio abstraction. Currently gated via `<Compile Remove>` (still `System.Media` on disk) pending cross-platform reimplementation) | Deferred (F-043) |
+| `SourceCode/GPS/Classes/VehicleTextures.cs`, `ScreenTextures.cs`, `Brands.cs` | same *(Avalonia/Skia images)* | Reimplemented (`System.Drawing.Bitmap`-from-`.resx` → Avalonia/Skia `avares://` images feeding the OpenGL textures. Currently gated via `<Compile Remove>` pending cross-platform reimplementation) | Deferred |
+| `SourceCode/GPS/Classes/CExtensionMethods.cs` | same | Migrated (dropped the WinForms-specific helpers — `NudlessNumericUpDown`, `SetProgressNoAnimation` — and the `System.Windows.Forms`/`Drawing2D` `using`s; remaining helpers (e.g. `CheckColorFor255`) are framework-agnostic; compiles in the GPS build) | At parity (pending CI) |
+| `System.Windows.Forms.DataVisualization` charting (`FormGraphHeading`/`FormGraphSteer`/`FormGraphXTE`/`FormCorrection`) | custom Avalonia drawing / cross-platform charting in `SourceCode/GPS/Views/Settings/` | Reimplemented (series/axes/zoom/autoscale + rolling-data buffer preserved as custom Avalonia chart `Control`s — the XTE chart folded into `FormGraphXTEView`, a `HeadingChartControl` for the heading/roll plots, plus the `FormGraph*View` / `FormCorrectionView` code-behind — **on disk and compiling in the GPS build**; the Windows-only `DataVisualization` `<Reference>` has been removed from the GPS `csproj`) | Scaffolded |
 | Package `GMap.NET.WinForms 2.1.7` | Avalonia map control **or feature-gated** in `SourceCode/GPS/Views/Field/` *(deferred — CP9)* | Feature-gated (online background imagery is optional; the SQLite tile cache stays cross-platform; the field still renders without it) | Feature-gated (per-OS) (F-021) |
-| Package `MechanikaDesign.WinForms.UI.ColorPicker 2.0.0` | Avalonia `ColorPicker` hosted in `SourceCode/GPS/Views/Pickers/FormColorPickerView.axaml(.cs)` | Reimplemented (`FormColorPickerView` uses Avalonia's `ColorSpectrum` / `ColorSlider` in place of the WinForms color-picker dialog — **on disk + harness-verified, not yet compiled**. Requires the **`Avalonia.Controls.ColorPicker 11.3.18`** `PackageReference` to be added to the GPS `csproj` at the conversion — CP6 dependency) | Scaffolded |
+| Package `MechanikaDesign.WinForms.UI.ColorPicker 2.0.0` | Avalonia `ColorPicker` hosted in `SourceCode/GPS/Views/Pickers/FormColorPickerView.axaml(.cs)` | Reimplemented (`FormColorPickerView` uses Avalonia's `ColorSpectrum` / `ColorSlider` in place of the WinForms color-picker dialog — **on disk and compiling in the GPS build**. The `ColorSpectrum`/`ColorSlider` primitives resolve from the installed Avalonia 11.3.18 stack (`Avalonia.Controls.Primitives`), so no separate `ColorPicker` package reference is required) | Scaffolded |
 | Packages `Accord.Imaging 3.8.0` + `Accord.Video.DirectShow 3.8.0` (webcam) | feature-gate (no off-Windows equivalent) | Feature-gated (Accord DirectShow is Windows-only and abandoned; default `isWebCamOn=false`; lowest-priority optional convenience) | Feature-gated (per-OS) (F-045) |
 
 ---
@@ -224,7 +243,7 @@ Vehicle `VehicleProfiles/{name}.xml`, Tool `ToolProfiles/{name}.xml`, Environmen
 
 | Original | Replaced with | Disposition | Parity status |
 |---|---|---|---|
-| `SourceCode/GPS/Properties/{RegistrySettings,VehicleSettings,ToolSettings,Settings,SettingsLegacy}.cs` | same *(config-root via `IPlatformServices` — CP9)* | Migrated (config-root sourced from `IPlatformServices`; **settings XML schema frozen**. `RegistrySettings.cs` still `Registry.CurrentUser` on disk pending GPS conversion; **to be verified by the planned** `SettingsRoundTripTests`) | Deferred (F-036) |
+| `SourceCode/GPS/Properties/{RegistrySettings,VehicleSettings,ToolSettings,Settings,SettingsLegacy}.cs` | same | Migrated (config-root sourced from `IPlatformServices.AppDataRoot`; **settings XML schema frozen**; `RegistrySettings.cs` no longer makes live `Registry.CurrentUser` calls — the one-time Windows Registry migration-read is confined to `WindowsPlatformServices` under the `net8.0-windows` target; compiles in the GPS build; **to be verified by the planned** `SettingsRoundTripTests`) | Scaffolded (F-036) |
 | `SourceCode/GPS/Classes/CSettingsMigration.cs` | same *(CP9)* | Migrated (legacy→split round-trip preserved exactly; one-time Registry read on Windows) | Deferred |
 | `SourceCode/AgIO/Source/Properties/{RegistrySettings,Settings}.cs` | same | Migrated (Windows-Registry backing replaced with a cross-platform XML store at `<ApplicationData>/AgOpenGPS/registry.xml` via `Environment.SpecialFolder.ApplicationData`; schema/keys preserved) | At parity |
 | Windows Registry backing (`docs/settings.md` L26-28) | `IPlatformServices` config root: Windows `%AppData%\AgOpenGPS`, Linux `~/.config/AgOpenGPS`, macOS `~/Library/Application Support/AgOpenGPS` (`docs/settings.md` L32-36) | Reimplemented (Registry→path migration on Windows; AgIO uses the cross-platform path today via its XML store; GPS-side config-root wiring lands at CP9) | At parity (pending CI verification) |
@@ -235,7 +254,7 @@ Vehicle `VehicleProfiles/{name}.xml`, Tool `ToolProfiles/{name}.xml`, Environmen
 
 | Original | Replaced with | Disposition | Parity status |
 |---|---|---|---|
-| `SourceCode/GPS/Program.cs` named Mutex `{516-0AC5-B9A1-55fd-A8CE-72F04E6BDE8F}` | `IPlatformServices.TryAcquireSingleInstance` (Windows named Mutex / Linux+macOS lockfile + advisory lock) *(deferred — CP9)* | Reimplemented (cross-platform single-instance; the mutex identity GUID is preserved for the future bootstrap. Still WinForms named-Mutex on disk pending GPS conversion) | Deferred (F-010) |
+| `SourceCode/GPS/Program.cs` named Mutex `{516-0AC5-B9A1-55fd-A8CE-72F04E6BDE8F}` | `IPlatformServices.TryAcquireSingleInstance` (Windows named Mutex / Linux+macOS lockfile + advisory lock) | Reimplemented (cross-platform single-instance; the mutex identity GUID is preserved. The Avalonia `Program.cs` currently still guards with a direct named Mutex — routing it through `IPlatformServices.TryAcquireSingleInstance` for the Linux/macOS lockfile path is still pending) | Deferred (F-010) |
 | `SourceCode/AgIO/Source/Program.cs` Mutex `{8F6F0AC4-B9A1-55fd-A8CF-72F04E6BDE8F}` | same | Reimplemented (uses a cross-platform .NET named `Mutex` — supported on Windows/Linux/macOS — preserving the original GUID and "only one AgIO" semantics; `Restart()` made cross-platform) | At parity |
 | `System.IO.Ports` (`COMx` enumeration) | `System.IO.Ports` 9.0.0 (cross-platform NuGet) + port-**name** enumeration abstracted via `IPlatformServices.GetSerialPortNames` (`COMx` vs `/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/cu.*`) | Migrated (serial I/O preserved; only port-name discovery is abstracted. `System.IO.Ports` 9.0.0 referenced and the enumeration seam present in AgIO `SerialCommService`; GPS-side wiring lands at CP9) | At parity (pending CI verification) (F-026/F-038) |
 
@@ -249,13 +268,16 @@ the smallest possible edits; their **outputs are frozen**. The guidance mathemat
 behavioral-parity priority: **Stanley** = `CGuidance.DoSteerAngleCalc()`; **Pure Pursuit** =
 `CTrackMethods.GoalPoint()` (`atan2(2 · wheelbase · sin(error), lookahead)`); safety guards
 `maxSteerAngle = 30°` and `maxAngularVelocity = 0.64°/s`. **`AgOpenGPS.Core` is portable and verified
-on disk** (33/33 tests pass); the **`GPS/Classes`** recompile is `Deferred` because the GPS project is
-non-buildable until CP9.
+on disk** (33/33 tests pass); the non-`FormGPS`-coupled **`GPS/Classes`** now **recompile within the GPS
+build** (e.g. `CDubins`, `CTrackMethods`, `BoundaryBuilder`, `CFenceLine`, `CSection`, `CTurnLines`,
+`CSim` — behavior frozen), while the subset still holding a `FormGPS mf` back-reference (`CGuidance`,
+`CTrack`, `CBoundary`, `CContour`, `CYouTurn`, `CTram`, `CVehicle`, `CTool`, `CFieldData`, …) is gated
+via `<Compile Remove>` and recorded `Deferred` pending decoupling.
 
 | Original | Replaced with | Disposition | Parity status |
 |---|---|---|---|
 | `SourceCode/AgOpenGPS.Core/**/*.cs` | same | Migrated (recompiled for `net8.0`; purged WPF types: `CommandManager` in `ViewModels/RelayCommand.cs`, `Visibility` in `FieldTableViewModel.cs`, the `Media3D` `using` in `Models/Camera.cs`; builds clean and 33 tests pass) | At parity |
-| `SourceCode/GPS/Classes/**/*.cs` (`CGuidance`, `CTrackMethods`, `CDubins`, `CABLine`, `CABCurve`, `CContour`, `CYouTurn`, `CTrack`, `CAHRS`, `CSection`, `CTool`, `CVehicle`, `CTram`, `CFence`, `CHead`, `CFieldData`, `CISOBUS`, `CSmartWAS`, `CSim`, …) | same *(recompile — CP9)* | Migrated (recompiled, **behavior frozen**; the `FormGPS`/`mf` god-object back-reference becomes injected `ApplicationModel`/services — `CSmartWAS(FormGPS)` → `CSmartWAS(ApplicationModel)` already done; ~19 classes await GPS conversion; **to be verified by the planned** `GuidanceEquivalenceTests`) | Deferred |
+| `SourceCode/GPS/Classes/**/*.cs` (`CGuidance`, `CTrackMethods`, `CDubins`, `CABLine`, `CABCurve`, `CContour`, `CYouTurn`, `CTrack`, `CAHRS`, `CSection`, `CTool`, `CVehicle`, `CTram`, `CFence`, `CHead`, `CFieldData`, `CISOBUS`, `CSmartWAS`, `CSim`, …) | same | Migrated (recompiled, **behavior frozen**; the non-`FormGPS`-coupled classes now compile in the GPS build — `CTrackMethods`, `CDubins`, `CAHRS`, `CSection`, `CSmartWAS` (`CSmartWAS(FormGPS)` → `CSmartWAS(ApplicationModel)` already done), `CSim`, plus `BoundaryBuilder`/`CFenceLine`/`CTurnLines`; the subset still holding a `FormGPS mf` back-reference (`CGuidance`, `CABLine`, `CABCurve`, `CContour`, `CYouTurn`, `CTrack`, `CTool`, `CVehicle`, `CTram`, `CFence`, `CHead`, `CFieldData`, `CISOBUS`) is gated via `<Compile Remove>` pending decoupling; **to be verified by the planned** `GuidanceEquivalenceTests`) | Scaffolded / Deferred (mixed) |
 
 ---
 
@@ -341,7 +363,7 @@ carry the per-checkpoint `Deferred` parity where the destination file is not yet
 *This file is the single-source-of-truth old→new mapping for the AgOpenGPS WinForms → Avalonia
 cross-platform migration, kept current as the work proceeds. Rows are recorded `At parity` only when
 their replacement exists and is build/test-verified, `Scaffolded` when the source exists and is
-statically validated but not yet compiled, and `Deferred` when the destination file does not yet exist
+statically validated but not yet build/CI/golden-verified on the tri-OS matrix, and `Deferred` when the destination file does not yet exist
 (each with its named target and frozen-behavior contract). See also `CHANGELOG.md` (the narrative
 spine) and `FEATURE_TRACEABILITY.md` (per-feature F-001…F-045 cross-platform disposition), both on disk.
 Two further deliverables are **planned but not yet authored**: `PARITY_REPORT.md` (behavioral-parity

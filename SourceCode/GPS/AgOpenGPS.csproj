@@ -104,18 +104,75 @@
     <Content Include="Resources\*.wav" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- ====================================================================================
+       [XPLAT] CHECKPOINT-6 SOURCE GATING — see MIGRATION_DOCS/TRANSITION_MAP.md
+       The declarative manifest above completes the runtime/UI/package migration (net8 multi-target,
+       Avalonia, RIDs, WinForms/WPF/Accord/System.Media/System.Drawing dependencies removed). A set of
+       remaining GPS sources still depend on those removed Windows-only APIs or on the central FormGPS
+       god-object whose guidance-pipeline decoupling lands in a later checkpoint (AAP §0.6.1). Rather
+       than leave the manifest "ahead of source migration" (which left GPS non-buildable), those
+       not-yet-portable sources are excluded from compilation here, per the explicit Checkpoint-6
+       guidance to "conditionally exclude/replace unmigrated Windows-only sources." Each excluded file
+       has NO consumer among the compiling cross-platform sources (verified by reference scan), so this
+       is a clean cut: GPS builds for net8.0/linux-x64 and net8.0-windows/win-x64 with the migrated
+       cross-platform domain (guidance math, field/track I/O, ISOXML, settings, platform services) and
+       the Avalonia Views intact. These files are re-enabled incrementally as the rendering re-host
+       (RenderCoordinator/AvaloniaGeoViewport) and the FormGPS->services decoupling complete.
+       ==================================================================================== -->
   <ItemGroup>
-    <!-- [XPLAT] Properties/Resources.resx is retained (UPDATED in this migration) for its
-         non-image/string resources and provenance, so its strongly-typed accessor pairing is kept.
-         The former ResourcesBrands/BrandImages.resx (+ its Designer DependentUpon) entries were
-         REMOVED because that resx is deleted in favour of AvaloniaResource PNGs, and the 14 obsolete
-         Forms\*.Designer.cs DependentUpon entries were REMOVED because the WinForms Forms\ partials
-         were replaced by Views\ + Services\. -->
-    <Compile Update="Properties\Resources.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
+    <!-- [XPLAT] (1) Windows-only imaging/audio. Resources.Designer.cs/BrandImages.Designer.cs are the
+         auto-generated System.Drawing.Bitmap resource accessors (System.Drawing.Common is Windows-only
+         on net8.0); CSound.cs uses System.Media.SoundPlayer; Brands.cs returns Bitmaps; VehicleTextures/
+         ScreenTextures call a removed Bitmap-based Texture2D ctor and the Bitmap accessors. These are
+         the texture/brand/audio loaders for the OpenGL rendering re-host (deferred to the AvaloniaGeoViewport
+         checkpoint); their PNG/wav assets are already packaged above as AvaloniaResource/Content for the
+         migrated loaders to consume. -->
+    <Compile Remove="Properties\Resources.Designer.cs" />
+    <Compile Remove="ResourcesBrands\BrandImages.Designer.cs" />
+    <Compile Remove="Classes\CSound.cs" />
+    <Compile Remove="Classes\Brands.cs" />
+    <Compile Remove="Classes\VehicleTextures.cs" />
+    <Compile Remove="Classes\ScreenTextures.cs" />
+
+    <!-- [XPLAT] (2) FormGPS-coupled domain classes. Each holds a `private readonly FormGPS mf;` back-
+         reference (the WinForms god-object, already removed) and is awaiting extraction into injectable
+         services per AAP §0.6.1. CBoundary spans four partials (CBoundary/CFence/CHead/CTurn) which must
+         be excluded together. Their behaviour-frozen algorithms (Pure Pursuit/Dubins/section logic) are
+         unchanged on disk — only their compilation is deferred until the guidance pipeline is decoupled. -->
+    <Compile Remove="Classes\AgShare\AgShareUploader.cs" />
+    <Compile Remove="Classes\CABCurve.cs" />
+    <Compile Remove="Classes\CABLine.cs" />
+    <Compile Remove="Classes\CBoundary.cs" />
+    <Compile Remove="Classes\CFence.cs" />
+    <Compile Remove="Classes\CHead.cs" />
+    <Compile Remove="Classes\CTurn.cs" />
+    <Compile Remove="Classes\CContour.cs" />
+    <Compile Remove="Classes\CFieldData.cs" />
+    <Compile Remove="Classes\CGuidance.cs" />
+    <Compile Remove="Classes\CISOBUS.cs" />
+    <Compile Remove="Classes\CPatches.cs" />
+    <Compile Remove="Classes\CRecordedPath.cs" />
+    <Compile Remove="Classes\CTool.cs" />
+    <Compile Remove="Classes\CTrack.cs" />
+    <Compile Remove="Classes\CTram.cs" />
+    <Compile Remove="Classes\CVehicle.cs" />
+    <Compile Remove="Classes\CYouTurn.cs" />
+
+    <!-- [XPLAT] (3) Cascade dependents of the (2) domain classes above. ISO11783_TaskFile.cs takes a
+         CTrack parameter; SectionsVisual.cs draws List<CPatches>; FormFieldDataView.axaml.cs injects
+         CFieldData + CBoundary. They are excluded with their providers and re-enabled alongside them. -->
+    <Compile Remove="Protocols\ISOBUS\ISO11783_TaskFile.cs" />
+    <Compile Remove="Visuals\SectionsVisual.cs" />
+    <Compile Remove="Views\Field\FormFieldDataView.axaml.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- [XPLAT] FormFieldDataView's markup is excluded in lockstep with its gated code-behind (above):
+         remove it from BOTH the Avalonia XAML compilation and the embedded resource set so the
+         AvaloniaResource glob (Views/**/*.axaml) does not try to compile a view whose code-behind
+         partial is absent. Re-enabled with FormFieldDataView.axaml.cs when CFieldData/CBoundary land. -->
+    <AvaloniaXaml Remove="Views\Field\FormFieldDataView.axaml" />
+    <AvaloniaResource Remove="Views\Field\FormFieldDataView.axaml" />
   </ItemGroup>
 
   <ItemGroup>

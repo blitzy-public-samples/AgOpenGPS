@@ -84,16 +84,16 @@ namespace AgOpenGPS.Views
         {
             base.OnOpened(e);
 
-            if (Settings.Default.setTram_passes < 1)
+            if (Properties.Settings.Default.setTram_passes < 1)
             {
-                Settings.Default.setTram_passes = 1;
-                Settings.Default.Save();
+                Properties.Settings.Default.setTram_passes = 1;
+                Properties.Settings.Default.Save();
             }
 
-            _passes = Settings.Default.setTram_passes;
+            _passes = Properties.Settings.Default.setTram_passes;
             nudPasses.Content = _passes.ToString(CultureInfo.InvariantCulture);
 
-            double alphaPercent = Settings.Default.setTram_alpha * 100.0;
+            double alphaPercent = Properties.Settings.Default.setTram_alpha * 100.0;
             if (alphaPercent < tbarTramAlpha.Minimum) alphaPercent = tbarTramAlpha.Minimum;
             if (alphaPercent > tbarTramAlpha.Maximum) alphaPercent = tbarTramAlpha.Maximum;
             tbarTramAlpha.Value = alphaPercent;
@@ -106,8 +106,8 @@ namespace AgOpenGPS.Views
         // [XPLAT] FormTram_FormClosing: persist the alpha exactly as the original did on close.
         protected override void OnClosed(EventArgs e)
         {
-            Settings.Default.setTram_alpha = tbarTramAlpha.Value * 0.01;
-            Settings.Default.Save();
+            Properties.Settings.Default.setTram_alpha = tbarTramAlpha.Value * 0.01;
+            Properties.Settings.Default.Save();
             base.OnClosed(e);
         }
 
@@ -141,8 +141,8 @@ namespace AgOpenGPS.Views
         private void ApplyPasses()
         {
             nudPasses.Content = _passes.ToString(CultureInfo.InvariantCulture);
-            Settings.Default.setTram_passes = _passes;
-            Settings.Default.Save();
+            Properties.Settings.Default.setTram_passes = _passes;
+            Properties.Settings.Default.Save();
             PassesChanged?.Invoke(this, _passes);
         }
 

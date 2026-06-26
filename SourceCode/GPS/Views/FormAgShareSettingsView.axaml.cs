@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using AgOpenGPS.Properties;
 using Avalonia.Controls;
+using Avalonia.Input.Platform; // [XPLAT] ClipboardExtensions.TryGetTextAsync lives here (non-obsolete IClipboard text read)
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -20,7 +21,7 @@ namespace AgOpenGPS.Views
     /// toggles upload / auto-upload / auto-load state, pastes the key from the clipboard, opens the
     /// registration page, and saves.
     ///
-    /// Everything that reads/writes <c>Settings.Default</c> (the AgShare* fields are present and
+    /// Everything that reads/writes <c>Properties.Settings.Default</c> (the AgShare* fields are present and
     /// cross-platform) and everything that is pure UI is ported here verbatim:
     /// <list type="bullet">
     ///   <item>load the server/key text and the three toggle glyphs from settings;</item>
@@ -37,7 +38,7 @@ namespace AgOpenGPS.Views
     /// <c>AgShareError</c> hierarchy) and propagated to it on Save (<c>_agShareClient.UpdateSettings</c>).
     /// That client is supplied by the FormGPS/AgShare integration, which is not yet projected into the
     /// Avalonia shell, so the network test and the client-propagation are left for that wiring. Saving
-    /// still persists to <c>Settings.Default</c> (which the client reads), so no settings behaviour is
+    /// still persists to <c>Properties.Settings.Default</c> (which the client reads), so no settings behaviour is
     /// lost. The on-screen-keyboard tap (<c>mf</c>-owned) is likewise deferred.
     /// </summary>
     public partial class FormAgShareSettingsView : Window
@@ -69,8 +70,8 @@ namespace AgOpenGPS.Views
         {
             base.OnOpened(e);
 
-            textBoxServer.Text = Settings.Default.AgShareServer;
-            textBoxApiKey.Text = Settings.Default.AgShareApiKey;
+            textBoxServer.Text = Properties.Settings.Default.AgShareServer;
+            textBoxApiKey.Text = Properties.Settings.Default.AgShareApiKey;
 
             UpdateAgShareToggleButton();
             UpdateAgShareUploadButton();
@@ -106,15 +107,15 @@ namespace AgOpenGPS.Views
         // [XPLAT] Parity with btnToggleUpload_Click: flip AgShareEnabled, re-glyph, persist.
         private void OnToggleUploadClick(object sender, RoutedEventArgs e)
         {
-            Settings.Default.AgShareEnabled = !Settings.Default.AgShareEnabled;
+            Properties.Settings.Default.AgShareEnabled = !Properties.Settings.Default.AgShareEnabled;
             UpdateAgShareToggleButton();
-            Settings.Default.Save();
+            Properties.Settings.Default.Save();
         }
 
         // [XPLAT] Parity with btnAutoUpload_Click: flip AgShareUploadActive, re-glyph, enable Save.
         private void OnAutoUploadClick(object sender, RoutedEventArgs e)
         {
-            Settings.Default.AgShareUploadActive = !Settings.Default.AgShareUploadActive;
+            Properties.Settings.Default.AgShareUploadActive = !Properties.Settings.Default.AgShareUploadActive;
             UpdateAgShareUploadButton();
             buttonSave.IsEnabled = true;
         }
@@ -122,9 +123,9 @@ namespace AgOpenGPS.Views
         // [XPLAT] Parity with btnAutoLoad_Click: flip AgShareAutoLoad, re-glyph, persist, enable Save.
         private void OnAutoLoadClick(object sender, RoutedEventArgs e)
         {
-            Settings.Default.AgShareAutoLoad = !Settings.Default.AgShareAutoLoad;
+            Properties.Settings.Default.AgShareAutoLoad = !Properties.Settings.Default.AgShareAutoLoad;
             UpdateAgShareAutoLoadButton();
-            Settings.Default.Save();
+            Properties.Settings.Default.Save();
             buttonSave.IsEnabled = true;
         }
 
@@ -179,9 +180,9 @@ namespace AgOpenGPS.Views
         // _agShareClient.UpdateSettings propagation is deferred to the AgShare client wiring.
         private void OnSaveClick(object sender, RoutedEventArgs e)
         {
-            Settings.Default.AgShareServer = textBoxServer.Text;
-            Settings.Default.AgShareApiKey = textBoxApiKey.Text;
-            Settings.Default.Save();
+            Properties.Settings.Default.AgShareServer = textBoxServer.Text;
+            Properties.Settings.Default.AgShareApiKey = textBoxApiKey.Text;
+            Properties.Settings.Default.Save();
 
             labelStatus.Text = "\u2714 Saved";
             labelStatus.Foreground = Brushes.Blue;
@@ -190,7 +191,7 @@ namespace AgOpenGPS.Views
         // [XPLAT] Parity with UpdateAgShareToggleButton: glyph + dependent-button enablement.
         private void UpdateAgShareToggleButton()
         {
-            bool enabled = Settings.Default.AgShareEnabled;
+            bool enabled = Properties.Settings.Default.AgShareEnabled;
 
             imgToggleUpload.Source = enabled
                 ? LoadBitmap("avares://AgOpenGPS/btnImages/UploadOn.png")
@@ -208,7 +209,7 @@ namespace AgOpenGPS.Views
         // [XPLAT] Parity with UpdateAgShareUploadButton.
         private void UpdateAgShareUploadButton()
         {
-            imgAutoUpload.Source = Settings.Default.AgShareUploadActive
+            imgAutoUpload.Source = Properties.Settings.Default.AgShareUploadActive
                 ? LoadBitmap("avares://AgOpenGPS/btnImages/AutoUploadOn.png")
                 : LoadBitmap("avares://AgOpenGPS/btnImages/AutoUploadOff.png");
         }
@@ -216,7 +217,7 @@ namespace AgOpenGPS.Views
         // [XPLAT] Parity with UpdateAgShareAutoLoadButton.
         private void UpdateAgShareAutoLoadButton()
         {
-            imgAutoLoad.Source = Settings.Default.AgShareAutoLoad
+            imgAutoLoad.Source = Properties.Settings.Default.AgShareAutoLoad
                 ? LoadBitmap("avares://AgOpenGPS/btnImages/DownloadAndUse.png")
                 : LoadBitmap("avares://AgOpenGPS/btnImages/DownloadAll.png");
         }

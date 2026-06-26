@@ -157,8 +157,19 @@ namespace AgIO.Services
         #region IMUSerialPort //--------------------------------------------------------------------
         private void ReceiveIMUPort(byte[] Data)
         {
-            Udp?.SendToLoopBackMessageAOG(Data);
-            Udp.traffic.helloFromIMU = 0;
+            // [XPLAT] The Udp peer is wired AFTER construction (composition root, to break the
+            // construction cycle), and this runs on the serial DataReceived callback thread — which can
+            // fire before wiring or during teardown. Snapshot the peer once (so the null check and the
+            // dereference see the same instance) and drop the frame safely if it or its traffic counter
+            // is not yet wired. Mirrors the WinForms path, which only relayed once FormLoop had wired it.
+            var udp = Udp;
+            if (udp?.traffic == null)
+            {
+                return;
+            }
+
+            udp.SendToLoopBackMessageAOG(Data);
+            udp.traffic.helloFromIMU = 0;
         }
 
         //Send machine info out to machine board
@@ -373,8 +384,17 @@ namespace AgIO.Services
         #region SteerModuleSerialPort //--------------------------------------------------------------------
         private void ReceiveSteerModulePort(byte[] Data)
         {
-            Udp?.SendToLoopBackMessageAOG(Data);
-            Udp.traffic.helloFromAutoSteer = 0;
+            // [XPLAT] Snapshot the late-wired Udp peer once and drop the frame safely if it (or its
+            // traffic counter) is not yet wired — the serial callback thread can fire before the
+            // composition root wires Udp or during teardown. See ReceiveIMUPort for the full rationale.
+            var udp = Udp;
+            if (udp?.traffic == null)
+            {
+                return;
+            }
+
+            udp.SendToLoopBackMessageAOG(Data);
+            udp.traffic.helloFromAutoSteer = 0;
         }
 
         //Send machine info out to machine board
@@ -579,8 +599,17 @@ namespace AgIO.Services
         {
             try
             {
-                Udp?.SendToLoopBackMessageAOG(Data);
-                Udp.traffic.helloFromMachine = 0;
+                // [XPLAT] Snapshot the late-wired Udp peer once and drop the frame safely if it (or its
+                // traffic counter) is not yet wired. The enclosing try/catch is retained for the serial
+                // byte path, but the guard means an unwired peer no longer raises a logged NRE every tick.
+                var udp = Udp;
+                if (udp?.traffic == null)
+                {
+                    return;
+                }
+
+                udp.SendToLoopBackMessageAOG(Data);
+                udp.traffic.helloFromMachine = 0;
             }
             catch (Exception e)
             {
@@ -857,10 +886,23 @@ namespace AgIO.Services
         //called by the GPS delegate every time a chunk is rec'd
         private void ReceiveGPSPort(string sentence)
         {
-            Nmea.rawBuffer += sentence;
-            Nmea.ParseNMEA(ref Nmea.rawBuffer);
+            // [XPLAT] This GPS receive path dereferences BOTH late-wired peers — Nmea (raw-buffer append
+            // + parse) and Udp.traffic (out-byte counter). Both are wired after construction and this runs
+            // on the serial callback thread, so snapshot each once and drop the sentence safely if either
+            // is not yet wired or has been torn down (the caller sp_DataReceivedGPS swallows exceptions,
+            // so an unguarded NRE here would silently lose the GPS stream). Snapshotting also keeps the
+            // ref-parse operating on the same Nmea instance the guard validated.
+            var nmea = Nmea;
+            var udp = Udp;
+            if (nmea == null || udp?.traffic == null)
+            {
+                return;
+            }
 
-            Udp.traffic.cntrGPSOut += sentence.Length;
+            nmea.rawBuffer += sentence;
+            nmea.ParseNMEA(ref nmea.rawBuffer);
+
+            udp.traffic.cntrGPSOut += sentence.Length;
             if (isGPSCommOpen) recvGPSSentence = sentence;
         }
 

@@ -18,6 +18,14 @@ namespace AgOpenGPS.Views.Field
         public SelectFieldView()
         {
             InitializeComponent();
+
+            // [XPLAT] Cancel is intentionally NOT a view-model command (parity with the WinForms
+            // FormFieldDir Cancel button / DialogResult.Cancel). Its Click is wired imperatively to
+            // Close() the dialog (returns the default/null result = "no field chosen"); the Open/Delete
+            // paths act through the bound view-model + SelectFieldPanelPresenter. Combined with
+            // IsCancel="True" in the .axaml, this also restores the Escape-key dismissal the WinForms
+            // CancelButton provided.
+            btnCancel.Click += (_, _) => Close();
         }
     }
 }

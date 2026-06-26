@@ -24,7 +24,7 @@ namespace AgOpenGPS.Views.Pickers
     /// Imperative dialog (NO DataContext / x:DataType / MVVM bindings); controls are addressed by
     /// x:Name and every handler is wired programmatically in the constructor (the .axaml declares
     /// none). The dialog is fully self-contained: the sixteen presets are loaded from and saved to
-    /// <c>Settings.Default.setDisplay_customColors</c> (the same CSV the original persisted), so no
+    /// <c>Properties.Settings.Default.setDisplay_customColors</c> (the same CSV the original persisted), so no
     /// FormGPS god-object is required.
     /// <list type="bullet">
     ///   <item><see cref="SetInitialColor"/> seeds the picker from the caller's colour (mirrors the
@@ -192,7 +192,7 @@ namespace AgOpenGPS.Views.Pickers
         // [XPLAT] Load the sixteen presets from Settings.setDisplay_customColors (CSV of ARGB ints).
         private void LoadPresetSwatches()
         {
-            int[] colors = ParseCustomColors(Settings.Default.setDisplay_customColors);
+            int[] colors = ParseCustomColors(Properties.Settings.Default.setDisplay_customColors);
             for (int i = 0; i < _swatches.Length && i < colors.Length; i++)
             {
                 _swatches[i].Background = new SolidColorBrush(IntToColor(colors[i]));
@@ -215,8 +215,8 @@ namespace AgOpenGPS.Views.Pickers
                 sb.Append(ColorToInt(col).ToString(CultureInfo.InvariantCulture));
             }
 
-            Settings.Default.setDisplay_customColors = sb.ToString();
-            Settings.Default.Save();
+            Properties.Settings.Default.setDisplay_customColors = sb.ToString();
+            Properties.Settings.Default.Save();
         }
 
         // [XPLAT] Parse a CSV of up to sixteen signed ARGB integers (default-safe).

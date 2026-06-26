@@ -19,12 +19,19 @@ schema, and the guidance/steering mathematics. All new parity tests live under
 **Honest status — this is the target/expected state, pending CI.** The migration is executed as a
 single solution-wide effort over multiple checkpoints; the parity results recorded here are the
 **target/expected** state, to be **confirmed green on the `windows` / `ubuntu` / `macos` CI matrix**.
-At the current checkpoint the `windows`/`ubuntu`/`macos` matrix has not yet run, the GPS application
-does **not** yet build off-Windows (the `SourceCode/GPS` project still declares
-`UseWindowsForms=true`, so off-Windows builds stop at SDK target-resolution `NETSDK1100` before any
-source compiles), and the parity **suite bodies + captured golden fixtures are not yet authored** —
-only the `Parity/Golden/**` fixture directory tree (with `README.md` / `.gitkeep` placeholders) exists
-on disk. Consequently **no contract below is claimed as proven**: each is framed as **"asserted by
+At the current checkpoint the `windows`/`ubuntu`/`macos` matrix has not yet run. The `SourceCode/GPS`
+project manifest is now fully Avalonia/.NET 8 multi-targeted — it **no longer** declares
+`UseWindowsForms=true`; it targets `net8.0;net8.0-windows` with the `win-x64`/`linux-x64`/`osx-x64`/`osx-arm64`
+runtime identifiers and the Avalonia + `System.IO.Ports` package set — so `dotnet restore` **succeeds**
+and the earlier `NETSDK1100` SDK target-resolution stop no longer occurs. GPS **builds cleanly** for both
+declared targets (`net8.0` / `linux-x64` and `net8.0-windows` / `win-x64`, 0 errors), with the subset of
+GPS sources still coupled to the WinForms `FormGPS` god-object (the guidance/section/field-coordination
+classes and the views that depend on them) **excluded from compilation via `<Compile Remove>`/`<AvaloniaXaml Remove>`**
+pending their full decoupling in later checkpoints — the gated set is categorized in `TRANSITION_MAP.md`,
+listed in full as the `<Compile Remove>` block in `SourceCode/GPS/AgOpenGPS.csproj`, and tracked under
+**Open Risks** below. The parity **suite bodies + captured golden fixtures are also not yet
+authored** — only the `Parity/Golden/**` fixture directory tree (with `README.md` / `.gitkeep` placeholders)
+exists on disk. Consequently **no contract below is claimed as proven**: each is framed as **"asserted by
 &lt;test&gt;"** (the assertion the suite will make) with a **status of "Pending CI"**. Nothing that
 has not actually been verified is reported as verified; every unverified item is enumerated under
 **Open Risks**.
@@ -247,6 +254,19 @@ and is listed first.
    so the byte-comparison assertions stay stable across operating systems.
 6. **Float determinism.** IEEE arithmetic is generally stable across RyuJIT, but the guidance
    golden tests (`GuidanceEquivalenceTests`) must confirm it cross-OS rather than assume it.
+7. **Gated FormGPS-coupled source closure (pending decoupling).** To bring the GPS project to a clean
+   cross-platform build at this checkpoint, the GPS sources still coupled to the WinForms `FormGPS`
+   god-object — the guidance/section/field-coordination classes (e.g. `CGuidance`, `CTrack`,
+   `CBoundary`, `CContour`, `CYouTurn`, `CTram`, `CVehicle`, `CTool`, `CFieldData`) and the views that
+   depend on them (e.g. `FormFieldDataView`) — are **excluded from compilation via `<Compile Remove>` /
+   `<AvaloniaXaml Remove>`** in `SourceCode/GPS/AgOpenGPS.csproj`. They must be decoupled into the
+   injectable services described in this report and re-included in later checkpoints before the
+   corresponding guidance/section/field parity suites can run end-to-end. The gated set is categorized in
+   `TRANSITION_MAP.md`; the authoritative complete list is the `<Compile Remove>` / `<AvaloniaXaml Remove>`
+   block in `SourceCode/GPS/AgOpenGPS.csproj` — 27 `<Compile Remove>` entries across three labelled groups
+   (Windows-only imaging/audio; FormGPS-coupled domain classes, each holding a `private readonly FormGPS mf;`
+   back-reference; and their cascade dependents `ISO11783_TaskFile` / `SectionsVisual` / `FormFieldDataView`).
+   **Status: gating is an interim build-closure measure; full decoupling is pending later checkpoints.**
 
 **Accepted capability gaps (feature-completeness, not parity, risks).** The following are
 **Feature-gated (per-OS)** by design — they degrade gracefully where no cross-platform equivalent

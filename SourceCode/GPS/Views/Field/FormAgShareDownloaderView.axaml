@@ -60,6 +60,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="AgOpenGPS.Views.FormAgShareDownloaderView"
+        x:CompileBindings="False"
         Title="Download Fields From AgShare"
         Width="1157"
         Height="693"

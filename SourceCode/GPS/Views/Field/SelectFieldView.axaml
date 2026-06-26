@@ -163,6 +163,7 @@
 
             <!-- Cancel — closed by the code-behind (SelectFieldView.axaml.cs) Click handler -> Close(). -->
             <Button x:Name="btnCancel"
+                    IsCancel="True"
                     MinHeight="56"
                     MinWidth="120"
                     AutomationProperties.Name="Cancel"

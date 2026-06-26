@@ -86,7 +86,7 @@ namespace AgOpenGPS.Views
         /// <param name="agShareSnapshot">
         /// Callback that performs the AgShare snapshot — the cross-platform replacement for the
         /// original <c>mf.AgShareSnapshot()</c>. Invoked only when <paramref name="isJobStarted"/> is
-        /// <see langword="true"/> and <c>Settings.Default.AgShareEnabled</c> is <see langword="true"/>.
+        /// <see langword="true"/> and <c>Properties.Settings.Default.AgShareEnabled</c> is <see langword="true"/>.
         /// </param>
         public FormSaveOrNotView(bool isJobStarted, Action agShareSnapshot)
             : this()
@@ -100,9 +100,9 @@ namespace AgOpenGPS.Views
             labelShutdownIn.Text = gStr.gsShutdownIn + ":";
 
             // [XPLAT] Trigger a snapshot to create a temp data file for the AgShare upload — ported
-            // from `if (mf.isJobStarted && Settings.Default.AgShareEnabled) mf.AgShareSnapshot();`.
+            // from `if (mf.isJobStarted && Properties.Settings.Default.AgShareEnabled) mf.AgShareSnapshot();`.
             // The FormGPS dependency is replaced by the injected callback (null-safe).
-            if (isJobStarted && Settings.Default.AgShareEnabled)
+            if (isJobStarted && Properties.Settings.Default.AgShareEnabled)
             {
                 agShareSnapshot?.Invoke();
             }
@@ -125,7 +125,7 @@ namespace AgOpenGPS.Views
             }
             _countdownStarted = true;
 
-            bool isShutdown = Settings.Default.setWindow_isShutdownComputer;
+            bool isShutdown = Properties.Settings.Default.setWindow_isShutdownComputer;
 
             // [XPLAT] The Exit pair and the Shutdown pair are mutually exclusive — exactly one is
             // shown, keyed on the persisted setting (Visible -> IsVisible).
@@ -153,7 +153,7 @@ namespace AgOpenGPS.Views
         /// <param name="e">The event payload; unused.</param>
         private void OnCountdownTick(object sender, EventArgs e)
         {
-            if (Settings.Default.setWindow_isShutdownComputer)
+            if (Properties.Settings.Default.setWindow_isShutdownComputer)
             {
                 _countShutdown--;
                 lblShutCtr.Text = _countShutdown.ToString(CultureInfo.InvariantCulture);
@@ -182,7 +182,7 @@ namespace AgOpenGPS.Views
         /// <param name="e">The routed-event payload; unused.</param>
         private void btnOk_Click(object sender, RoutedEventArgs e)
         {
-            Settings.Default.setWindow_isShutdownComputer = false;
+            Properties.Settings.Default.setWindow_isShutdownComputer = false;
             Close(SaveOrNotResult.ExitToWindows);
         }
 
@@ -207,7 +207,7 @@ namespace AgOpenGPS.Views
         /// <param name="e">The routed-event payload; unused.</param>
         private void btnShutDown_Click(object sender, RoutedEventArgs e)
         {
-            Settings.Default.setWindow_isShutdownComputer = true;
+            Properties.Settings.Default.setWindow_isShutdownComputer = true;
             Close(SaveOrNotResult.Shutdown);
         }
 

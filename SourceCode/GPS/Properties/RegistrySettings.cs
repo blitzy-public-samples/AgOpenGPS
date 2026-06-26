@@ -109,15 +109,6 @@ namespace AgOpenGPS
                 }
                 vehicleProfileName = cfg.VehicleProfileName;
 
-                // NEW: Vehicle Profile Name (v7+)
-                if (cfg.VehicleProfileName == null)
-                {
-                    cfg.VehicleProfileName = "";
-                    Log.EventWriter("Registry -> Key vehicleProfileName was null");
-                    repaired = true;
-                }
-                vehicleProfileName = cfg.VehicleProfileName;
-
                 // NEW: Tool Profile Name (v7+)
                 if (cfg.ToolProfileName == null)
                 {

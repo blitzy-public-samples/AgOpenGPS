@@ -18,6 +18,13 @@ namespace AgOpenGPS.Views.Field
         public SelectNearFieldView()
         {
             InitializeComponent();
+
+            // [XPLAT] Cancel is intentionally NOT a view-model command (parity with the WinForms near-field
+            // picker Cancel button / DialogResult.Cancel). Its Click is wired imperatively to Close() the
+            // dialog (returns the default/null result = "no field chosen"); the Open path acts through the
+            // bound view-model + SelectFieldPanelPresenter. Combined with IsCancel="True" in the .axaml,
+            // this also restores the Escape-key dismissal the WinForms CancelButton provided.
+            btnCancel.Click += (_, _) => Close();
         }
     }
 }

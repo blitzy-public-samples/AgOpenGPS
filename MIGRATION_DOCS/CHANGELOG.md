@@ -34,18 +34,20 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 > (3/3) test suites pass. The **`GPS`** application project's **Avalonia `csproj` conversion has now
 > landed** — it targets `net8.0;net8.0-windows` with the per-OS RID set and no longer declares
 > `UseWindowsForms`, so off-Windows builds now resolve the SDK and embed its resources instead of
-> stopping at `NETSDK1100`. `GPS` is **still non-buildable**, but the blocker has moved to the source
-> level: its C# still references `System.Windows.Forms` types because the `Forms/`→service logic port
-> (and the `Services/`/`Controls/` trees) is not yet complete, so compilation now stops at those
-> WinForms references. The GPS-side
-> **`Views/` tree is now on disk** — all ~60 Avalonia dialog views plus the `MainView` shell each have a
-> matching `.axaml.cs` code-behind (validated for XAML↔code-behind consistency and XAML well-formedness;
-> the GPS project now compiles past `NETSDK1100` and resource generation, but not yet its WinForms
-> source). Still tracked as **`Deferred`** are the
-> GPS `Services/` and `Controls/` trees (not yet created) and the `Forms/`→Avalonia logic port (and thus
-> GPS compilation), the per-OS CI matrix, the golden-file parity **suite bodies** (only a
-> `Parity/Golden/**` scaffold is on disk), the documentation refresh, and the `PARITY_REPORT.md` /
-> `VALUE_SUMMARY.md` deliverables (not yet authored). Each carries a named target and frozen-behavior
+> stopping at `NETSDK1100`. **`GPS` now builds cleanly** for both `net8.0`/`linux-x64` and
+> `net8.0-windows`/`win-x64` (0 errors). To close the build at this checkpoint, the subset of GPS sources
+> still coupled to the WinForms `FormGPS` god-object — the guidance/section/field-coordination
+> `Classes/**` and the views that depend on them — is temporarily **gated out via `<Compile Remove>` /
+> `<AvaloniaXaml Remove>`** (the authoritative complete list, 27 entries, is in
+> `SourceCode/GPS/AgOpenGPS.csproj`; categorized in `TRANSITION_MAP.md`). The GPS-side
+> **`Views/` tree is on disk** — all ~60 Avalonia dialog views plus the `MainView` shell each have a
+> matching `.axaml.cs` code-behind (validated for XAML↔code-behind consistency and XAML well-formedness).
+> Still tracked as **`Deferred`** are the
+> GPS `Services/` and `Controls/` trees (not yet created) and the `Forms/`→Avalonia logic port that will
+> let the gated `FormGPS`-coupled sources be decoupled and re-included, the per-OS CI matrix, the
+> golden-file parity **suite bodies** (only a `Parity/Golden/**` scaffold is on disk), the documentation
+> refresh, and the `VALUE_SUMMARY.md` deliverable (not yet authored; `PARITY_REPORT.md` is now authored,
+> recording the target/expected state pending CI). Each carries a named target and frozen-behavior
 > contract in `TRANSITION_MAP.md` (which carries the authoritative per-row `At parity` / `Scaffolded` /
 > `Deferred` status). Entries below note this status where it is material; each bullet describes the
 > migration change for its area.
@@ -69,7 +71,9 @@ _Date: (in progress)_
   `win-x64;linux-x64;osx-x64;osx-arm64`; Windows-only code paths (WMI brightness, Registry
   migration-read) are isolated under a `net8.0-windows` target so they never reach Linux/macOS builds.
   Both `AgIO`'s and `GPS`'s RID sets are now on disk (the `GPS` `csproj` conversion has landed).
-  _AgIO at parity; GPS `csproj` converted, GPS source compile deferred — see `TRANSITION_MAP.md`._
+  _AgIO at parity; GPS `csproj` converted and the project builds for both targets, with the
+  WinForms-`FormGPS`-coupled source subset gated via `<Compile Remove>` pending decoupling — see
+  `TRANSITION_MAP.md`._
 - **`SourceCode/Updater/AgOpenGPS.Updater.csproj`** — the only project that pinned its own
   framework — had its explicit `net48` flipped to `net8.0` separately. _At parity._
 - **`.NET SDK 9.0.300` toolchain retained** (`global.json`, `rollForward: latestFeature`); the
@@ -106,9 +110,11 @@ _Date: (in progress)_
   declared event handlers implemented and `AutomationProperties.Name` accessibility labels added. These
   views are **authored and consistency-validated**: the GPS `csproj` Avalonia
   conversion — which removes `UseWindowsForms` and adds the Avalonia, `OpenGlControlBase`, and
-  `Avalonia.Controls.ColorPicker 11.3.18` references — has now landed, so the GPS project compiles
-  past `NETSDK1100` and its resources, but not yet its WinForms source. _AgIO views at parity (pending CI); GPS views on
-  disk, GPS source compile deferred to the `Forms/`→Avalonia logic port — see `TRANSITION_MAP.md`._
+  `Avalonia.Controls.ColorPicker 11.3.18` references — has now landed, so the GPS project **builds
+  cleanly** for both `net8.0`/`linux-x64` and `net8.0-windows`/`win-x64`, with the WinForms-`FormGPS`-coupled
+  source subset gated via `<Compile Remove>`/`<AvaloniaXaml Remove>` pending decoupling. _AgIO views at
+  parity (pending CI); GPS views on disk and compiling (non-gated subset), full decoupling of the gated
+  `FormGPS`-coupled sources pending the `Forms/`→Avalonia logic port — see `TRANSITION_MAP.md`._
 - **Core MVVM/Presenter scaffold wired to views.** The existing-but-null-wired `RelayCommand`,
   `IPanelPresenter`, and `IErrorPresenter` in `AgOpenGPS.Core` are now bound to Avalonia views via
   data binding (the AgIO `MainWindow` composition root already does this), replacing the legacy

@@ -16,9 +16,9 @@
     CHARTING RE-HOST (no new NuGet): the two Windows-only System.Windows.Forms.DataVisualization
     Chart controls are removed and re-hosted as custom Avalonia drawing — the same point-buffer plus
     Render(DrawingContext) polyline approach used by the sibling graph views (FormGraphSteerView /
-    FormGraphXTEView). The actual polyline rendering is the deferred cross-platform charting work
-    tracked in MIGRATION_DOCS/TRANSITION_MAP.md (CP4/CP9); this markup supplies the two black plot
-    surfaces and the readout labels, and the partner code-behind owns the live drawing and data.
+    FormGraphXTEView). The polyline rendering is implemented by the HeadingChartControl declared in the
+    partner code-behind (referenced below via xmlns:local) and bound to this view's rolling buffers; the
+    black <Border> wrappers supply the plot background and the readout labels overlay on top.
 
     WIRING CONTRACT — the partner code-behind FormGraphHeadingView.axaml.cs owns ALL behaviour,
     NOT this markup. This view is CODE-BEHIND DRIVEN: there is intentionally NO x:DataType, NO
@@ -64,6 +64,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:gStr="clr-namespace:AgOpenGPS.Core.Translations;assembly=AgOpenGPS.Core"
+        xmlns:local="clr-namespace:AgOpenGPS.Views.Settings"
         x:Class="AgOpenGPS.Views.Settings.FormGraphHeadingView"
         Title="Heading Chart"
         Width="495"
@@ -93,24 +94,30 @@
              "S" (GPS heading) and "PWM" (IMU-corrected heading) series. The code-behind fills this
              surface with the custom polyline drawing; ClipToBounds keeps the plot inside the rect
              just as the WinForms ChartArea clipped its series. -->
-        <Border x:Name="unoChart"
-                Canvas.Left="3"
+        <Border Canvas.Left="3"
                 Canvas.Top="3"
                 Width="487"
                 Height="126"
                 Background="Black"
-                ClipToBounds="True" />
+                ClipToBounds="True">
+            <!-- [XPLAT] custom-drawn plot surface (replaces the Windows-only DataVisualization Chart);
+                 the partner code-behind plots the "S"/"PWM" series into this control. -->
+            <local:HeadingChartControl x:Name="unoChart" />
+        </Border>
 
         <!-- rollChart: WinForms Chart @ Location (9,129) Size 481 x 342, BackColor Black, fixed
              Y axis −10..+10 (grid interval 2). Hosts the "Ro" (heading difference) and "Ze" (zero
              baseline) series, drawn by the code-behind. -->
-        <Border x:Name="rollChart"
-                Canvas.Left="9"
+        <Border Canvas.Left="9"
                 Canvas.Top="129"
                 Width="481"
                 Height="342"
                 Background="Black"
-                ClipToBounds="True" />
+                ClipToBounds="True">
+            <!-- [XPLAT] custom-drawn plot surface (fixed Y -10..+10, major-grid interval 2); the partner
+                 code-behind plots the "Ro"/"Ze" series into this control. -->
+            <local:HeadingChartControl x:Name="rollChart" />
+        </Border>
 
         <!-- ===================== Live readouts (overlaid on top chart) ===================== -->
 

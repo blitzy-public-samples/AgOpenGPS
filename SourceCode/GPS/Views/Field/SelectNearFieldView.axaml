@@ -137,6 +137,7 @@
             <!-- Cancel — dismisses the dialog; its Click -> Close() is wired in code-behind by
                  x:Name (no command on the VM for table views). -->
             <Button x:Name="btnCancel"
+                    IsCancel="True"
                     MinHeight="56"
                     MinWidth="120"
                     Foreground="{DynamicResource AogTextBrush}"

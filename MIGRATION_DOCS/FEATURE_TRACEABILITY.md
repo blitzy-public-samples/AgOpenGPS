@@ -28,11 +28,13 @@ that exists in the `net48`/WinForms product must behave identically (or degrade 
 operating system offers no equivalent) on Windows, Linux, and macOS. Parity — not redesign — is the
 sole acceptance criterion.
 
-> **CP5 status (read first).** This is an in-progress, single-solution migration. At the current
+> **Current status (read first).** This is an in-progress, single-solution migration. At the current
 > checkpoint **no feature can yet be marked _At parity_**: the cross-platform behavioral proof
-> (golden-file byte/round-trip tests and the tri-OS CI matrix) and the `PARITY_REPORT.md` that would
-> record it **do not exist yet**, and the **GPS** application project is **not yet buildable** (it still
-> declares `UseWindowsForms=true`, so off-Windows builds stop at `NETSDK1100`). Each feature is therefore
+> (golden-file byte/round-trip tests and the tri-OS CI matrix) **does not exist yet**, so although
+> `PARITY_REPORT.md` is now authored it records the **target/expected** state pending CI rather than
+> verified results. The **GPS** application project **now builds** for `net8.0;net8.0-windows` (it no
+> longer declares `UseWindowsForms`), with the WinForms-`FormGPS`-coupled source subset gated out via
+> `<Compile Remove>` pending decoupling. Each feature is therefore
 > recorded as **Scaffolded** (its cross-platform code exists on disk now), **Deferred** (its
 > cross-platform artifact does not exist yet — e.g. the extracted GPS `Services/`, or the GPS `Classes/`
 > recompile that is gated by the GPS build), or **Feature-gated (per-OS)**. The `At parity` label is
@@ -81,7 +83,7 @@ geo conversion. The features that depend on the **extracted GPS `Services/`** (`
 
 | ID | Feature | Status | Cross-platform location / notes |
 |---|---|---|---|
-| F-001 | Two-program architecture (AgOpenGPS `FormGPS` + AgIO `FormLoop`, separate single-instance programs) | Scaffolded | AgIO re-platformed as an Avalonia app under `SourceCode/AgIO` (on disk + compiling); the GPS shell `SourceCode/GPS/App.axaml(.cs)` + `Views/MainView.axaml(.cs)` are on disk with code-behind but **not yet compiled** (GPS `csproj` conversion pending). Two-program model + loopback fabric retained. See `TRANSITION_MAP.md` → UI Shell. |
+| F-001 | Two-program architecture (AgOpenGPS `FormGPS` + AgIO `FormLoop`, separate single-instance programs) | Scaffolded | AgIO re-platformed as an Avalonia app under `SourceCode/AgIO` (on disk + compiling); the GPS shell `SourceCode/GPS/App.axaml(.cs)` + `Views/MainView.axaml(.cs)` are on disk with code-behind and **now compiling in the GPS build** (pending tri-OS CI verification). Two-program model + loopback fabric retained. See `TRANSITION_MAP.md` → UI Shell. |
 | F-002 | UDP loopback PGN fabric (ports 15555 / 17777, additive-checksum CRC, header `0x80 0x81 0x7F`) | Scaffolded | AgIO `Source/Services/UdpLoopbackService.cs` is on disk + compiling; the **GPS** counterpart `SourceCode/GPS/Services/PgnDispatcher.cs` is a **target path not yet on disk** (deferred half). Frame format, CRC (sum of bytes 2..N-1), and ports frozen by contract; byte-equivalence **to be proven** by the planned `PgnFrameGoldenTests`. |
 | F-003 | AgIO auto-start / auto-stop by AgOpenGPS | Scaffolded | AgIO `Program.cs` migrated to the Avalonia bootstrap (on disk + compiling) with `Restart()` preserved cross-platform; the GPS-side bootstrap that launches AgIO lands with the GPS `csproj` conversion. |
 | F-004 | GPS position ingestion (PGN `0xD6`, 52 bytes) | Deferred | Target `SourceCode/GPS/Services/PgnDispatcher.cs` → `PositionService.cs` **not yet on disk**; the 52-byte decode is frozen by contract for the port. |
@@ -162,7 +164,7 @@ port — whose `GetPublicFieldsAsync` sub-capability is additionally out of scop
 | F-038 | NMEA serial output (GPS_Out, 4-second timeout) | Scaffolded | `SourceCode/GPS_Out` is on disk and **builds 0/0**, keeps `System.IO.Ports 9.0.0` with port-name enumeration abstracted via `IPlatformServices`; the 4-second NMEA-forwarding timeout is preserved. |
 | F-039 | Simulators (in-app `CSim` + standalone `ModSim`) | Scaffolded | `ModSim` is re-platformed onto an Avalonia shell on disk (`MainSimView` + `App.axaml`) and **builds 0/0**. The in-app `SourceCode/GPS/Classes/CSim.cs` recompile is gated by the GPS build. |
 | F-040 | Diagnostics (AgDiag) | Scaffolded | `SourceCode/AgDiag` re-platformed onto Avalonia; `csproj` on disk. |
-| F-041 | Day / night theming & display preferences | Scaffolded | Avalonia Fluent theme + custom day/night palette in `SourceCode/GPS/App.axaml` (derived from the `FormGPS` colors), consumed by all 60 GPS views via `{DynamicResource}`; authored and consistency-validated but **not yet compiled** (gated by the GPS build). |
+| F-041 | Day / night theming & display preferences | Scaffolded | Avalonia Fluent theme + custom day/night palette in `SourceCode/GPS/App.axaml` (derived from the `FormGPS` colors), consumed by all 60 GPS views via `{DynamicResource}`; authored and consistency-validated and **now compiling in the GPS build** (pending tri-OS CI verification). |
 | F-042 | On-screen keypad / keyboard (touch) | Scaffolded | `SourceCode/Keypad` `GenericKeypad` / `NumKeypad` / `Keyboard` reimplemented as Avalonia `UserControl`s (`Keyboard.axaml`, `NumKeypad.axaml`), shared by GPS + AgIO; the project **builds 0/0**. |
 | F-043 | Audio alerts / sounds (`CSound`) | Deferred | Cross-platform replacement for `System.Media.SoundPlayer` (Windows-only) **not yet on disk** as a building artifact; gated by the GPS build. |
 | F-044 | Monitor brightness (`CBrightness` / WMI) | **Feature-gated (per-OS)** | **Windows:** full port (WMI relocated to `WindowsPlatformServices` under `net8.0-windows`, on disk). **Linux:** best-effort via sysfs `/sys/class/backlight` (on disk). **macOS:** gated / no-op (on disk). `CBrightness` already returns `-1` gracefully when no controllable display exists, so the no-op fallback is pre-existing and never breaks startup. The GPS-side routing through `IPlatformServices.SetBrightness` lands with the GPS conversion. |
@@ -196,8 +198,9 @@ port — whose `GetPublicFieldsAsync` sub-capability is additionally out of scop
 - **Feature-gated (per-OS): 3** — **F-021** (background map imagery), **F-044** (monitor brightness),
   and **F-045** (webcam, gated off-Windows).
 - **Deferred: 29** — every remaining feature, because its cross-platform artifact is either not yet on
-  disk or is gated by the GPS project build (which does not yet compile cross-platform — `NETSDK1100`,
-  to be resolved at the GPS `csproj` conversion). This includes the guidance/steering math
+  disk or depends on a WinForms-`FormGPS`-coupled GPS source that is temporarily gated out of the GPS
+  build via `<Compile Remove>` pending decoupling (the GPS project itself now compiles cross-platform for
+  both `net8.0`/`linux-x64` and `net8.0-windows`/`win-x64`). This includes the guidance/steering math
   (F-011 … F-020), the extracted GPS `Services/` (`PositionService`, `PgnDispatcher`, `SectionService`,
   `FieldIoService`, `RenderCoordinator` — **none yet on disk**), the `GPS/Classes/**` recompile, the
   AgShare port (**F-037**, whose **`GetPublicFieldsAsync`** sub-capability is additionally out of scope

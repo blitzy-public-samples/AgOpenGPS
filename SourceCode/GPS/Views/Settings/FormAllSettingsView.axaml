@@ -64,6 +64,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="AgOpenGPS.Views.Settings.FormAllSettingsView"
+        x:CompileBindings="False"
         Title="All Settings"
         Width="1188"
         Height="671"

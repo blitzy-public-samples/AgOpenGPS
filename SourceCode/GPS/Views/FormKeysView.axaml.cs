@@ -17,10 +17,10 @@ namespace AgOpenGPS.Views
     /// alphanumeric key into <c>tboxKey</c>, which is validated and written onto the armed button.
     /// Reset restores the factory defaults and OK refuses to close while any slot is still unset.
     ///
-    /// The single source of truth is the persisted setting <c>Settings.Default.setKey_hotkeys</c> — a
+    /// The single source of truth is the persisted setting <c>Properties.Settings.Default.setKey_hotkeys</c> — a
     /// nineteen-character string the WinForms form loaded into the buttons and rewrote on close. That
     /// setting is cross-platform and already present, so the whole editor is ported self-contained
-    /// here: load from / save to <c>Settings.Default.setKey_hotkeys</c> directly. The only deferred
+    /// here: load from / save to <c>Properties.Settings.Default.setKey_hotkeys</c> directly. The only deferred
     /// piece is the in-memory propagation to the running app (the WinForms code also assigned
     /// <c>mf.hotkeys = setKey_hotkeys.ToCharArray()</c>); that lives with the FormGPS hotkey-consumer
     /// wiring and is not fabricated here. The persisted value — which that consumer reads — is written
@@ -42,7 +42,7 @@ namespace AgOpenGPS.Views
         {
             InitializeComponent();
 
-            // [XPLAT] Ordered to match the character order of Settings.Default.setKey_hotkeys, i.e. the
+            // [XPLAT] Ordered to match the character order of Properties.Settings.Default.setKey_hotkeys, i.e. the
             // exact order Form_Keys.LoadButtonText / FormClosing used (indices 0..18).
             _shortcutButtons = new[]
             {
@@ -136,8 +136,8 @@ namespace AgOpenGPS.Views
         // [XPLAT] Parity with Form_Keys.btnReset_Click: restore defaults, persist, reload the buttons.
         private void OnResetClick(object sender, RoutedEventArgs e)
         {
-            Settings.Default.setKey_hotkeys = DefaultHotkeys;
-            Settings.Default.Save();
+            Properties.Settings.Default.setKey_hotkeys = DefaultHotkeys;
+            Properties.Settings.Default.Save();
             LoadButtonText();
         }
 
@@ -159,7 +159,7 @@ namespace AgOpenGPS.Views
         // [XPLAT] Parity with Form_Keys.LoadButtonText: seed the buttons from the persisted string.
         private void LoadButtonText()
         {
-            string hotkeys = Settings.Default.setKey_hotkeys;
+            string hotkeys = Properties.Settings.Default.setKey_hotkeys;
             if (string.IsNullOrEmpty(hotkeys))
             {
                 hotkeys = DefaultHotkeys;
@@ -183,8 +183,8 @@ namespace AgOpenGPS.Views
                 builder.Append(GetContent(button));
             }
 
-            Settings.Default.setKey_hotkeys = builder.ToString();
-            Settings.Default.Save();
+            Properties.Settings.Default.setKey_hotkeys = builder.ToString();
+            Properties.Settings.Default.Save();
 
             base.OnClosed(e);
         }

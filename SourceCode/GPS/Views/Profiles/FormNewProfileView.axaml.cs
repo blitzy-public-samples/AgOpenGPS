@@ -19,7 +19,7 @@ namespace AgOpenGPS.Views.Profiles
     /// Self-contained here (no FormGPS dependency): the profile list is enumerated directly from
     /// <c>RegistrySettings.environmentDirectory</c>, the name field is sanitised with the shared
     /// <c>glm.fileRegex</c>, and Create is gated on a non-empty name. The deep create itself
-    /// (Settings.Default reset/save/load + <c>FormGPS.LoadSettings()</c>) mutates global application
+    /// (Properties.Settings.Default reset/save/load + <c>FormGPS.LoadSettings()</c>) mutates global application
     /// state and reloads the running app, so it is host-owned: this dialog returns the validated intent
     /// (<see cref="NewProfileName"/> + <see cref="SourceProfileName"/>) via <c>Close(true)</c> and the
     /// host maps it to the original three create modes (empty / from-current / from-existing).
@@ -148,7 +148,7 @@ namespace AgOpenGPS.Views.Profiles
 
         // Declared in XAML: Click="ButtonCreate_Click".
         // [XPLAT] buttonOK_Click: validate/sanitise the name, capture the chosen source, and return the
-        // intent to the host (which performs the Settings.Default mutation + FormGPS.LoadSettings).
+        // intent to the host (which performs the Properties.Settings.Default mutation + FormGPS.LoadSettings).
         private void ButtonCreate_Click(object sender, RoutedEventArgs e)
         {
             string name = Regex.Replace((textBoxName.Text ?? string.Empty).Trim(), glm.fileRegex, string.Empty).Trim();

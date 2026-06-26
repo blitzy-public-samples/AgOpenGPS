@@ -9,7 +9,9 @@ using System.Windows.Forms;
 
 namespace AgOpenGPS
 {
-    public enum TrackMode { None = 0, AB = 2, Curve = 4, bndTrackOuter = 8, bndTrackInner = 16, bndCurve = 32, waterPivot = 64 };//, Heading, Circle, Spiral
+    // [XPLAT] TrackMode and the CTrk track-line model were moved to Classes/CTrk.cs (Extract-Class) so
+    // the cross-platform track I/O / ISOXML / Views can build while this FormGPS-coupled manager stays
+    // gated. See Classes/CTrk.cs and MIGRATION_DOCS/TRANSITION_MAP.md.
 
     public class CTrack
     {
@@ -316,46 +318,6 @@ namespace AgOpenGPS
         }
     }
 
-    public class CTrk
-    {
-        public List<vec3> curvePts = new List<vec3>();
-        public double heading;
-        public string name;
-        public bool isVisible;
-        public vec2 ptA;
-        public vec2 ptB;
-        public vec2 endPtA;
-        public vec2 endPtB;
-        public TrackMode mode;
-        public double nudgeDistance;
-        public HashSet<int> workedTracks = new HashSet<int>();
-
-        public CTrk()
-        {
-            curvePts = new List<vec3>();
-            heading = 3;
-            name = "New Track";
-            isVisible = true;
-            ptA = new vec2();
-            ptB = new vec2();
-            endPtA = new vec2();
-            endPtB = new vec2();
-            mode = TrackMode.None;
-            nudgeDistance = 0;
-        }
-
-        public CTrk(CTrk _trk)
-        {
-            curvePts = new List<vec3>(_trk.curvePts);
-            heading = _trk.heading;
-            name = _trk.name;
-            isVisible = _trk.isVisible;
-            ptA = _trk.ptA;
-            ptB = _trk.ptB;
-            endPtA = new vec2();
-            endPtB = new vec2();
-            mode = _trk.mode;
-            nudgeDistance = _trk.nudgeDistance;
-        }
-    }
+    // [XPLAT] The CTrk track-line model that lived here was moved to Classes/CTrk.cs (Extract-Class);
+    // see the note at the top of this namespace.
 }

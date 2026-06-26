@@ -1,4 +1,7 @@
-﻿using Accord.Math.Geometry;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+// Removed the unused `using Accord.Math.Geometry;` — the Accord.* packages are Windows-only/abandoned
+// and are dropped by the migration (AAP §0.5). No Accord type was referenced in this file's body, so
+// the track-file load/save format (an R2 behaviour-frozen contract) is preserved byte-for-byte.
 using AgOpenGPS.Core.Models;
 using System;
 using System.Collections.Generic;

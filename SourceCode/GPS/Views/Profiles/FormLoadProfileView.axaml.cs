@@ -20,7 +20,7 @@ namespace AgOpenGPS.Views.Profiles
     /// pattern used by the other non-MVVM dialogs). Self-contained here: the profile list is enumerated
     /// from <c>RegistrySettings.environmentDirectory</c>, and Delete removes the <c>.xml</c> file directly
     /// after a confirmation (refusing to delete the in-use environment). The actual load
-    /// (<c>Settings.Default.Load()</c> + <c>FormGPS.LoadSettings()</c>) mutates global state and reloads the
+    /// (<c>Properties.Settings.Default.Load()</c> + <c>FormGPS.LoadSettings()</c>) mutates global state and reloads the
     /// running app, so it is host-owned: Load returns the chosen <see cref="SelectedProfileName"/> via
     /// <c>Close(true)</c> for the host to apply.
     /// </summary>
@@ -110,7 +110,7 @@ namespace AgOpenGPS.Views.Profiles
         }
 
         // [XPLAT] buttonOK_Click: capture the selection and return success; the host performs
-        // Settings.Default.Load() + FormGPS.LoadSettings(). (The WinForms job-open guard is host-owned.)
+        // Properties.Settings.Default.Load() + FormGPS.LoadSettings(). (The WinForms job-open guard is host-owned.)
         private void ButtonLoad_Click(object sender, RoutedEventArgs e)
         {
             if (!(listViewProfiles.SelectedItem is string profileName) || string.IsNullOrEmpty(profileName))
