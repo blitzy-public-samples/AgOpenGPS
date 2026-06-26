@@ -665,9 +665,12 @@ namespace AgOpenGPS.Views.Settings
 
         private void UpdateSummary()
         {
-            // [XPLAT] configSummaryControl.UpdateSummary(mf) is host-driven population deferred to the
-            // extracted-services layer (the hosted control is a stub) — routed through the context facade.
-            ctx.UpdateConfigSummary();
+            // [XPLAT] Parity with the WinForms ConfigMenu.Designer.cs UpdateSummary(), which called
+            // configSummaryControl.UpdateSummary(mf). The hosted ConfigSummaryControl is fully migrated
+            // and reads vehicle/tool values from VehicleSettings/ToolSettings directly; the two pieces of
+            // FormGPS state it formerly pulled off `mf` are supplied from this view's decoupled context:
+            // the metric/imperial flag (ctx.IsMetric) and the section count (tool.numOfSections).
+            configSummaryControl.UpdateSummary(ctx.IsMetric, tool.numOfSections);
             labelCurrentVehicle.Text = "Vehicle: " + RegistrySettings.vehicleProfileName;
             labelCurrentTool.Text = "Tool: " + RegistrySettings.toolProfileName;
         }
@@ -1123,8 +1126,16 @@ namespace AgOpenGPS.Views.Settings
             rbtnAntennaRight.IsChecked = VehicleSettings.Default.setVehicle_antennaOffset < 0;
             rbtnAntennaCenter.IsChecked = VehicleSettings.Default.setVehicle_antennaOffset == 0;
 
-            // [XPLAT] pboxAntenna.BackgroundImage per-vehicleType swap (WinForms Properties.Resources) omitted —
-            // image-asset population deferred; the .axaml shows the default antenna diagram.
+            // [XPLAT] Parity with ConfigVehicle.Designer.cs: swap the antenna diagram to match the
+            // configured vehicle type. The per-type images are migrated avares:// assets exposed as
+            // Avalonia Bitmaps by Properties.Resources; assign to the Image's Source (the WinForms
+            // original set pboxAntenna.BackgroundImage). Same conditions/order as the original.
+            if (VehicleSettings.Default.setVehicle_vehicleType == 0)
+                pboxAntenna.Source = Properties.Resources.AntennaTractor;
+            else if (VehicleSettings.Default.setVehicle_vehicleType == 1)
+                pboxAntenna.Source = Properties.Resources.AntennaHarvester;
+            else if (VehicleSettings.Default.setVehicle_vehicleType == 2)
+                pboxAntenna.Source = Properties.Resources.AntennaArticulated;
 
             label98.Text = ctx.UnitsInCm;
             label99.Text = ctx.UnitsInCm;
@@ -1204,8 +1215,16 @@ namespace AgOpenGPS.Views.Settings
             N(nudVehicleTrack).Value = (int)(Math.Abs(VehicleSettings.Default.setVehicle_trackWidth) * ctx.M2InchOrCm);
             N(nudTractorHitchLength).Value = (int)(Math.Abs(ToolSettings.Default.setVehicle_hitchLength) * ctx.M2InchOrCm);
 
-            // [XPLAT] pictureBox1.Image per-vehicleType swap (WinForms Properties.Resources) omitted —
-            // image-asset population deferred; the .axaml shows the default wheelbase diagram.
+            // [XPLAT] Parity with ConfigVehicle.Designer.cs: swap the wheelbase-radius diagram to match the
+            // configured vehicle type. Per-type images are migrated avares:// assets exposed as Avalonia
+            // Bitmaps by Properties.Resources; assign to the Image's Source (the WinForms original set
+            // pictureBox1.Image). Same conditions/order as the original.
+            if (vehicle.VehicleConfig.Type == VehicleType.Tractor)
+                pictureBox1.Source = Properties.Resources.RadiusWheelBase;
+            else if (vehicle.VehicleConfig.Type == VehicleType.Harvester)
+                pictureBox1.Source = Properties.Resources.RadiusWheelBaseHarvester;
+            else if (vehicle.VehicleConfig.Type == VehicleType.Articulated)
+                pictureBox1.Source = Properties.Resources.RadiusWheelBaseArticulated;
 
             nudTractorHitchLength.IsVisible = (rbtnTBT.IsChecked == true) || (rbtnTrailing.IsChecked == true);
             label94.IsVisible = (rbtnTBT.IsChecked == true) || (rbtnTrailing.IsChecked == true);
@@ -1263,14 +1282,19 @@ namespace AgOpenGPS.Views.Settings
         // ---- Vehicle Config tab (ConfigVehicle.Designer.cs 259-295) ----
         private void tabVConfig_Enter()
         {
-            // [XPLAT] configVehicleControl.Initialize(vehicle.VehicleConfig) — hosted vehicle-config editor
-            // population deferred to the extracted-services layer (the hosted control is a stub).
+            // [XPLAT] Parity with WinForms ConfigVehicle.Designer.cs tabVConfig_Enter, which called
+            // configVehicleControl.Initialize(mf.vehicle.VehicleConfig). The hosted ConfigVehicleControl
+            // is fully migrated; seed it from this view's decoupled vehicle state.
+            configVehicleControl.Initialize(vehicle.VehicleConfig);
         }
 
         private void tabVConfig_Leave()
         {
-            // [XPLAT] configVehicleControl.UpdateSettings() — hosted vehicle-config editor readback deferred
-            // to the extracted-services layer (the hosted control is a stub).
+            // [XPLAT] Parity with WinForms ConfigVehicle.Designer.cs tabVConfig_Leave, which called
+            // configVehicleControl.UpdateSettings() FIRST to read the edited values back out of the hosted
+            // editor (into VehicleConfig / VehicleSettings) before the harvester-specific normalisation and
+            // the texture refresh/save below run against those just-committed values.
+            configVehicleControl.UpdateSettings();
 
             if (vehicle.VehicleConfig.Type == VehicleType.Harvester)
             {
@@ -2505,7 +2529,9 @@ namespace AgOpenGPS.Views.Settings
             lblFeetMeters.Text = isMetric ? gStr.gsMeters : "Feet";
 
             lblSecTotalWidth.Text = Distance.MediumDistanceString(isMetric, toolWidthInMeters);
-            // [XPLAT] configSummaryControl.SetSummaryWidth(lblSecTotalWidth.Text) deferred — hosted summary control is a stub.
+            // [XPLAT] Parity with WinForms ConfigTool.Designer.cs, which propagated the formatted total
+            // width into the summary tab via configSummaryControl.SetSummaryWidth(lblSecTotalWidth.Text).
+            configSummaryControl.SetSummaryWidth(lblSecTotalWidth.Text);
         }
 
         // Convert section width to positions along toolbar

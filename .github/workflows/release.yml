@@ -22,6 +22,12 @@ env:
 
 jobs:
   build-and-release:
+    # [XPLAT] Least-privilege GITHUB_TOKEN scope, declared on the only job that needs it: this job
+    # creates the GitHub Release and uploads per-RID assets via softprops/action-gh-release@v2, which
+    # requires `contents: write`. No other permission is granted, replacing the broad repository-default
+    # token scope the job would otherwise inherit.
+    permissions:
+      contents: write
     # [XPLAT] tri-OS publish matrix: one self-contained leg per OS/RID. A pure `include` matrix gives
     # exactly four legs, each carrying its own os + rid + framework. Both Apple RIDs (osx-x64 and
     # osx-arm64) build on the macOS runner. `fail-fast: false` so one OS/RID failing does not cancel

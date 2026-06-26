@@ -836,4 +836,3 @@ namespace AgOpenGPS.Views.Settings
         }
     }
 }
-

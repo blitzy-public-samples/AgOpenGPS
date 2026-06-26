@@ -44,8 +44,11 @@ namespace AgIO.Views
     /// <c>SetForegroundWindow</c>/<c>keybd_event</c> P/Invoke "show on warning", the splash picture box, the
     /// ISOBUS task-controller hack, and the advanced-view slide panel) are intentionally not reproduced:
     /// they are non-portable UI niceties whose absence never affects the comms hub, consistent with the
-    /// AAP graceful-degradation rule. The full configuration-dialog surface is reimplemented in a later UI
-    /// checkpoint (tracked in MIGRATION_DOCS/TRANSITION_MAP.md).
+    /// AAP graceful-degradation rule. The self-contained AgIO dialogs (Advanced Settings, ISOBUS, and the
+    /// PGN reference guide) are reachable from the footer command bar via the <c>OnShow*Click</c> handlers
+    /// below; the remaining transport-configuration dialog surface (UDP / NTRIP / Radio / Source / Ethernet
+    /// / Serial-pass / monitors), which needs the service-peer plumbing, is reimplemented in a later UI
+    /// wiring checkpoint (tracked in MIGRATION_DOCS/TRANSITION_MAP.md).
     /// </remarks>
     public partial class MainWindow : Window
     {
@@ -470,6 +473,24 @@ namespace AgIO.Views
         private async void OnShowPgnGuideClick(object sender, RoutedEventArgs e)
         {
             var dialog = new FormPGNView(new FormPGNViewModel());
+            await dialog.ShowDialog(this);
+        }
+
+        // [XPLAT] FormLoop toolStripSettings ("Advanced Settings") -> open the migrated Avalonia dialog.
+        // The view-model is dependency-free; its toggles write live to Settings.Default and Save persists,
+        // exactly as the WinForms FormAdvancedSettings checkbox handlers + btnClose did.
+        private async void OnShowAdvancedSettingsClick(object sender, RoutedEventArgs e)
+        {
+            var dialog = new FormAdvancedSettings(new FormAdvancedSettingsViewModel());
+            await dialog.ShowDialog(this);
+        }
+
+        // [XPLAT] FormLoop isobusToolStripMenuItem -> open the migrated Avalonia ISOBUS dialog. The
+        // view-model takes the optional cross-platform error presenter (the same instance the serial
+        // service uses) so its Windows-only task-controller notices surface through the shared channel.
+        private async void OnShowIsobusClick(object sender, RoutedEventArgs e)
+        {
+            var dialog = new FormISOBUS(new FormISOBUSViewModel(RegistrySettings.ErrorPresenter));
             await dialog.ShowDialog(this);
         }
 

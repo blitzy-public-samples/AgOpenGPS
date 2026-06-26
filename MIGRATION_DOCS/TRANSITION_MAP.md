@@ -119,7 +119,11 @@ Every transition table below uses **exactly four columns** — **Original** | **
 ## UI Shell — Reimplemented in Avalonia
 
 The operational Windows Forms surface (`FormGPS` + ~67 GPS dialogs, `FormLoop` + ~21 AgIO dialogs) is
-reimplemented as Avalonia views. **AgIO is complete and on disk** (`Source/Views/`, build-verified). The
+reimplemented as Avalonia views. **The AgIO `MainWindow` shell and all dialog views are on disk and
+build-verified**; the self-contained dialogs (Advanced Settings, ISOBUS, and the PGN reference guide) are
+**wired into the `MainWindow` footer command bar and reachable**, while the transport-configuration dialog
+surface (UDP / NTRIP / Radio / Source / Ethernet / Serial-pass / monitors) — which needs the service-peer
+plumbing — awaits its navigation wiring in the later UI checkpoint. The
 **GPS** view tree is now **`Scaffolded`**: `SourceCode/GPS/Views/` exists in full — the GPS shell
 `App.axaml(.cs)`, the `MainView` shell, and all 60 dialog/shell `.axaml` views each have a matching
 `.axaml.cs` code-behind. The GPS `csproj` Avalonia conversion **has landed** and the project **builds
@@ -134,7 +138,7 @@ scaffold** (`RelayCommand`, `IPanelPresenter`, `IErrorPresenter`) is **wired up*
 |---|---|---|---|
 | `SourceCode/GPS/Forms/FormGPS.cs` (+ `FormGPS.Designer.cs`, `.resx`) | `SourceCode/GPS/App.axaml(.cs)` + `SourceCode/GPS/Views/MainView.axaml(.cs)` | Reimplemented (kiosk main shell; Avalonia Fluent theme + day/night palette derived from `FormGPS`. `App.axaml(.cs)` and `MainView.axaml(.cs)` are on disk with code-behind; authored + consistency-validated and **now compiling in the GPS build**; pending tri-OS CI/golden verification) | Scaffolded |
 | `SourceCode/GPS/Forms/**/*.cs` (~67 dialogs across `Settings/`, `Field/`, `Pickers/`, `Guidance/`, `Config/`, `Profiles/`, `Inputs/` + root dialogs) | `SourceCode/GPS/Views/**/*.axaml(.cs)` | Reimplemented (1:1 visual/behavioral parity; legacy `Forms/` already retired. All 60 GPS `.axaml` views have matching `.axaml.cs` code-behind on disk — declared handlers implemented, `AutomationProperties.Name` accessibility labels added, day/night theme tokens applied — authored + consistency-validated and **now compiling in the GPS build** (except `FormFieldDataView`, gated via `<AvaloniaXaml Remove>`); pending tri-OS CI/golden verification) | Scaffolded |
-| `SourceCode/AgIO/Source/Forms/**/*` (`FormLoop` shell + ~21 dialogs) | `SourceCode/AgIO/Source/Views/**/*.axaml(.cs)` (+ `App.axaml`) | Reimplemented (FormLoop → `MainWindow` composition root that wires the four transport services; 17 view files on disk and compiling; full tri-OS runtime parity pending CI) | At parity (pending CI verification) |
+| `SourceCode/AgIO/Source/Forms/**/*` (`FormLoop` shell + ~21 dialogs) | `SourceCode/AgIO/Source/Views/**/*.axaml(.cs)` (+ `App.axaml`) | Reimplemented (FormLoop → `MainWindow` composition root that wires the four transport services; all view files on disk and compiling. The dependency-free dialogs — Advanced Settings (`toolStripSettings`), ISOBUS (`isobusToolStripMenuItem`), PGN Guide — are wired into the `MainWindow` footer and reachable; the transport-configuration dialogs (UDP/NTRIP/Radio/Source/Ethernet/Serial-pass/monitors) need service-peer plumbing and have their navigation wiring deferred to the later UI checkpoint) | Partial — shell + status display + self-contained dialogs at parity; transport-config dialog navigation pending later UI checkpoint |
 | `SourceCode/Keypad/*.cs` (`GenericKeypad`/`NumKeypad`/`Keyboard` UserControls) | `SourceCode/Keypad/**/*.axaml` | Reimplemented (`Keyboard.axaml` + `NumKeypad.axaml` exist as Avalonia `UserControl`s, shared by GPS + AgIO; `GenericKeypad` retained as the shared base) | At parity (F-042) |
 | `SourceCode/ModSim/Source/Forms/**/*` | `SourceCode/ModSim/Source/Views/**/*.axaml(.cs)` (+ `App.axaml`) | Reimplemented (ModSim Avalonia shell `MainSimView` + `App.axaml` + `FormYesView`/`FormTimedMessageView` on disk) | At parity (F-039) |
 | `SourceCode/GPS/Controls/**/*`, `SourceCode/AgIO/Source/Controls/**/*` | Avalonia controls / extensions | Reimplemented (AgIO `TextBoxExtensions`/`NumericUpDownExtensions` already migrated to launch Avalonia dialogs; GPS `Controls/` — the `AvaloniaGeoViewport` GL-host adapter — reintroduced at the GPS conversion; not yet on disk) | Deferred |

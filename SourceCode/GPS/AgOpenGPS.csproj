@@ -62,6 +62,14 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.18" />
+    <!-- [XPLAT] Avalonia ColorPicker controls (ColorSpectrum / ColorSlider / ColorChangedEventArgs /
+         HsvColor) used by Views/Pickers/FormColorPickerView — the cross-platform replacement for the
+         abandoned Windows-only MechanikaDesign color controls (AAP §0.5.1). This MUST be referenced
+         explicitly and unconditionally: the base Avalonia 11.3.18 meta-package does NOT include the
+         ColorPicker assembly, and the only transitive source was Avalonia.Diagnostics — which is gated
+         to Debug below. Without this reference the color-picker dialog compiles in Debug but fails in
+         Release/publish (CS0246), breaking every self-contained per-RID publish (AAP §0.7.2 / CI). -->
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.3.18" />
     <!-- [XPLAT] Developer diagnostics overlay; Debug builds only. -->
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.18" Condition="'$(Configuration)' == 'Debug'" />
     <!-- [XPLAT] Cross-platform serial communication (COMx on Windows; /dev/ttyUSB*, /dev/ttyACM*
@@ -120,19 +128,23 @@
        (RenderCoordinator/AvaloniaGeoViewport) and the FormGPS->services decoupling complete.
        ==================================================================================== -->
   <ItemGroup>
-    <!-- [XPLAT] (1) Audio loader still deferred. The imaging accessors and texture/brand loaders are
-         now INTEGRATED into the build (CP7 texture migration): Properties\Resources.Designer.cs and
-         ResourcesBrands\BrandImages.Designer.cs are hand-migrated cross-platform accessors returning
+    <!-- [XPLAT] (1) Resource, texture, AND audio loaders — all now INTEGRATED into the build. The
+         imaging accessors and texture/brand loaders (CP7 texture migration): Properties\Resources.Designer.cs
+         and ResourcesBrands\BrandImages.Designer.cs are hand-migrated cross-platform accessors returning
          Avalonia.Media.Imaging.Bitmap from avares:// assets (no System.Drawing dependency on either
          target framework), and Classes\Brands.cs / VehicleTextures.cs / ScreenTextures.cs construct
          the migrated Core Texture2D via its portable RGBA byte buffer (the SkiaSharp normalization
-         bridge in VehicleTextures/ScreenTextures), so all five compile on Windows/Linux/macOS and are
-         re-included here. They are leaf resource/texture classes — their only consumers (CVehicle/CTool
-         and the OpenGL render host) are still gated below, so re-including them adds no compiling
-         dependency on an excluded file. Classes\CSound.cs remains excluded: it is the audio loader
-         (System.Media.SoundPlayer, Windows-only) awaiting the cross-platform audio replacement; its
-         .wav assets are already packaged above as Content for the migrated loader to consume. -->
-    <Compile Remove="Classes\CSound.cs" />
+         bridge in VehicleTextures/ScreenTextures). Classes\CSound.cs is now likewise re-included: the
+         audio loader has been re-platformed off the Windows-only System.Media.SoundPlayer onto the
+         self-contained cross-platform CSoundClip wrapper (winmm PlaySound behind a RuntimeInformation
+         Windows guard; paplay/aplay/afplay spawned off-thread on Linux/macOS; silent no-op on a missing
+         wav, absent player, or any audio error), so it compiles cleanly for BOTH net8.0 and
+         net8.0-windows; its .wav cues are packaged above as Content for the loader to consume. All these
+         are leaf resource/texture/audio classes — their only consumers (CVehicle/CTool and the OpenGL
+         render host) are still gated below, so re-including them adds no compiling dependency on an
+         excluded file (CSound has no compiling consumer at all in this checkpoint; its Play() call sites
+         live in the still-gated CHead/CYouTurn). The CSound exclusion that previously sat here has been
+         removed so the migrated audio loader is compiled into the GPS assembly. -->
 
     <!-- [XPLAT] (2) FormGPS-coupled domain classes. Each holds a `private readonly FormGPS mf;` back-
          reference (the WinForms god-object, already removed) and is awaiting extraction into injectable

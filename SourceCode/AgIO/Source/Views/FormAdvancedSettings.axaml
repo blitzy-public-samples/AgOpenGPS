@@ -49,11 +49,12 @@
             booleans. Mode=TwoWay is explicit so the operator's edits flow back into the view-model
             before SaveCommand persists them (the editable-dialog requirement).
           • The single WinForms btnClose (OK64) "save and close" button maps to btnSave bound to
-            SaveCommand (Settings write-back + persist + RequestClose(true)). The migration adds an
-            explicit btnCancel bound to CancelCommand (RequestClose(false), no persist) — the WinForms
-            original had no cancel button. Dialog dismissal is the hosting Window's concern: the
-            code-behind subscribes to the view-model's RequestClose event and closes the dialog
-            (replacing the WinForms Close() / DialogResult), so this view declares no Click handlers.
+            SaveCommand (persist + RequestClose(true)). The three CheckBox setters write each flag to
+            Settings.Default live (parity with the WinForms CheckedChanged handlers), so Save only
+            persists + closes — a 1:1 map of btnClose_Click. Like the WinForms original, the dialog
+            has NO cancel button. Dialog dismissal is the hosting Window's concern: the code-behind
+            subscribes to the view-model's RequestClose event and closes the dialog (replacing the
+            WinForms Close()), so this view declares no Click handlers.
 
         Assets: buttons render as TEXT (no System.Drawing, no avares:// imagery). The migrated
         AgIO.csproj registers no btnImages as <AvaloniaResource>, so every migrated AgIO view uses
@@ -116,24 +117,16 @@
                       IsChecked="{Binding ShowOnWarning, Mode=TwoWay}" />
         </Grid>
 
-        <!-- Command bar. Cancel sits to the LEFT of Save so Save (the accept action) stays
-             right-aligned — mirroring the WinForms btnClose which sat at the form's right edge.
-             Save  = btnClose/OK parity (SaveCommand: persist + close true); IsDefault maps Enter.
-             Cancel= migration-added dismissal (CancelCommand: close false, no persist); IsCancel
-                     maps Escape. -->
+        <!-- Command bar. A single right-aligned Save button reproduces the WinForms btnClose, which
+             sat at the form's right edge and was the dialog's only command (save-and-close). The
+             WinForms original had no cancel button, so none is added here.
+             Save = btnClose/OK parity (SaveCommand: persist + close true); IsDefault maps Enter. -->
         <StackPanel Grid.Row="1"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Bottom"
                     Spacing="16"
                     Margin="0,16,0,0">
-
-            <Button x:Name="btnCancel"
-                    Content="Cancel"
-                    Command="{Binding CancelCommand}"
-                    IsCancel="True"
-                    Width="120"
-                    Height="64" />
 
             <Button x:Name="btnSave"
                     Content="Save"

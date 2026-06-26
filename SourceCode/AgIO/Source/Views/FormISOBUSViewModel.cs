@@ -165,7 +165,6 @@ namespace AgIO.Views
             _openIsobusCommand = new RelayCommand(StartAogTaskController, () => CanOpenTaskController);
             _closeIsobusCommand = new RelayCommand(OnCloseIsobus, () => CanCloseTaskController);
             OkCommand = new RelayCommand(OnOk);
-            CancelCommand = new RelayCommand(OnCancel);
         }
 
         /// <summary>
@@ -382,11 +381,6 @@ namespace AgIO.Views
         public ICommand OkCommand { get; }
 
         /// <summary>
-        /// Gets the command that dismisses the dialog without saving, requesting the hosting window to close.
-        /// </summary>
-        public ICommand CancelCommand { get; }
-
-        /// <summary>
         /// Raised to ask the hosting window to close the dialog. Initialized to a no-op delegate so it is always
         /// safe to invoke (nullable reference types are disabled project-wide).
         /// </summary>
@@ -447,14 +441,6 @@ namespace AgIO.Views
             Settings.Default.isobus_canAdapterIndex = _selectedAdapterIndex;
             Settings.Default.isobus_canChannelIndex = _selectedChannelIndex;
             Settings.Default.Save();
-            RequestClose();
-        }
-
-        /// <summary>
-        /// Dismisses the dialog without saving settings, asking the hosting window to close.
-        /// </summary>
-        private void OnCancel()
-        {
             RequestClose();
         }
 

@@ -58,6 +58,35 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 
 _Date: (in progress)_
 
+> **Code-review resolution — Windows-coupled classes (Settings/Audio) + tri-OS CI checkpoint.**
+> The following review findings were resolved in this pass; each change is detailed under its
+> migration area below. **Build/CI:** added `<EnableWindowsTargeting>true</EnableWindowsTargeting>`
+> to `Directory.Build.props` so non-Windows CI legs can restore/build the `net8.0-windows` TFM;
+> replaced the solution-level `dotnet publish` in `build.yml` with the per-project / per-RID /
+> self-contained strategy already used by `release.yml` (a solution-level RID publish fails
+> `NETSDK1129` because the solution carries class-library and test projects); added least-privilege
+> `permissions:` blocks (`contents: read` for build, `contents: write` for release). **Settings:**
+> wired `CSettingsMigration.MigrateLegacyRegistrySettings()` into `GPS/Program.cs` immediately
+> before `RegistrySettings.Load()` (Windows-gated, idempotent no-op once the XML exists) so existing
+> Windows users' legacy Registry values seed the cross-platform `RegistrySettings.xml` exactly once,
+> with two regression tests. **Audio:** re-included `Classes/CSound.cs` in the GPS compile (the
+> cross-platform `winmm`/`paplay`/`aplay`/`afplay` implementation is now built into the assembly).
+> **GPS config UI:** wired the four previously-deferred hosted-control interactions in
+> `FormConfigView.axaml.cs` (summary update, vehicle-config editor init/readback, summary-width
+> propagation) — no stub/deferred code remains. **AgIO UI:** restored 1:1 WinForms parity by removing
+> the migration-added Cancel buttons from `FormAdvancedSettings`/`FormISOBUS` (settings now write live
+> as the originals did); captured/`finally`-restored the original control background in
+> `TextBoxExtensions`/`NumericUpDownExtensions`; wired the two self-contained dialogs (Advanced
+> Settings, ISOBUS) into the `MainWindow` footer command bar so they are user-reachable. **Docs:**
+> corrected `README.md` publish commands to the per-project form and the run paths to the
+> `AgOpenGPS/AgOpenGPS(.exe)` archive subfolder; made the `TRANSITION_MAP.md` AgIO row accurate
+> (self-contained dialogs wired; transport-config dialog navigation still deferred to the later UI
+> checkpoint). **Deferred (AAP §0.6.1):** re-enabling `Classes/CVehicle.cs` was empirically confirmed
+> to require the full `FormGPS`→services guidance-pipeline decoupling (its `CBoundary`/`CTool`
+> collaborators still hold the removed `FormGPS` god-object reference); it remains gated via
+> `<Compile Remove>` with its frozen-behavior contract, consistent with the gated-source policy
+> recorded under **Core & algorithms** and **Logic decoupling**.
+
 ### Runtime/TFM
 
 #### Changed

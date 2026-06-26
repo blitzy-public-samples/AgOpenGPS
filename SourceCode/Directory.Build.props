@@ -5,6 +5,13 @@
     <TargetFramework>net8.0</TargetFramework>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- [XPLAT] Allow the Windows-specific TFM head (net8.0-windows, used by GPS and AgIO for the WMI
+         brightness / Registry migration-read platform code) to be restored and built on the non-Windows
+         legs of the tri-OS CI matrix (ubuntu/macos). Without this, evaluating/building a *-windows TFM
+         on Linux/macOS fails. The Avalonia UI projects do not set UseWindowsForms/UseWPF, so this only
+         enables cross-targeting the Windows reference assemblies; no Windows-only runtime is required to
+         build. See MIGRATION_DOCS/TRANSITION_MAP.md and .github/workflows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">

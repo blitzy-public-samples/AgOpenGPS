@@ -20,7 +20,7 @@
         (Forms/FormISOBUS.Designer.cs + Forms/FormISOBUS.cs + FormISOBUS.resx). Per AAP §0.3.3 this is a
         visual/behavioral PARITY rebuild of the current Windows Forms look — never a redesign. It lets the
         operator pick a CAN adapter + channel and Open/Close the external AOG-TaskController (the AOG Task
-        Controller), with an OK / Cancel command bar.
+        Controller), with a single OK command (save-and-close) — exactly as the WinForms original.
 
         Bound via COMPILED bindings (x:DataType="vm:FormISOBUSViewModel") to FormISOBUSViewModel. The
         view-model owns ALL logic — the adapter/channel lists, the Windows-only Registry install lookup and
@@ -56,7 +56,7 @@
           • textBoxRcv (read-only, multiline, ScrollBars=Both,         -> read-only multiline TextBox bound
             WordWrap=false, BackColor=Window)                            one-way to LogText.
           • btnIsobusOK (OK64 bitmap; Click -> Hide())                 -> "OK" button -> OkCommand (IsDefault).
-          • (the WinForms form had no Cancel; the VM adds one)         -> "Cancel" button -> CancelCommand (IsCancel).
+            (the WinForms form had no Cancel, so none is added here.)
 
         Buttons render as TEXT, not the WinForms OK64 / USB_Connect / USB_Disconnect bitmaps: the migrated
         AgIO.csproj registers NO btnImages assets as <AvaloniaResource> (only GPS/AgOpenGPS.csproj does) and
@@ -78,26 +78,17 @@
     -->
     <DockPanel Margin="12" LastChildFill="True">
 
-        <!-- Bottom command bar. Cancel sits to the LEFT of OK so OK stays right-aligned (the WinForms
-             btnIsobusOK was bottom-right; the view-model adds an explicit Cancel). Text affordances,
-             touch-friendly (>= 44px). IsDefault maps Enter to OK; IsCancel maps Escape to Cancel. The
-             actual window close is performed by the code-behind in response to the view-model's
-             RequestClose event (a window concern, not declared here). -->
+        <!-- Bottom command bar. A single right-aligned OK button reproduces the WinForms btnIsobusOK
+             (bottom-right; Click -> Hide()). The WinForms form had no Cancel, so none is added. Text
+             affordance, touch-friendly (>= 44px). IsDefault maps Enter to OK. The actual window close
+             is performed by the code-behind in response to the view-model's RequestClose event (a
+             window concern, not declared here). -->
         <StackPanel DockPanel.Dock="Bottom"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Bottom"
                     Spacing="12"
                     Margin="0,12,0,0">
-            <Button x:Name="btnCancel"
-                    Content="Cancel"
-                    Command="{Binding CancelCommand}"
-                    IsCancel="True"
-                    Width="96" Height="64"
-                    MinWidth="64" MinHeight="44"
-                    HorizontalContentAlignment="Center"
-                    VerticalContentAlignment="Center"
-                    AutomationProperties.Name="Cancel" />
             <Button x:Name="btnIsobusOK"
                     Content="OK"
                     Command="{Binding OkCommand}"

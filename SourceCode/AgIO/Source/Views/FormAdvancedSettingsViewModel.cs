@@ -23,19 +23,20 @@ namespace AgIO.Views
     /// <para>
     /// <b>Behavior parity.</b> The original wrote each flag to <see cref="Settings.Default"/> live
     /// on every <c>CheckedChanged</c> and persisted them with <c>Settings.Default.Save()</c> in
-    /// <c>btnClose_Click</c>. This view-model instead loads the current values into backing fields
-    /// in the constructor and defers the write-back to <see cref="SaveCommand"/>, which writes all
-    /// three flags and calls <see cref="Settings.Save"/> — preserving the exact three settings keys
-    /// and the save semantics. Dialog dismissal is delegated to the hosting Avalonia <c>Window</c>
-    /// through the <see cref="RequestClose"/> event (replacing the WinForms <c>Close()</c> /
-    /// <c>DialogResult</c>), and an explicit <see cref="CancelCommand"/> dismisses the dialog
-    /// without persisting — the only behavioral refinement introduced by the migration.
+    /// <c>btnClose_Click</c>. This view-model reproduces that 1:1: each bound property setter writes
+    /// its flag to <see cref="Settings.Default"/> immediately (mirroring the per-checkbox
+    /// <c>CheckedChanged</c> handlers), and <see cref="SaveCommand"/> simply persists with
+    /// <see cref="Settings.Save"/> and closes — the direct map of <c>btnClose_Click</c>. There is no
+    /// cancel path: exactly like the WinForms original, the dialog exposes only the OK/Save button.
+    /// Dialog dismissal is delegated to the hosting Avalonia <c>Window</c> through the
+    /// <see cref="RequestClose"/> event (replacing the WinForms <c>Close()</c>).
     /// </para>
     /// </remarks>
     public class FormAdvancedSettingsViewModel : ViewModel
     {
-        // [XPLAT] Backing fields seeded from Settings.Default in the constructor and flushed back
-        // to Settings.Default by OnSave. The Cancel path leaves Settings.Default untouched.
+        // [XPLAT] Backing fields seeded from Settings.Default in the constructor. Each property
+        // setter writes its flag straight back to Settings.Default on change (parity with the
+        // WinForms CheckedChanged handlers); SaveCommand then persists with Settings.Default.Save().
         private bool _autoRunGpsOut;
         private bool _startMinimized;
         private bool _showOnWarning;
@@ -54,10 +55,9 @@ namespace AgIO.Views
             _startMinimized = Settings.Default.setDisplay_StartMinimized;
             _showOnWarning = Settings.Default.setDisplay_ShowOnWarning;
 
-            // [XPLAT] btnClose (OK) -> SaveCommand (persist + close true); Cancel -> CancelCommand
-            // (close false, no persist).
+            // [XPLAT] btnClose (OK) -> SaveCommand (persist + close). Parity with the WinForms
+            // original, which exposed a single OK/close button and had no cancel.
             SaveCommand = new RelayCommand(OnSave);
-            CancelCommand = new RelayCommand(OnCancel);
         }
 
         /// <summary>
@@ -74,6 +74,9 @@ namespace AgIO.Views
                 if (_autoRunGpsOut != value)
                 {
                     _autoRunGpsOut = value;
+                    // [XPLAT] Parity with WinForms cboxAutoRunGPS_Out_CheckedChanged: write the flag
+                    // to Settings.Default live on every toggle (persisted later by SaveCommand).
+                    Settings.Default.setDisplay_isAutoRunGPS_Out = value;
                     NotifyPropertyChanged();
                 }
             }
@@ -93,6 +96,9 @@ namespace AgIO.Views
                 if (_startMinimized != value)
                 {
                     _startMinimized = value;
+                    // [XPLAT] Parity with WinForms cboxStartMinimized_CheckedChanged: write the flag
+                    // to Settings.Default live on every toggle (persisted later by SaveCommand).
+                    Settings.Default.setDisplay_StartMinimized = value;
                     NotifyPropertyChanged();
                 }
             }
@@ -112,61 +118,45 @@ namespace AgIO.Views
                 if (_showOnWarning != value)
                 {
                     _showOnWarning = value;
+                    // [XPLAT] Parity with WinForms cboxShowOnWarning_CheckedChanged: write the flag
+                    // to Settings.Default live on every toggle (persisted later by SaveCommand).
+                    Settings.Default.setDisplay_ShowOnWarning = value;
                     NotifyPropertyChanged();
                 }
             }
         }
 
         /// <summary>
-        /// Gets the command that writes the three display flags back to
-        /// <see cref="Settings.Default"/>, persists them with <see cref="Settings.Save"/>, and
-        /// raises <see cref="RequestClose"/> with <c>true</c>. Parity with the WinForms
-        /// <c>btnClose_Click</c> handler (<c>Settings.Default.Save(); Close();</c>).
+        /// Gets the command that persists the (already-applied) display flags with
+        /// <see cref="Settings.Save"/> and raises <see cref="RequestClose"/> with <c>true</c>.
+        /// Parity with the WinForms <c>btnClose_Click</c> handler
+        /// (<c>Settings.Default.Save(); Close();</c>); the individual flags were written to
+        /// <see cref="Settings.Default"/> live by the property setters.
         /// </summary>
         public RelayCommand SaveCommand { get; }
 
         /// <summary>
-        /// Gets the command that dismisses the dialog without persisting any change by raising
-        /// <see cref="RequestClose"/> with <c>false</c>. This is the migration's explicit cancel
-        /// path; the WinForms original had no cancel button.
-        /// </summary>
-        public RelayCommand CancelCommand { get; }
-
-        /// <summary>
-        /// Raised when the dialog should close. The argument is the dialog result: <c>true</c>
-        /// when the operator saved (via <see cref="SaveCommand"/>) and <c>false</c> when the
-        /// operator cancelled (via <see cref="CancelCommand"/>). The hosting Avalonia
+        /// Raised when the dialog should close after a save. The argument is the dialog result —
+        /// always <c>true</c>, since <see cref="SaveCommand"/> is the only close path (the WinForms
+        /// original exposed a single OK/close button and had no cancel). The hosting Avalonia
         /// <c>Window</c> subscribes to this event and closes itself with the supplied result,
-        /// replacing the WinForms <c>Close()</c> / <c>DialogResult</c>. Initialized to a no-op
-        /// delegate so it is always safe to raise without a null check (nullable reference types
-        /// are disabled project-wide).
+        /// replacing the WinForms <c>Close()</c>. Initialized to a no-op delegate so it is always
+        /// safe to raise without a null check (nullable reference types are disabled project-wide).
         /// </summary>
         public event Action<bool> RequestClose = delegate { };
 
         /// <summary>
-        /// Writes the three display flags back to <see cref="Settings.Default"/>, persists them,
-        /// and requests the dialog close with a positive result. Reproduces the WinForms
-        /// <c>btnClose_Click</c> save-and-close behavior.
+        /// Persists the display flags (already applied to <see cref="Settings.Default"/> by the
+        /// property setters) and requests the dialog close with a positive result. Reproduces the
+        /// WinForms <c>btnClose_Click</c> save-and-close behavior.
         /// </summary>
         private void OnSave()
         {
-            // [XPLAT] Flush the edited state back to the persisted settings using the exact three
-            // keys carried over from the WinForms original.
-            Settings.Default.setDisplay_isAutoRunGPS_Out = AutoRunGpsOut;
-            Settings.Default.setDisplay_StartMinimized = StartMinimized;
-            Settings.Default.setDisplay_ShowOnWarning = ShowOnWarning;
+            // [XPLAT] Parity with WinForms btnClose_Click (Settings.Default.Save(); Close();). The
+            // three flags were already written to Settings.Default live by the property setters
+            // (mirroring the CheckedChanged handlers), so Save only persists and then closes.
             Settings.Default.Save();
-
             RequestClose(true);
-        }
-
-        /// <summary>
-        /// Requests the dialog close with a negative result, leaving <see cref="Settings.Default"/>
-        /// unchanged.
-        /// </summary>
-        private void OnCancel()
-        {
-            RequestClose(false);
         }
     }
 }

@@ -73,6 +73,14 @@ namespace AgOpenGPS
 
             try
             {
+                // [XPLAT] One-time legacy Windows Registry -> RegistrySettings.xml migration. Must run BEFORE
+                // RegistrySettings.Load() so existing Windows users' legacy Registry values seed the new
+                // cross-platform XML settings store on first launch. Safe no-op on non-Windows (guarded by
+                // RuntimeInformation.IsOSPlatform(Windows)) and idempotent on Windows (skips once
+                // RegistrySettings.xml already exists, so values are migrated exactly once and never re-read
+                // after the file is created). See CSettingsMigration + TRANSITION_MAP.md.
+                CSettingsMigration.MigrateLegacyRegistrySettings();
+
                 // Load the profile name and set profile directory.
                 RegistrySettings.Load();
 

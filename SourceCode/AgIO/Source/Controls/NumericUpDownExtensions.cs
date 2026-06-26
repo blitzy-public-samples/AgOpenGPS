@@ -27,26 +27,36 @@ namespace AgIO.Controls
         /// <returns>A task that completes once the modal keypad dialog has closed.</returns>
         public static async Task ShowKeypad(this NumericUpDown numericUpDown, Window owner)
         {
+            // [XPLAT] Capture the control's existing background and restore it in a finally block, rather
+            // than unconditionally resetting to a hardcoded brush. This guarantees the active-edit colour
+            // is cleared even if ShowDialog throws (previously the control stayed red on an exception) and
+            // preserves the control's real themed/resting brush instead of clobbering it with a literal.
+            var originalBackground = numericUpDown.Background;
+
             // [XPLAT] Active-edit cue: paint the control red while the keypad is open.
             numericUpDown.Background = Brushes.Red;
-
-            // [XPLAT] Avalonia NumericUpDown exposes Minimum/Maximum as decimal and Value as decimal?; cast
-            // to the double contract of FormNumeric (a null Value is seeded as 0 so the cast cannot throw).
-            var dialog = new FormNumeric(
-                (double)numericUpDown.Minimum,
-                (double)numericUpDown.Maximum,
-                (double)(numericUpDown.Value ?? 0m));
-
-            // [XPLAT] Async modal: FormNumeric returns the validated value (HasValue) on accept and null on
-            // cancel/dismiss, so the value is committed only on accept — preserving the original accept-only gate.
-            double? result = await dialog.ShowDialog<double?>(owner);
-            if (result.HasValue)
+            try
             {
-                numericUpDown.Value = (decimal)result.Value;
-            }
+                // [XPLAT] Avalonia NumericUpDown exposes Minimum/Maximum as decimal and Value as decimal?; cast
+                // to the double contract of FormNumeric (a null Value is seeded as 0 so the cast cannot throw).
+                var dialog = new FormNumeric(
+                    (double)numericUpDown.Minimum,
+                    (double)numericUpDown.Maximum,
+                    (double)(numericUpDown.Value ?? 0m));
 
-            // [XPLAT] Restore the resting appearance once the keypad has closed.
-            numericUpDown.Background = Brushes.AliceBlue;
+                // [XPLAT] Async modal: FormNumeric returns the validated value (HasValue) on accept and null on
+                // cancel/dismiss, so the value is committed only on accept — preserving the original accept-only gate.
+                double? result = await dialog.ShowDialog<double?>(owner);
+                if (result.HasValue)
+                {
+                    numericUpDown.Value = (decimal)result.Value;
+                }
+            }
+            finally
+            {
+                // [XPLAT] Restore the resting appearance once the keypad has closed (always, even on error).
+                numericUpDown.Background = originalBackground;
+            }
         }
     }
 }

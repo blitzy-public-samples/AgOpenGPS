@@ -47,10 +47,12 @@ See the PCB repo for PCB layouts, firmware for steering and rate control, machin
    runtime install is required. Pick the archive that matches your operating system.
 2. Extract the contents to a folder that is writable by your user (not the root of `C:\`, and not a
    system-protected location). Your desktop or home folder is fine.
-3. Start the application for your platform:
-   - **Windows (win-x64):** run `AgOpenGPS.exe`.
-   - **Linux (linux-x64):** make the binary executable once with `chmod +x AgOpenGPS`, then run `./AgOpenGPS`.
-   - **macOS (osx-x64 / osx-arm64):** run the `AgOpenGPS` executable. Because the build is unsigned,
+3. The extracted archive contains one subfolder per program — `AgOpenGPS/`, `AgIO/`, `ModSim/`,
+   `GPS_Out/`, `AgDiag/`, and `Updater/` — alongside the `LICENSE` file. Start the main application from
+   inside the `AgOpenGPS/` subfolder:
+   - **Windows (win-x64):** run `AgOpenGPS\AgOpenGPS.exe`.
+   - **Linux (linux-x64):** make the binary executable once with `chmod +x AgOpenGPS/AgOpenGPS`, then run `./AgOpenGPS/AgOpenGPS`.
+   - **macOS (osx-x64 / osx-arm64):** run the `AgOpenGPS/AgOpenGPS` executable. Because the build is unsigned,
      Gatekeeper may ask you to allow it the first time (right-click → **Open**, or allow it from
      *System Settings → Privacy & Security*).
 
@@ -67,23 +69,37 @@ Linux** using the cross-platform `dotnet` CLI.
 3. Open the solution (`SourceCode/AgOpenGPS.sln`) in your editor of choice — Visual Studio 2022+,
    Visual Studio Code, or JetBrains Rider — or just use the `dotnet` CLI.
 4. Add your code and (re)build.
-5. Execute the following command in the root folder to get a single `AgOpenGPS` folder containing all the applications:
+5. Build the whole solution with the `dotnet` CLI:
    ```sh
-   dotnet publish SourceCode/AgOpenGPS.sln
+   dotnet build SourceCode/AgOpenGPS.sln -c Release
    ```
+   To produce runnable, distributable apps, use the per-project **publish** commands below.
 
-To produce a **per-OS self-contained** build (the .NET runtime is bundled, so the target machine needs
-no SDK installed), publish for the runtime identifier (RID) you want:
+To produce a **per-OS self-contained** distribution (the .NET runtime is bundled, so the target machine
+needs no SDK installed), publish **each executable project** for the runtime identifier (RID) you want.
+A solution-level `dotnet publish SourceCode/AgOpenGPS.sln` is **not** used: the solution also contains
+class libraries and test projects (which must not be published with a RID), and the `AgOpenGPS`/`AgIO`
+apps multi-target `net8.0;net8.0-windows`, so the framework must be paired to the RID. These are the
+exact commands the release CI ([`.github/workflows/release.yml`](.github/workflows/release.yml)) runs.
+The example below targets `linux-x64`; for another OS, substitute the RID (`win-x64`, `linux-x64`,
+`osx-x64`, or `osx-arm64`) and, for `AgOpenGPS`/`AgIO`, pair the framework — `-f net8.0-windows` for
+`win-x64`, `-f net8.0` for the others:
 
 ```sh
-# Windows x64
-dotnet publish SourceCode/AgOpenGPS.sln -c Release -r win-x64 --self-contained
-# Linux x64
-dotnet publish SourceCode/AgOpenGPS.sln -c Release -r linux-x64 --self-contained
-# macOS Intel / Apple Silicon
-dotnet publish SourceCode/AgOpenGPS.sln -c Release -r osx-x64 --self-contained
-dotnet publish SourceCode/AgOpenGPS.sln -c Release -r osx-arm64 --self-contained
+# Multi-targeted apps — framework paired to the RID with -f (win-x64 -> net8.0-windows):
+dotnet publish SourceCode/GPS/AgOpenGPS.csproj    -c Release -r linux-x64 -f net8.0 --self-contained true -o publish/linux-x64/AgOpenGPS
+dotnet publish SourceCode/AgIO/Source/AgIO.csproj -c Release -r linux-x64 -f net8.0 --self-contained true -o publish/linux-x64/AgIO
+
+# Single-target (net8.0) executables — no -f:
+dotnet publish SourceCode/ModSim/Source/ModSim.csproj      -c Release -r linux-x64 --self-contained true -o publish/linux-x64/ModSim
+dotnet publish SourceCode/GPS_Out/Source/GPS_Out.csproj    -c Release -r linux-x64 --self-contained true -o publish/linux-x64/GPS_Out
+dotnet publish SourceCode/AgDiag/AgDiag.csproj             -c Release -r linux-x64 --self-contained true -o publish/linux-x64/AgDiag
+dotnet publish SourceCode/Updater/AgOpenGPS.Updater.csproj -c Release -r linux-x64 --self-contained true -o publish/linux-x64/Updater
 ```
+
+This produces a `publish/linux-x64/` tree with `AgOpenGPS/`, `AgIO/`, `ModSim/`, `GPS_Out/`, `AgDiag/`,
+and `Updater/` subfolders — the same layout the release archives use — so the main executable lands at
+`AgOpenGPS/AgOpenGPS` (or `AgOpenGPS\AgOpenGPS.exe` on Windows).
 
 `dotnet build` and `dotnet test` also work on all three operating systems, and continuous integration
 now validates the solution on a **windows / ubuntu / macos** matrix.
