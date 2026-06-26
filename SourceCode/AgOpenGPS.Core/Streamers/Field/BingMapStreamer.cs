@@ -59,7 +59,7 @@ namespace AgOpenGPS.Core.Streamers
                 {
                     GeoBoundingBox geoBb = reader.ReadGeoBoundingBox();
                     // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-                    // Decode BackPic.png to a portable RGBA buffer via SkiaSharp (was GDI+ Bitmap).
+                    // Decode BackPic.png to a portable RGBA buffer via SkiaSharp (was the Windows-only GDI+ raster path).
                     byte[] rgbaPixels = _bitmapStreamer.Read(fieldDirectory, out int width, out int height);
                     if (rgbaPixels != null)
                     {
@@ -95,7 +95,8 @@ namespace AgOpenGPS.Core.Streamers
         public void CreateFile(DirectoryInfo fieldDirectory)
         {
             fieldDirectory.Create();
-            using (StreamWriter writer = new StreamWriter(GetFileInfo(fieldDirectory).Name))
+            // [XPLAT] NewLine pin for consistency (no functional effect — file is created empty)
+            using (StreamWriter writer = new StreamWriter(GetFileInfo(fieldDirectory).Name) { NewLine = "\r\n" })
             {
             }
         }
@@ -108,9 +109,9 @@ namespace AgOpenGPS.Core.Streamers
 
             // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
             // Decodes BackPic.png into a tightly-packed RGBA buffer (4 bytes/pixel, row-major)
-            // using the cross-platform SkiaSharp codec, replacing GDI+ (System.Drawing.Bitmap /
-            // Image.FromFile), which is Windows-only and throws at runtime on Linux/macOS. The
-            // BackPic.png on-disk format is unchanged, preserving the frozen field-file contract.
+            // using the cross-platform SkiaSharp codec, replacing the Windows-only GDI+ raster
+            // APIs, which throw at runtime on Linux/macOS. The BackPic.png on-disk format is
+            // unchanged, preserving the frozen field-file contract.
             // Returns null (with zero dimensions) when the file is absent or cannot be decoded.
             public byte[] Read(DirectoryInfo fieldDirectory, out int width, out int height)
             {
@@ -149,8 +150,8 @@ namespace AgOpenGPS.Core.Streamers
             }
 
             // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-            // Encodes a tightly-packed RGBA buffer back to BackPic.png using SkiaSharp (was GDI+
-            // Bitmap.Save(..., ImageFormat.Png)). The PNG output remains a standard PNG, preserving
+            // Encodes a tightly-packed RGBA buffer back to BackPic.png using SkiaSharp (was the
+            // Windows-only GDI+ raster-save path). The PNG output remains a standard PNG, preserving
             // the field-file format. No-ops when there is no imagery to write.
             public void Write(byte[] rgbaPixels, int width, int height, DirectoryInfo fieldDirectory)
             {

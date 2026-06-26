@@ -1,3 +1,4 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.IO;
 using System.IO.Compression;
@@ -104,7 +105,8 @@ namespace AgOpenGPS.Updater.Services
                 using (var archive = ZipFile.OpenRead(zipPath))
                 {
                     bool hasExe = archive.Entries.Any(e =>
-                        e.Name.Equals("AgOpenGPS.exe", StringComparison.OrdinalIgnoreCase));
+                        e.Name.Equals("AgOpenGPS.exe", StringComparison.OrdinalIgnoreCase) ||
+                        e.Name.Equals("AgOpenGPS", StringComparison.OrdinalIgnoreCase));
 
                     if (!hasExe)
                         return false;
@@ -113,7 +115,8 @@ namespace AgOpenGPS.Updater.Services
                     if (string.IsNullOrEmpty(version))
                     {
                         var exeEntry = archive.Entries.FirstOrDefault(e =>
-                            e.Name.Equals("AgOpenGPS.exe", StringComparison.OrdinalIgnoreCase));
+                            e.Name.Equals("AgOpenGPS.exe", StringComparison.OrdinalIgnoreCase) ||
+                            e.Name.Equals("AgOpenGPS", StringComparison.OrdinalIgnoreCase));
 
                         if (exeEntry != null)
                         {
@@ -187,7 +190,7 @@ namespace AgOpenGPS.Updater.Services
                 string driveName = drive.VolumeLabel;
 
                 if (string.IsNullOrEmpty(driveName))
-                    driveName = drive.Name.TrimEnd('\\').ToUpper();
+                    driveName = drive.Name.TrimEnd('\\').ToUpperInvariant();
 
                 return $"USB ({driveName}): {fileName}";
             }

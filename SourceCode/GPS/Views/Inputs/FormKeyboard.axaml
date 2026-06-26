@@ -1,0 +1,145 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — on-screen QWERTY keyboard dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Inputs/FormKeyboard`
+    (FormKeyboard.cs + FormKeyboard.Designer.cs). A borderless modal dialog that hosts one large
+    editable text field, two caret-navigation arrow buttons, and the migrated on-screen
+    `Keypad.Keyboard` UserControl. Per AAP §0.3.3 this is a faithful parity reimplementation of
+    the currently rendered Windows Forms UI, never a redesign — no new colors, no relayout.
+
+    WIRING CONTRACT — the partner code-behind (FormKeyboard.axaml.cs) owns ALL behaviour, NOT
+    this markup:
+      * This view is IMPERATIVE, not MVVM. There is intentionally NO x:DataType, no DataContext
+        and no {Binding}: the GPS project sets AvaloniaUseCompiledBindingsByDefault=true, so a
+        stray binding without x:DataType would also break the build. The named controls below MUST
+        keep the exact x:Names `keyboardString`, `keyboard1`, `btnCharLeft`, `btnCharRight` to match
+        the generated fields the code-behind addresses.
+      * keyboard1.ButtonPressed (EventHandler<Keypad.KeypadKeyPressedEventArgs>) — the on-screen
+        key broadcast — is subscribed in the code-behind (reproducing
+        `keyboard1.ButtonPressed += RegisterKeyboard1_ButtonPressed`), NOT wired here.
+      * btnCharLeft / btnCharRight move the text caret left / right (the WinForms
+        btnCharLeft_Click / btnCharRight_Click); their Click handlers are attached in the
+        code-behind, so no Click is declared here.
+      * The original FormKeyboard_Load set the window Height to 575 for the French (fr) culture and
+        500 otherwise; that culture/height logic lives in the code-behind. This XAML carries the
+        default Height="500".
+
+    WINDOW SHELL — mirrors FormKeyboard.Designer.cs:
+      Text "Keyboard"                -> Title (kept for accessibility even though chrome is hidden;
+                                        the code-behind may retitle it, e.g. "Enter a Value")
+      ClientSize 942 x 454           -> Width 942; Height carries the runtime default 500 (above)
+      BackColor SystemColors.ActiveCaption        -> Background "#99B4D1"
+      keyboard1 BackColor GradientActiveCaption   -> "#B9D1EA"
+      btnChar* BackColor WhiteSmoke               -> "#F5F5F5"
+        (Windows system colors are platform-specific, so fixed literal approximations are used.
+         They are theme-INDEPENDENT — correct for parity with the fixed WinForms system colors —
+         and follow the App.axaml legacy parity-color convention. There is no day/night brush for
+         the caption colors, so a literal keeps all three colors internally consistent.)
+      FormBorderStyle.FixedDialog + ControlBox=false -> SystemDecorations="None" (no close/min/max
+                                        chrome; the dialog is dismissed only via the on-screen
+                                        OK / Cancel keys of keyboard1)
+      MaximizeBox/MinimizeBox=false, not resizable -> CanResize="False"
+      ShowInTaskbar=false            -> ShowInTaskbar="False"
+      (shown modally over FormGPS)   -> WindowStartupLocation="CenterOwner"
+      Font Tahoma                    -> FontFamily="Tahoma" (children override sizes below)
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:keypad="clr-namespace:Keypad;assembly=Keypad"
+        x:Class="AgOpenGPS.Views.FormKeyboard"
+        Title="Keyboard"
+        Width="942"
+        Height="500"
+        CanResize="False"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="#99B4D1">
+
+    <!--
+        Parity polish: the WinForms arrow buttons used FlatAppearance.MouseDownBackColor =
+        Color.Turquoise (#40E0D0). Reproduce the pressed fill by targeting the Fluent Button
+        template's content presenter (the same technique the sibling FormYesView / Keypad views
+        use to override the theme's own state setters). Both arrow buttons carry Classes="charNav".
+    -->
+    <Window.Styles>
+        <Style Selector="Button.charNav:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#40E0D0" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Two-row layout reproducing the runtime appearance at Height=500. The outer Margin
+        (5,4,9,5) aligns the content with the WinForms coordinates: left 5 == keyboard1.Location.X,
+        top 4 == the textbox / buttons y, right 9 == 942 - (5 + 929 keyboard width). Row0 (51px)
+        carries the textbox (left) and the two caret buttons (right); the textbox top edge (y=4)
+        and the keyboard top edge (y = 4 + 51 = 55) match keyboardString / keyboard1 Location.Y
+        exactly. Row1 (*) carries the on-screen keyboard.
+    -->
+    <Grid Margin="5,4,9,5" RowDefinitions="51,*">
+
+        <!-- keyboardString — WinForms TextBox, Tahoma 24pt Bold (24 * 96/72 ≈ 32 DIP), Location
+             (11,4) Size 751x46, editable, TabIndex 0. Left/Top aligned in Row0; the code-behind
+             assigns the initial text and caret position. -->
+        <TextBox x:Name="keyboardString"
+                 Grid.Row="0"
+                 Width="751"
+                 Height="46"
+                 HorizontalAlignment="Left"
+                 VerticalAlignment="Top"
+                 FontSize="32"
+                 FontWeight="Bold"
+                 VerticalContentAlignment="Center"
+                 AutomationProperties.Name="Entered text" />
+
+        <!-- Caret-navigation arrows — WinForms btnCharLeft (777,4) and btnCharRight (860,4), both
+             73x45, anchored Top|Right, BackColor WhiteSmoke, FlatStyle.Flat with BorderSize 0. A
+             right-aligned horizontal stack (73 + 10 gap + 73 = 156 wide, ending at x=933)
+             reproduces both Locations exactly (left starts at x=777, right at x=860). The Click
+             handlers are attached in the code-behind. Each button is image-only, so an explicit
+             AutomationProperties.Name supplies the accessible label (invisible accessibility — no
+             visual change). -->
+        <StackPanel Grid.Row="0"
+                    Orientation="Horizontal"
+                    Spacing="10"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top">
+            <Button x:Name="btnCharLeft"
+                    Classes="charNav"
+                    Width="73"
+                    Height="45"
+                    Padding="6"
+                    Background="#F5F5F5"
+                    BorderThickness="0"
+                    AutomationProperties.Name="Move caret left">
+                <Image Source="avares://AgOpenGPS/btnImages/ArrowLeft.png" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="btnCharRight"
+                    Classes="charNav"
+                    Width="73"
+                    Height="45"
+                    Padding="6"
+                    Background="#F5F5F5"
+                    BorderThickness="0"
+                    AutomationProperties.Name="Move caret right">
+                <Image Source="avares://AgOpenGPS/btnImages/ArrowRight.png" Stretch="Uniform" />
+            </Button>
+        </StackPanel>
+
+        <!-- keyboard1 — the migrated Keypad.Keyboard UserControl (WinForms keyboard1, Location
+             (5,55) Size 929x395, BackColor GradientActiveCaption). The control has a fixed
+             intrinsic size (925x525 in Keyboard.axaml) that Stretch cannot shrink; anchoring it
+             Top|Left places it at the Row1 top-left (window x=5, y=55) exactly like the WinForms
+             Location and directs the unavoidable overflow downward — clipping only the bottom
+             command row, the documented and accepted Keyboard.axaml behavior where "the host dialog
+             governs final sizing" — instead of centering and overlapping the textbox row.
+             ButtonPressed is subscribed in the code-behind, not wired here. -->
+        <keypad:Keyboard x:Name="keyboard1"
+                         Grid.Row="1"
+                         HorizontalAlignment="Left"
+                         VerticalAlignment="Top"
+                         Background="#B9D1EA" />
+    </Grid>
+</Window>

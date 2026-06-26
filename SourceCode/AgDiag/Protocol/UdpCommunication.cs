@@ -23,7 +23,7 @@ namespace AgDiag.Protocol
         public event EventHandler<int> DefaultSendsUpdated;
 
         // [XPLAT] M3: surface UDP/loopback receive failures to the UI instead of silently swallowing
-        // them. The deleted WinForms code showed a modal MessageBox; the cross-platform equivalent is an
+        // them. The deleted WinForms code showed a modal error dialog; the cross-platform equivalent is an
         // event the Avalonia view (FormLoop) subscribes to and renders in a visible diagnostic label.
         // This is an event member on an existing class (mirroring DefaultSendsUpdated), not a new
         // architectural abstraction, so it stays within the AAP's new-surface limit (R7).
@@ -56,11 +56,11 @@ namespace AgDiag.Protocol
             }
             catch (Exception ex)
             {
-                // [XPLAT] WinForms MessageBox replaced with a cross-platform, operator-visible diagnostic
+                // [XPLAT] WinForms error dialog replaced with a cross-platform, operator-visible diagnostic
                 // surface: raise ErrorOccurred so FormLoop can show the failure in its UDP error label,
-                // and keep Debug.WriteLine for trace logs. This prevents loopback/UDP receive failures
+                // and use Trace.WriteLine for trace logs. This prevents loopback/UDP receive failures
                 // (e.g. port 17777 already bound) from being silently hidden from the operator.
-                Debug.WriteLine($"UDP Error: {ex.Message}");
+                Trace.WriteLine($"UDP Error: {ex.Message}");
                 ErrorOccurred?.Invoke(this, $"UDP Error: {ex.Message}");
             }
         }

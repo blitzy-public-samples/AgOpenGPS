@@ -1,0 +1,64 @@
+<!-- [XPLAT] migrated from net48/WinForms FormTimedMessage.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormTimedMessage"
+        x:DataType="vm:FormTimedMessageViewModel"
+        Title="AgIO Message"
+        RequestedThemeVariant="Light"
+        Background="#FFA07A"
+        FontFamily="Tahoma"
+        FontSize="14.25"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        WindowStartupLocation="CenterScreen"
+        SystemDecorations="None">
+
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms
+        `Forms/FormTimedMessage` — a small, borderless, self-dismissing notification "toast"
+        showing a bold title over a message line. Shell maps the WinForms designer values
+        (Forms/FormTimedMessage.Designer.cs) onto Avalonia:
+          • Text "AgIO Message"            -> Title="AgIO Message"
+          • BackColor LightSalmon          -> Background="#FFA07A"
+          • TopMost = true                 -> Topmost="True"
+          • ShowInTaskbar = false          -> ShowInTaskbar="False"
+          • FixedSingle / ControlBox=false -> CanResize="False" + SystemDecorations="None"
+                                              (borderless transient popup — no chrome/close box)
+          • Form Font Tahoma 14.25         -> FontFamily="Tahoma" FontSize="14.25"
+        The WinForms version grew its width with the message length
+        (Width = message.Length * 15 + 120); here the window simply sizes to its content
+        (SizeToContent="WidthAndHeight"), with wrapping bounded by MaxWidth so an unusually
+        long message wraps instead of producing a runaway-wide window.
+
+        Bound (compiled bindings, x:DataType) to FormTimedMessageViewModel — display-only:
+        TitleText (former lblTitle) and MessageText (former lblMessage2). The auto-close
+        timer (former System.Windows.Forms.Timer -> DispatcherTimer) and any width override
+        live in the code-behind, not the view-model. Light-theme only, for parity with the
+        AgIO WinForms look (App.axaml pins RequestedThemeVariant="Light").
+    -->
+    <StackPanel Orientation="Vertical"
+                Margin="24,20"
+                Spacing="12"
+                MaxWidth="600"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+
+        <!-- WinForms lblTitle: Tahoma 18 Bold -->
+        <TextBlock Text="{Binding TitleText}"
+                   FontFamily="Tahoma"
+                   FontSize="18"
+                   FontWeight="Bold"
+                   Foreground="Black"
+                   TextWrapping="Wrap" />
+
+        <!-- WinForms lblMessage2: Tahoma 18 -->
+        <TextBlock Text="{Binding MessageText}"
+                   FontFamily="Tahoma"
+                   FontSize="18"
+                   Foreground="Black"
+                   TextWrapping="Wrap" />
+    </StackPanel>
+</Window>

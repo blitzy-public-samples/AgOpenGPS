@@ -1,4 +1,5 @@
-﻿using AgLibrary.Logging;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgLibrary.Logging;
 using AgOpenGPS.Core.Interfaces;
 using AgOpenGPS.Core.Models;
 using System;
@@ -80,7 +81,8 @@ namespace AgOpenGPS.Core.Streamers
         public void CreateFile(DirectoryInfo fieldDirectory)
         {
             fieldDirectory.Create();
-            using (StreamWriter writer = new StreamWriter(GetFileInfo(fieldDirectory).FullName))
+            // [XPLAT] Pin CRLF so the seeded RecPath.txt is byte-identical to the net48/Windows golden on every OS.
+            using (StreamWriter writer = new StreamWriter(GetFileInfo(fieldDirectory).FullName) { NewLine = "\r\n" })
             {
                 //write paths # of sections
                 writer.WriteLine("$RecPath");

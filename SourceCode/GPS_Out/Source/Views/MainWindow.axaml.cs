@@ -94,7 +94,9 @@ namespace GPS_Out.Views
             InitializeComponent();
 
             // Construction order mirrors frmStart exactly (Tls first so the comm/PGN classes can use it).
-            Tls = new clsTools(this);
+            // [XPLAT] clsTools is now parameterless (the frmStart back-reference was removed; the help
+            // window resolves its owner from the Avalonia application lifetime). See clsTools.ShowHelp.
+            Tls = new clsTools();
             AGIOcomm = new UDPComm(this, 15555, 8000, 7120, "AGIO", "127.103.104.105", "127.255.255.255");
             AOGcomm = new UDPComm(this, 17777, 8500, 9010, "AOG", "127.100.101.102", "127.255.255.255");
             AGIOdata = new PGN54908(this);

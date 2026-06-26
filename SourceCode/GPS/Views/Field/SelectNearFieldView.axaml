@@ -1,0 +1,175 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Select Near Field" dialog (Avalonia view).
+
+    NET-NEW Avalonia MVVM view (discipline A — compiled-binding MVVM); there is no WinForms source
+    form. One of the four Select-Field dialogs, it shows the NEAR-FIELD table: only fields that have
+    a recorded GPS start (Wgs84Start), sorted by distance by default (NearFieldTableViewModel sets
+    SortMode = ByDistance). The operator highlights a row and presses Open to load it, or Cancel to
+    dismiss.
+
+    Wiring contract (do NOT change here):
+      * The DataContext is assigned EXTERNALLY by AvaloniaSelectFieldPanelPresenter via
+        `new SelectNearFieldView { DataContext = vm }` and shown with Show/ShowDialog/Close.
+        Therefore this markup sets NO DataContext and NO Design.DataContext — the view-model has
+        only a multi-argument constructor (no parameterless ctor), so a design-time instance cannot
+        be created. `x:DataType` below only declares the type for compile-time binding checking; it
+        never instantiates the view-model.
+      * `x:CompileBindings="True"` makes every {Binding ...} a compiled binding resolved at build
+        time against SelectNearFieldViewModel (and, inside the row DataTemplate, against
+        FieldDescriptionViewModel), so a misspelled path fails the build (Release treats warnings as
+        errors). The bound members are all inherited FieldTableViewModel surface:
+        FieldDescriptionViewModels, LocalSelectedField, SelectFieldCommand, NextSortModeCommand, and
+        the bool ByNameVisible / ByDistanceVisible / ByAreaVisible (these replaced the WPF
+        System.Windows.Visibility props, so IsVisible binds to bool directly — NO converter).
+      * btnCancel carries only an x:Name; its Click -> Close() is attached imperatively by the partner
+        code-behind (the single permitted trivial handler). The table view-models expose no cancel
+        command, so the view provides a kiosk-safe dismissal; the presenter's Closed handler nulls
+        its reference regardless of how the window closes.
+
+    Theme (per AAP §0.3.3 — 1:1 visual parity, never a redesign):
+      All colors come from the day/night theme brushes defined in App.axaml's ThemeDictionaries and
+      are referenced via {DynamicResource ...} so the live Light<->Dark switch is observed. No
+      hardcoded colors. Button glyphs are served from the GPS assembly ("AgOpenGPS") via avares:// URIs.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgOpenGPS.Core.ViewModels;assembly=AgOpenGPS.Core"
+        x:Class="AgOpenGPS.Views.Field.SelectNearFieldView"
+        x:DataType="vm:SelectNearFieldViewModel"
+        x:CompileBindings="True"
+        Title="Select Near Field"
+        Width="660" Height="540"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <Window.Styles>
+        <!-- Tighten the Fluent ListBoxItem to a tidy, touch-friendly row so the row cells line up
+             directly under the column headers: no extra item padding / corner radius, stretch the
+             row content full width so the selection highlight spans the whole row, and keep a
+             touch-friendly 40px minimum row height. -->
+        <Style Selector="ListBox#lstFields ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Three logical bands: the sort header docked to the top, the action buttons docked to the
+        bottom, and the field list filling the remaining centre (DockPanel.LastChildFill).
+    -->
+    <DockPanel Margin="12">
+
+        <!-- ===================== Top : sort toggle + column headers ====================== -->
+        <Grid DockPanel.Dock="Top" RowDefinitions="Auto,Auto">
+
+            <!-- Sort toggle. Tapping cycles Name -> Distance -> Area via NextSortModeCommand; the
+                 active mode is shown by the single visible chip (the three chips are mutually
+                 exclusive, driven by the bool ByNameVisible / ByDistanceVisible / ByAreaVisible —
+                 IsVisible binds to the bool directly, no converter). The chip text itself (not only
+                 its accent colour) names the active mode, so colour is never the sole indicator. -->
+            <Button Grid.Row="0"
+                    Command="{Binding NextSortModeCommand}"
+                    HorizontalAlignment="Left"
+                    MinHeight="48"
+                    AutomationProperties.Name="Change sort order">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="Sort:"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                    <TextBlock Text="Name"
+                               IsVisible="{Binding ByNameVisible}"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource AogAccentBrush}" />
+                    <TextBlock Text="Distance"
+                               IsVisible="{Binding ByDistanceVisible}"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource AogAccentBrush}" />
+                    <TextBlock Text="Area"
+                               IsVisible="{Binding ByAreaVisible}"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource AogAccentBrush}" />
+                </StackPanel>
+            </Button>
+
+            <!-- Column headers aligned over the list columns (*, 120, 120). The 1px bottom border is
+                 the header underline. Distance / Area are right-aligned to match the right-aligned
+                 numeric cells below. -->
+            <Border Grid.Row="1"
+                    BorderBrush="{DynamicResource AogTextBrush}"
+                    BorderThickness="0,0,0,1"
+                    Margin="0,8,0,0">
+                <Grid ColumnDefinitions="*,120,120">
+                    <TextBlock Grid.Column="0" Text="Field" FontWeight="Bold" Padding="2,4"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="Distance" FontWeight="Bold" TextAlignment="Right" Padding="2,4"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                    <TextBlock Grid.Column="2" Text="Area" FontWeight="Bold" TextAlignment="Right" Padding="2,4"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ============================ Bottom : action buttons ========================== -->
+        <StackPanel DockPanel.Dock="Bottom"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="10"
+                    Margin="0,10,0,0">
+            <!-- Select (Open) — loads the highlighted field via SelectFieldCommand. -->
+            <Button Command="{Binding SelectFieldCommand}"
+                    MinHeight="56"
+                    MinWidth="120"
+                    Foreground="{DynamicResource AogTextBrush}"
+                    AutomationProperties.Name="Open selected field">
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Width="32" Height="32" />
+                    <TextBlock Text="Open" VerticalAlignment="Center" Margin="8,0,0,0" />
+                </StackPanel>
+            </Button>
+            <!-- Cancel — dismisses the dialog; its Click -> Close() is wired in code-behind by
+                 x:Name (no command on the VM for table views). -->
+            <Button x:Name="btnCancel"
+                    MinHeight="56"
+                    MinWidth="120"
+                    Foreground="{DynamicResource AogTextBrush}"
+                    AutomationProperties.Name="Cancel">
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Width="32" Height="32" />
+                    <TextBlock Text="Cancel" VerticalAlignment="Center" Margin="8,0,0,0" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!-- ============================== Centre : field list =========================== -->
+        <!-- Near-field rows. ItemsSource / SelectedItem resolve against SelectNearFieldViewModel;
+             the row bindings resolve against FieldDescriptionViewModel (the DataTemplate DataType).
+             The two numeric cells null-guard via FallbackValue='' because DistanceViewModel is null
+             when the field has no Wgs84Start and AreaViewModel is null when it has no Area; Avalonia
+             compiled bindings short-circuit the null intermediate path safely. -->
+        <ListBox x:Name="lstFields"
+                 ItemsSource="{Binding FieldDescriptionViewModels}"
+                 SelectedItem="{Binding LocalSelectedField, Mode=TwoWay}"
+                 AutomationProperties.Name="Nearby fields">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:FieldDescriptionViewModel">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding FieldName}" VerticalAlignment="Center" Foreground="{DynamicResource AogTextBrush}"/>
+                        <TextBlock Grid.Column="1" Width="120" TextAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource AogTextBrush}"
+                                   Text="{Binding DistanceViewModel.DisplayedDistance, StringFormat='{}{0:0.000}', FallbackValue=''}"/>
+                        <TextBlock Grid.Column="2" Width="120" TextAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource AogTextBrush}"
+                                   Text="{Binding AreaViewModel.DisplayedArea, StringFormat='{}{0:0.0}', FallbackValue=''}"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+    </DockPanel>
+</Window>
