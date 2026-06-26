@@ -66,6 +66,17 @@ namespace AgOpenGPS.Core
         // GeoDelta(0,0); when true, the operator-entered drift offset is preserved across field close.
         // See MIGRATION_DOCS/TRANSITION_MAP.md.
         public bool isKeepOffsetsOn;
+
+        // [XPLAT] NMEA-sentence / fix-cadence watchdog counter relocated here from the WinForms host
+        // form (FormGPS, GUI.Designer.cs) so the portable, cross-platform fix pipeline — the GPS
+        // simulator (CSim), the extracted position/scan-loop service and the comm/NMEA decoders — all
+        // read and write the SAME canonical counter the Avalonia status read-outs bind to, with no
+        // WinForms coupling. The type (uint) and default (0) are preserved exactly from the original
+        // (FormGPS: `public uint sentenceCounter = 0;`) so the stale-fix / "GPS data lost" watchdog
+        // behavior stays byte-for-byte identical: it is incremented as sentences arrive and reset to 0
+        // once a fix is applied (e.g. the simulator resets it every DoSimTick).
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public uint sentenceCounter;
     }
 
     // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md

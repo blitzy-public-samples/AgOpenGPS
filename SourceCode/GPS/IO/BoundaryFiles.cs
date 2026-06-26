@@ -1,11 +1,11 @@
-﻿// BoundaryFiles.cs - Load tolerant to duplicate True/False lines and extra whitespace.
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+// BoundaryFiles.cs - Load tolerant to duplicate True/False lines and extra whitespace.
 // Purpose: Some legacy files wrote the drive-through flag twice; we accept that pattern.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using AgOpenGPS.Core.Models;
 
 namespace AgOpenGPS.IO
 {
