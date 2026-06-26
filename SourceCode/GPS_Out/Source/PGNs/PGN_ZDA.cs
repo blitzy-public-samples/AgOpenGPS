@@ -1,11 +1,6 @@
-// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-using GPS_Out.Views;   // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace GPS_Out.PGNs
 {
@@ -27,9 +22,9 @@ namespace GPS_Out.PGNs
         #endregion ZDA Message
 
         private string cSentence;
-        private MainWindow mf;
+        private INmeaHost mf;
 
-        public PGN_ZDA(MainWindow CalledFrom)
+        public PGN_ZDA(INmeaHost CalledFrom)
         {
             mf = CalledFrom;
         }
@@ -40,16 +35,16 @@ namespace GPS_Out.PGNs
         {
             cSentence = Properties.Settings.Default.SentenceStart + "ZDA";
             cSentence += "," + DateTime.UtcNow.ToString("HHmmss.fff", CultureInfo.InvariantCulture);
-            cSentence += "," + DateTime.UtcNow.Day.ToString("00");
-            cSentence += "," + DateTime.UtcNow.Month.ToString("00");
-            cSentence += "," + DateTime.UtcNow.Year.ToString("0000");
+            cSentence += "," + DateTime.UtcNow.Day.ToString("00", CultureInfo.InvariantCulture);
+            cSentence += "," + DateTime.UtcNow.Month.ToString("00", CultureInfo.InvariantCulture);
+            cSentence += "," + DateTime.UtcNow.Year.ToString("0000", CultureInfo.InvariantCulture);
 
             var offset = TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow);
-            cSentence += "," + offset.Hours.ToString("00");
-            cSentence += "," + offset.Minutes.ToString("00");
+            cSentence += "," + offset.Hours.ToString("00", CultureInfo.InvariantCulture);
+            cSentence += "," + offset.Minutes.ToString("00", CultureInfo.InvariantCulture);
 
             cSentence += "*";
-            string Hex = mf.CheckSum(cSentence).ToString("X2");
+            string Hex = mf.CheckSum(cSentence).ToString("X2", CultureInfo.InvariantCulture);
             cSentence += Hex;
 
             return cSentence;

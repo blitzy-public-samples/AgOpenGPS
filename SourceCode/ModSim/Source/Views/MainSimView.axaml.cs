@@ -35,26 +35,10 @@ namespace ModSim.Views
     /// </summary>
     public partial class MainSimView : Window
     {
-        // ----- GPS simulator state (ported verbatim from Controls.Designer.cs) -------------------
-        private string TimeNow = "";
-
-        // GPS related properties.
-        private readonly int fixQuality = 8, sats = 12;
-
-        private readonly double HDOP = 0.9;
-        public double altitude = 300;
-        private char EW = 'W';
-        private char NS = 'N';
-
-        public double latitude, longitude;
-
-        private double latDeg, latMinu, longDeg, longMinu, latNMEA, longNMEA;
-        public double speed = 0.6, headingTrue, stepDistance = 0.05, steerAngle;
-        private double degrees, roll = 0;
-
-        private int rollIMU = 0, headingIMU = 0;
-
-        private const double ToRadians = 0.01745329251994329576923690768489, ToDegrees = 57.295779513082325225835265587528;
+        // [XPLAT] The GPS-simulator state fields (TimeNow, latitude/longitude, speed, heading,
+        // roll, the eight NMEA StringBuilders, etc.) and the OnSimTimerTick heartbeat live in the
+        // MainSimView.Nmea.cs partial of this same class; the UI handlers below assign them and the
+        // tick consumes them. Declared there exactly once to keep this file focused on lifecycle + UI.
 
         // [XPLAT] WinForms Timer (default 100 ms, Enabled=true) -> Avalonia DispatcherTimer.
         private DispatcherTimer simTimer;
@@ -110,7 +94,7 @@ namespace ModSim.Views
 
             // [XPLAT] Start the GPS-sim loop (WinForms simTimer.Enabled = true, default Interval 100 ms).
             simTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
-            simTimer.Tick += SimTimer_Tick;
+            simTimer.Tick += OnSimTimerTick;
             simTimer.Start();
 
             // Genuine user slider interaction is enabled only after the initial layout has settled.
@@ -286,95 +270,5 @@ namespace ModSim.Views
             return form.ShowDialog(this);
         }
 
-        // ----- GPS simulator tick (ported verbatim from Controls.Designer.cs simTimer_Tick) -------
-        private void SimTimer_Tick(object sender, EventArgs e)
-        {
-            stepDistance = (int)tbarSpeed.Value * 0.027777777777 * 0.1;
-
-            if (guidanceStatus == 0)
-                steerAngle = (int)tbarSteerAngleWAS.Value * 0.01;
-            else
-            {
-                steerAngle = steerAngleSetPoint;
-                _suppressSliderEvents = true;
-                tbarSteerAngleWAS.Value = (int)steerAngleSetPoint;
-                _suppressSliderEvents = false;
-                steerAngleActual = steerAngle;
-                lblWAS.Text = "Steer: " + steerAngleActual.ToString("N2") + "°";
-            }
-
-            double temp = stepDistance * Math.Tan(steerAngle * 0.02) / 2.5;
-            headingTrue += temp;
-
-            if (headingTrue > (2.0 * Math.PI)) headingTrue -= (2.0 * Math.PI);
-            if (headingTrue < 0) headingTrue += (2.0 * Math.PI);
-
-            degrees = ToDegrees * headingTrue;
-
-            headingIMU = (int)(degrees * 10);
-
-            lblHeading.Text = (headingTrue * 57.29577951308).ToString("N2") + '°';
-
-            CalculateNewPostionFromBearingDistance(ToRadians * latitude, ToRadians * longitude, headingTrue, stepDistance / 1000.0);
-
-            lblCurrentLon.Text = longitude.ToString("N7");
-            lblCurrentLat.Text = latitude.ToString("N7");
-
-            // calc the speed
-            speed = Math.Round(1.944 * stepDistance * 1.0 / 0.1, 1);
-
-            TimeNow = DateTime.UtcNow.ToString("HHmmss.fff,", CultureInfo.InvariantCulture);
-
-            if (cboxVTG.IsChecked == true)
-            {
-                BuildVTG();
-                sbSendText.Append(sbVTG.ToString());
-                SendUDPMessage(sbVTG.ToString());
-            }
-            if (cboxAVR.IsChecked == true)
-            {
-                BuildAVR();
-                sbSendText.Append(sbAVR.ToString());
-                SendUDPMessage(sbAVR.ToString());
-            }
-            if (cboxHDT.IsChecked == true)
-            {
-                BuildHDT();
-                sbSendText.Append(sbHDT.ToString());
-                SendUDPMessage(sbHDT.ToString());
-            }
-            if (cboxGGA.IsChecked == true)
-            {
-                BuildGGA();
-                sbSendText.Append(sbGGA.ToString());
-                SendUDPMessage(sbGGA.ToString());
-            }
-            if (cboxRMC.IsChecked == true)
-            {
-                BuildRMC();
-                sbSendText.Append(sbRMC.ToString());
-                SendUDPMessage(sbRMC.ToString());
-            }
-            if (cboxOGI.IsChecked == true)
-            {
-                BuildOGI();
-                sbSendText.Append(sbOGI.ToString());
-                SendUDPMessage(sbOGI.ToString());
-            }
-            if (cboxNDA.IsChecked == true)
-            {
-                BuildNDA();
-                sbSendText.Append(sbNDA.ToString());
-                SendUDPMessage(sbNDA.ToString());
-            }
-            if (cboxKSXT.IsChecked == true)
-            {
-                BuildKSXT();
-                sbSendText.Append(sbKSXT.ToString());
-                SendUDPMessage(sbKSXT.ToString());
-            }
-
-            sbSendText.Clear();
-        }
     }
 }

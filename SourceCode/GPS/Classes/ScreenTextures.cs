@@ -1,4 +1,5 @@
-﻿using AgOpenGPS.Core.DrawLib;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Properties;
 
 namespace AgOpenGPS.Classes

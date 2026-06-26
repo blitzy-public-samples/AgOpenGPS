@@ -1,10 +1,17 @@
-// [XPLAT] migrated from net48/WinForms Forms/Controls.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 //
-// NMEA-sentence generation half of the ModSim simulator. Ported verbatim from the WinForms
-// FormSim "GPS Simulator" region: the position dead-reckoning maths, the NMEA XOR checksum, and the
-// per-sentence builders. Every numeric conversion that ends up on the wire keeps its explicit
-// CultureInfo.InvariantCulture argument so the emitted sentences are byte-identical on any host
-// locale (a Windows/Linux/macOS comma-decimal locale would otherwise corrupt the protocol text).
+// NMEA-sentence generation + GPS-simulator heartbeat half of the ModSim simulator. Ported
+// verbatim from the WinForms FormSim "GPS Simulator" region (Forms/Controls.Designer.cs,
+// lines 93-488): the GPS-sim state fields, the 100 ms simulator tick, the position
+// dead-reckoning maths, the NMEA XOR checksum, and the eight per-sentence builders.
+//
+// This is the SAME partial class MainSimView as MainSimView.axaml.cs (the Window base + ctor +
+// UI handlers + DispatcherTimer wiring) and MainSimView.Udp.cs (sockets + PGN parsing); the
+// three partials freely cross-reference each other's members. The sentences emitted here are
+// behaviour-frozen wire data (NMEA over UDP 8888 -> 9999): every numeric that ends up on the
+// wire keeps its explicit CultureInfo.InvariantCulture so the bytes stay identical on any host
+// locale (a comma-decimal locale would otherwise corrupt the protocol text), while the on-screen
+// display labels deliberately remain culture-aware.
 using System;
 using System.Globalization;
 using System.Text;
@@ -13,7 +20,11 @@ namespace ModSim.Views
 {
     public partial class MainSimView
     {
-        // The eight individual NMEA sentence buffers plus the aggregate send buffer.
+        #region GPS Simulator
+
+        private string TimeNow = "";
+
+        //Our two new nmea strings
         private readonly StringBuilder sbOGI = new StringBuilder();
         private readonly StringBuilder sbNDA = new StringBuilder();
 
@@ -25,15 +36,128 @@ namespace ModSim.Views
         private readonly StringBuilder sbAVR = new StringBuilder();
         private readonly StringBuilder sbKSXT = new StringBuilder();
 
-        // The entire string to send out.
+        //The entire string to send out
         private readonly StringBuilder sbSendText = new StringBuilder();
 
-        // The checksum of an NMEA line.
+        //GPS related properties
+        private readonly int fixQuality = 8, sats = 12;
+
+        private readonly double HDOP = 0.9;
+        public double altitude = 300;
+        private char EW = 'W';
+        private char NS = 'N';
+
+        public double latitude, longitude;
+
+        private double latDeg, latMinu, longDeg, longMinu, latNMEA, longNMEA;
+        public double speed = 0.6, headingTrue, stepDistance = 0.05, steerAngle;
+        private double degrees, roll = 0;
+
+        private int rollIMU = 0, headingIMU = 0;//, pitchIMU = 0;
+
+        private const double ToRadians = 0.01745329251994329576923690768489, ToDegrees = 57.295779513082325225835265587528;
+
+        //The checksum of an NMEA line
         private string sumStr = "";
+
+        // [XPLAT] WinForms simTimer_Tick -> OnSimTimerTick, driven by the Avalonia DispatcherTimer wired
+        // in MainSimView.axaml.cs (simTimer.Tick += OnSimTimerTick). TrackBar.Value (int) became
+        // Slider.Value (double), so every slider read is cast back to (int) to preserve the original
+        // integer-step maths; the single programmatic slider write is bracketed by _suppressSliderEvents
+        // (declared in the axaml.cs partial) so it does not re-enter the ValueChanged handlers.
+        private void OnSimTimerTick(object sender, EventArgs e)
+        {
+            stepDistance = (int)tbarSpeed.Value * 0.027777777777 * (0.1);
+
+            if (guidanceStatus == 0)
+                steerAngle = (int)tbarSteerAngleWAS.Value * 0.01;
+            else
+            {
+                steerAngle = steerAngleSetPoint;
+                _suppressSliderEvents = true;
+                tbarSteerAngleWAS.Value = (int)(steerAngleSetPoint);
+                _suppressSliderEvents = false;
+                steerAngleActual = steerAngle;
+                lblWAS.Text = "Steer: " + (steerAngleActual).ToString("N2") + "°";
+            }
+
+            double temp = (stepDistance * Math.Tan(steerAngle * 0.02) / 2.5);
+            headingTrue += temp;
+
+            if (headingTrue > (2.0 * Math.PI)) headingTrue -= (2.0 * Math.PI);
+            if (headingTrue < 0) headingTrue += (2.0 * Math.PI);
+
+            degrees = ToDegrees * headingTrue;
+
+            headingIMU = (int)(degrees * 10);
+
+            lblHeading.Text = (headingTrue * 57.29577951308).ToString("N2") + '°';
+
+            CalculateNewPostionFromBearingDistance(ToRadians * latitude, ToRadians * longitude, headingTrue, stepDistance / 1000.0);
+
+            lblCurrentLon.Text = longitude.ToString("N7");
+            lblCurrentLat.Text = latitude.ToString("N7");
+
+            //calc the speed
+            speed = Math.Round(1.944 * stepDistance * 1.0 / (0.1), 1);
+
+            TimeNow = DateTime.UtcNow.ToString("HHmmss.fff,", CultureInfo.InvariantCulture);
+
+            if (cboxVTG.IsChecked == true)
+            {
+                BuildVTG();
+                sbSendText.Append(sbVTG.ToString());
+                SendUDPMessage(sbVTG.ToString());
+            }
+            if (cboxAVR.IsChecked == true)
+            {
+                BuildAVR();
+                sbSendText.Append(sbAVR.ToString());
+                SendUDPMessage(sbAVR.ToString());
+            }
+            if (cboxHDT.IsChecked == true)
+            {
+                BuildHDT();
+                sbSendText.Append(sbHDT.ToString());
+                SendUDPMessage(sbHDT.ToString());
+            }
+            if (cboxGGA.IsChecked == true)
+            {
+                BuildGGA();
+                sbSendText.Append(sbGGA.ToString());
+                SendUDPMessage(sbGGA.ToString());
+            }
+            if (cboxRMC.IsChecked == true)
+            {
+                BuildRMC();
+                sbSendText.Append(sbRMC.ToString());
+                SendUDPMessage(sbRMC.ToString());
+            }
+            if (cboxOGI.IsChecked == true)
+            {
+                BuildOGI();
+                sbSendText.Append(sbOGI.ToString());
+                SendUDPMessage(sbOGI.ToString());
+            }
+            if (cboxNDA.IsChecked == true)
+            {
+                BuildNDA();
+                sbSendText.Append(sbNDA.ToString());
+                SendUDPMessage(sbNDA.ToString());
+            }
+            if (cboxKSXT.IsChecked == true)
+            {
+                BuildKSXT();
+                sbSendText.Append(sbKSXT.ToString());
+                SendUDPMessage(sbKSXT.ToString());
+            }
+
+            sbSendText.Clear();
+        }
 
         /// <summary>
         /// Dead-reckons a new latitude/longitude from a start point, bearing and distance, then
-        /// derives the NMEA degree-minute fields and N/S, E/W hemisphere characters. Ported verbatim.
+        /// derives the NMEA degree-minute fields and the N/S, E/W hemisphere characters. Ported verbatim.
         /// </summary>
         public void CalculateNewPostionFromBearingDistance(double lat, double lng, double bearing, double distance)
         {
@@ -45,7 +169,7 @@ namespace ModSim.Views
             latitude = ToDegrees * lat2;
             longitude = ToDegrees * lon2;
 
-            // convert to DMS from Degrees
+            //convert to DMS from Degrees
             latMinu = latitude;
             longMinu = longitude;
 
@@ -70,10 +194,7 @@ namespace ModSim.Views
             else EW = 'W';
         }
 
-        /// <summary>
-        /// Calculates the NMEA checksum (XOR of every character between '$' and '*') and stores it
-        /// as a two-digit upper-case hex string in <see cref="sumStr"/>. Ported verbatim.
-        /// </summary>
+        //calculate the NMEA checksum to stuff at the end
         public void CalculateChecksum(string Sentence)
         {
             int sum = 0, inx;
@@ -89,7 +210,9 @@ namespace ModSim.Views
                     break;
                 sum ^= tmp;    // Build checksum
             }
-            // Calculated checksum converted to a 2 digit hex string
+            // Calculated checksum converted to a 2 digit hex string. [XPLAT] the source emitted this with
+            // String.Format("{0:X2}", sum); the InvariantCulture overload is byte-identical for the "X2"
+            // hex format and keeps the Release build (TreatWarningsAsErrors) warning-clean.
             sumStr = string.Format(CultureInfo.InvariantCulture, "{0:X2}", sum);
         }
 
@@ -145,6 +268,7 @@ namespace ModSim.Views
 
             sbAVR.Append(",Yaw,-2.1,Tilt,"); //field 3,4,5
 
+            // [XPLAT] AVR culture fix (AAP §0.6.5): the ONLY wire numeric missing InvariantCulture in source
             sbAVR.Append(roll.ToString(CultureInfo.InvariantCulture) + ",Roll,"); //field 6,7
 
             sbAVR.Append("444.232,3,1.2,17*"); //field 8 thru 12
@@ -156,6 +280,7 @@ namespace ModSim.Views
 
         private void BuildOGI()
         {
+
             sbOGI.Clear();
             sbOGI.Append("$PAOGI,");
 
@@ -178,6 +303,7 @@ namespace ModSim.Views
 
         private void BuildNDA()
         {
+
             sbNDA.Clear();
             sbNDA.Append("$PANDA,");
 
@@ -190,8 +316,8 @@ namespace ModSim.Views
                 .Append(HDOP.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .Append("1000,3.2,")                                                                    //10
                 .Append(speed.ToString(CultureInfo.InvariantCulture)).Append(',')
-                .Append(headingIMU.ToString(CultureInfo.InvariantCulture)).Append(',')
-                .Append(rollIMU.ToString(CultureInfo.InvariantCulture)).Append(",32,298").Append("*");
+                .Append((headingIMU).ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append((rollIMU).ToString(CultureInfo.InvariantCulture)).Append(",32,298").Append("*");
 
             CalculateChecksum(sbNDA.ToString());
             sbNDA.Append(sumStr);
@@ -214,6 +340,7 @@ namespace ModSim.Views
                 .Append(roll.ToString(CultureInfo.InvariantCulture)).Append(",3,3,13,-1075,-98,-8,,,,37,13,,")
                 .Append("*3FCF0C9B");
 
+            //sbKSXT.Append(sumStr);
             sbKSXT.Append("\r\n");
         }
 
@@ -232,5 +359,7 @@ namespace ModSim.Views
             sbRMC.Append(sumStr);
             sbRMC.Append("\r\n");
         }
+
+        #endregion
     }
 }
