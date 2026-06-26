@@ -1,3 +1,4 @@
+// [XPLAT] migrated from net48 — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -37,7 +38,7 @@ namespace AgLibrary.Tests.Settings
         public void LoadXMLFile_ShouldReturnMissingFile()
         {
             // Arrange
-            var filePath = @"C:\Path\To\Nonexisting\Settings.xml";
+            var filePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "Nonexisting", "Settings.xml");
 
             // Act
             var loadResult = XmlSettingsHandler.LoadXMLFile(filePath, null);

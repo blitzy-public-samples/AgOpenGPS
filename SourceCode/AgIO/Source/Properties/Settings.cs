@@ -1,4 +1,5 @@
-﻿using AgLibrary.Logging;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgLibrary.Logging;
 using AgLibrary.Settings;
 using System.Collections.Generic;
 using System.IO;
@@ -80,6 +81,9 @@ namespace AgIO.Properties
 
         public LoadResult Load()
         {
+            // [XPLAT] FROZEN settings XML schema + .last backup round-trip (golden-file parity). Only the file
+            // location changed — path resolves under the cross-platform IPlatformServices config root via the
+            // migrated RegistrySettings.profileDirectory; the format and load flow are unchanged.
             string path = Path.Combine(RegistrySettings.profileDirectory, RegistrySettings.profileName + ".XML");
             var result = XmlSettingsHandler.LoadXMLFile(path, this);
             bool loadedFromBackup = false;
@@ -120,6 +124,9 @@ namespace AgIO.Properties
 
         public void Save()
         {
+            // [XPLAT] FROZEN settings XML schema + .last backup round-trip (golden-file parity). Only the file
+            // location changed — path resolves under the cross-platform IPlatformServices config root via the
+            // migrated RegistrySettings.profileDirectory; the format and save flow are unchanged.
             string path = Path.Combine(RegistrySettings.profileDirectory, RegistrySettings.profileName + ".XML");
 
             if (RegistrySettings.profileName != "")
