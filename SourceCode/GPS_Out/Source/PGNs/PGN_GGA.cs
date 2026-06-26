@@ -1,5 +1,4 @@
-// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-using GPS_Out.Views;   // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.Globalization;
 
@@ -34,9 +33,9 @@ namespace GPS_Out
         // *47          the checksum data, always begins with*
 
         private string cSentence;
-        private MainWindow mf;
+        private INmeaHost mf;
 
-        public PGN_GGA(MainWindow CalledFrom)
+        public PGN_GGA(INmeaHost CalledFrom)
         {
             mf = CalledFrom;
         }
@@ -65,7 +64,7 @@ namespace GPS_Out
             string NS = ",N";
             if (lat < 0) NS = ",S";
             lat = Math.Abs(lat);
-            cSentence += "," + ((int)lat).ToString("D2");
+            cSentence += "," + ((int)lat).ToString("D2", CultureInfo.InvariantCulture);
             double Mins = (double)(lat - (int)lat) * 60.0;
             cSentence += Mins.ToString(Properties.Settings.Default.SentencePrecisionFormat, CultureInfo.InvariantCulture);
             cSentence += NS;
@@ -73,14 +72,14 @@ namespace GPS_Out
             string EW = ",E";
             if (lon < 0) EW = ",W";
             lon = Math.Abs(lon);
-            cSentence += "," + ((int)lon).ToString("D3");
+            cSentence += "," + ((int)lon).ToString("D3", CultureInfo.InvariantCulture);
             Mins = (double)(lon - (int)lon) * 60.0;
             cSentence += Mins.ToString(Properties.Settings.Default.SentencePrecisionFormat, CultureInfo.InvariantCulture);
             cSentence += EW;
 
-            cSentence += "," + mf.AGIOdata.FixQuality.ToString();
+            cSentence += "," + mf.AGIOdata.FixQuality.ToString(CultureInfo.InvariantCulture);
 
-            cSentence += "," + mf.AGIOdata.Satellites.ToString("00");
+            cSentence += "," + mf.AGIOdata.Satellites.ToString("00", CultureInfo.InvariantCulture);
 
             cSentence += "," + mf.AGIOdata.HDOP.ToString("N2", CultureInfo.InvariantCulture);
 
@@ -91,7 +90,7 @@ namespace GPS_Out
             cSentence += "," + mf.AGIOdata.Age.ToString("N1", CultureInfo.InvariantCulture) + ",";
 
             cSentence += "0000*";
-            string Hex = mf.CheckSum(cSentence).ToString("X2");
+            string Hex = mf.CheckSum(cSentence).ToString("X2", CultureInfo.InvariantCulture);
             cSentence += Hex;
 
             return cSentence;

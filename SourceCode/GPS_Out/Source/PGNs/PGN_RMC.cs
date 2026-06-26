@@ -1,5 +1,4 @@
-// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-using GPS_Out.Views;   // [XPLAT] back-reference retyped frmStart -> Avalonia MainWindow
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.Globalization;
 
@@ -25,9 +24,9 @@ namespace GPS_Out
         #endregion RMC Message
 
         private string cSentence;
-        private MainWindow mf;
+        private INmeaHost mf;
 
-        public PGN_RMC(MainWindow CalledFrom)
+        public PGN_RMC(INmeaHost CalledFrom)
         {
             mf = CalledFrom;
         }
@@ -58,7 +57,7 @@ namespace GPS_Out
             string NS = ",N";
             if (lat < 0) NS = ",S";
             lat = Math.Abs(lat);
-            cSentence += "," + ((int)lat).ToString("D2");
+            cSentence += "," + ((int)lat).ToString("D2", CultureInfo.InvariantCulture);
             double Mins = (double)(lat - (int)lat) * 60.0;
             cSentence += Mins.ToString(Properties.Settings.Default.SentencePrecisionFormat, CultureInfo.InvariantCulture);
             cSentence += NS;
@@ -66,7 +65,7 @@ namespace GPS_Out
             string EW = ",E";
             if (lon < 0) EW = ",W";
             lon = Math.Abs(lon);
-            cSentence += "," + ((int)lon).ToString("D3");
+            cSentence += "," + ((int)lon).ToString("D3", CultureInfo.InvariantCulture);
             Mins = (double)(lon - (int)lon) * 60.0;
             cSentence += Mins.ToString(Properties.Settings.Default.SentencePrecisionFormat, CultureInfo.InvariantCulture);
             cSentence += EW;
@@ -76,13 +75,13 @@ namespace GPS_Out
 
             cSentence += "," + mf.Heading().ToString("000.0", CultureInfo.InvariantCulture);
 
-            cSentence += "," + DateTime.UtcNow.ToString("ddMMyy");
+            cSentence += "," + DateTime.UtcNow.ToString("ddMMyy", CultureInfo.InvariantCulture);
 
             cSentence += ",0.0,W";
 
             cSentence += ",*";
             //cSentence += "*";
-            string Hex = mf.CheckSum(cSentence).ToString("X2");
+            string Hex = mf.CheckSum(cSentence).ToString("X2", CultureInfo.InvariantCulture);
             cSentence += Hex;
 
             return cSentence;

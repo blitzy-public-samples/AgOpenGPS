@@ -1,0 +1,146 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormAdvancedSettings"
+        x:DataType="vm:FormAdvancedSettingsViewModel"
+        Title="Advanced Settings"
+        WindowStartupLocation="CenterOwner"
+        RequestedThemeVariant="Light"
+        Width="500"
+        Height="640"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        Background="#FFF0F0F0"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!-- [XPLAT] migrated from net48/WinForms FormAdvancedSettings.cs + FormAdvancedSettings.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms AgIO
+        `Forms/FormAdvancedSettings` dialog (FormAdvancedSettings.Designer.cs +
+        FormAdvancedSettings.cs). Per AAP §0.3.3 this is a visual + behavioural PARITY
+        reimplementation of the original Windows Forms look — never a redesign. No Figma was
+        supplied (AAP §0.8); the rendered WinForms dialog is the sole visual reference.
+
+        Root-attribute parity mapping (WinForms FormAdvancedSettings.Designer.cs -> Avalonia):
+          • Form Text "Advanced Settings"          -> Title="Advanced Settings".
+          • MinimumSize = MaximumSize = 500 x 639  -> fixed Width="500" Height="640",
+                                                      CanResize="False" (the WinForms form was a
+                                                      fixed Fixed3D dialog with ControlBox=false).
+          • StartPosition CenterParent             -> WindowStartupLocation="CenterOwner".
+          • Form had NO custom BackColor (default   -> Background="#FFF0F0F0" (classic light
+            SystemColors.Control light grey)           "Control" grey) — keeps the original light
+                                                      appearance. AgIO is LIGHT-ONLY (App.axaml pins
+                                                      RequestedThemeVariant="Light"; no day/night
+                                                      toggle), reinforced here so the dialog renders
+                                                      light even on a dark-mode OS.
+          • Control fonts (Tahoma 14.25 Bold /      -> base FontFamily="Tahoma" FontSize="14.25";
+            labels Microsoft Sans Serif 20.25 Bold)    the check-box captions are enlarged + bold via
+                                                      the Window.Styles below (large, touch-friendly,
+                                                      matching the original 20.25pt bold labels).
+
+        Data binding (MVVM, COMPILED bindings via x:DataType="vm:FormAdvancedSettingsViewModel";
+        AgIO.csproj sets AvaloniaUseCompiledBindingsByDefault=true):
+          • The three WinForms image-toggle CheckBoxes (cboxStartMinimized / cboxAutoRunGPS_Out /
+            cboxShowOnWarning) + their descriptive Labels (label1 "Start Minimized",
+            label2 "Auto Start GPS-Out", label3 "PopUp AgIO on Warn") collapse to three standard
+            Avalonia CheckBoxes whose Content is the original descriptive label text and whose
+            IsChecked TwoWay-binds to the view-model's StartMinimized / AutoRunGpsOut / ShowOnWarning
+            booleans. Mode=TwoWay is explicit so the operator's edits flow back into the view-model
+            before SaveCommand persists them (the editable-dialog requirement).
+          • The single WinForms btnClose (OK64) "save and close" button maps to btnSave bound to
+            SaveCommand (Settings write-back + persist + RequestClose(true)). The migration adds an
+            explicit btnCancel bound to CancelCommand (RequestClose(false), no persist) — the WinForms
+            original had no cancel button. Dialog dismissal is the hosting Window's concern: the
+            code-behind subscribes to the view-model's RequestClose event and closes the dialog
+            (replacing the WinForms Close() / DialogResult), so this view declares no Click handlers.
+
+        Assets: buttons render as TEXT (no System.Drawing, no avares:// imagery). The migrated
+        AgIO.csproj registers no btnImages as <AvaloniaResource>, so every migrated AgIO view uses
+        text affordances — consistent with the sibling FormYes / FormRadioChannel / FormPGN views.
+    -->
+
+    <!-- Theme: Avalonia Fluent (Light variant, pinned application-wide in App.axaml and reinforced
+         on this Window). Large, bold, touch-friendly check boxes and command buttons reproduce the
+         WinForms sizing (20.25pt bold captions, generous controls). -->
+    <Window.Styles>
+        <Style Selector="CheckBox">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="MinHeight" Value="64" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="12,0,0,0" />
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Outer layout: a flexible content region (the three toggle rows) over a bottom command bar,
+         mirroring the WinForms form where the three image-toggle check boxes were stacked down the
+         tall dialog with the OK button pinned bottom-right. -->
+    <Grid Margin="16"
+          RowDefinitions="*,Auto">
+
+        <!-- Three equal vertical thirds reproduce the original even vertical distribution of the
+             WinForms check boxes (y = 12 / 189 / 365 across the 596px client). Each toggle is
+             centred within its third, preserving the original top-to-bottom order:
+             Start Minimized -> Auto Start GPS-Out -> PopUp AgIO on Warn. -->
+        <Grid Grid.Row="0"
+              RowDefinitions="*,*,*">
+
+            <!-- WinForms cboxStartMinimized + label1 "Start Minimized" (top).
+                 -> Settings.setDisplay_StartMinimized via FormAdvancedSettingsViewModel.StartMinimized. -->
+            <CheckBox Grid.Row="0"
+                      x:Name="cboxStartMinimized"
+                      Content="Start Minimized"
+                      IsChecked="{Binding StartMinimized, Mode=TwoWay}" />
+
+            <!-- WinForms cboxAutoRunGPS_Out + label2 "Auto Start GPS-Out" (middle).
+                 -> Settings.setDisplay_isAutoRunGPS_Out via FormAdvancedSettingsViewModel.AutoRunGpsOut. -->
+            <CheckBox Grid.Row="1"
+                      x:Name="cboxAutoRunGPS_Out"
+                      Content="Auto Start GPS-Out"
+                      IsChecked="{Binding AutoRunGpsOut, Mode=TwoWay}" />
+
+            <!-- WinForms cboxShowOnWarning + label3 "PopUp AgIO on Warn" (bottom).
+                 -> Settings.setDisplay_ShowOnWarning via FormAdvancedSettingsViewModel.ShowOnWarning. -->
+            <CheckBox Grid.Row="2"
+                      x:Name="cboxShowOnWarning"
+                      Content="PopUp AgIO on Warn"
+                      IsChecked="{Binding ShowOnWarning, Mode=TwoWay}" />
+        </Grid>
+
+        <!-- Command bar. Cancel sits to the LEFT of Save so Save (the accept action) stays
+             right-aligned — mirroring the WinForms btnClose which sat at the form's right edge.
+             Save  = btnClose/OK parity (SaveCommand: persist + close true); IsDefault maps Enter.
+             Cancel= migration-added dismissal (CancelCommand: close false, no persist); IsCancel
+                     maps Escape. -->
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Spacing="16"
+                    Margin="0,16,0,0">
+
+            <Button x:Name="btnCancel"
+                    Content="Cancel"
+                    Command="{Binding CancelCommand}"
+                    IsCancel="True"
+                    Width="120"
+                    Height="64" />
+
+            <Button x:Name="btnSave"
+                    Content="Save"
+                    Command="{Binding SaveCommand}"
+                    IsDefault="True"
+                    Width="120"
+                    Height="64" />
+        </StackPanel>
+    </Grid>
+</Window>

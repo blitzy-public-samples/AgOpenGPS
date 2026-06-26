@@ -1,143 +1,202 @@
-// [XPLAT] migrated from net48/WinForms (Forms/Pickers/FormColorPicker.cs) — see MIGRATION_DOCS/TRANSITION_MAP.md
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+//
+// [XPLAT] WinForms FormColorPicker (Forms/Pickers/FormColorPicker.cs + .Designer.cs) ->
+// Avalonia FormColorPickerView. Behavioural transformations made during the migration:
+//   * The FormGPS `mf` god-object coupling is REMOVED via constructor injection — the dialog now
+//     receives the initial colour and the 16-entry custom-colour preset array as plain values
+//     (no `mf`, no new interface; AAP §0.3.2).
+//   * The result is RETURNED through Close(Color) / ShowDialog<Color?> instead of the old public
+//     `useThisColor` field combined with the WinForms DialogResult.OK.
+//   * The abandoned, Windows-only MechanikaDesign ColorBox2D / ColorSliderVertical controls are
+//     replaced by Avalonia's cross-platform ColorSpectrum (`colorBox2D`) and ColorSlider
+//     (`colorSlider`); the WinForms HslColor round-trip is replaced by Avalonia's HsvColor (AAP §0.5.1).
+//   * Every numeric ToString/Parse uses CultureInfo.InvariantCulture so the persisted preset CSV is
+//     byte-identical across Windows/Linux/macOS locales (AAP §0.6.5).
+// No System.Windows.Forms, no System.Drawing, no OpenTK / OpenTK.GLControl, no MechanikaDesign types.
 using System;
 using System.Globalization;
+using System.Text;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
-using AgOpenGPS.Properties;
+using AgOpenGPS.Core.Translations;
+// [XPLAT] The GPS settings store is referenced through its fully-qualified namespace path
+// (Properties.Settings.Default) — the source idiom — rather than `using AgOpenGPS.Properties;`.
+// Reason: this view lives in AgOpenGPS.Views.Pickers, so the enclosing AgOpenGPS.Views namespace is
+// in scope, and a bare `Settings` would bind to the SIBLING namespace AgOpenGPS.Views.Settings
+// (an enclosing-namespace member is resolved before any outer file-level using/alias). Writing
+// `Properties.Settings` resolves `Properties` unambiguously to AgOpenGPS.Properties (there is no
+// AgOpenGPS.Views.Properties) and reaches the AgOpenGPS.Properties.Settings type the migration needs.
 
 namespace AgOpenGPS.Views.Pickers
 {
     /// <summary>
-    /// [XPLAT] Code-behind for the colour picker — a faithful port of the WinForms
-    /// <c>FormColorPicker</c> (FormColorPicker.cs + FormColorPicker.Designer.cs). Per AAP §0.5.1 the
-    /// abandoned <c>MechanikaDesign</c> HSL controls are replaced by Avalonia's
-    /// <see cref="ColorSpectrum"/> (the 2-D saturation/value plane, <c>colorBox2D</c>) and
-    /// <see cref="ColorSlider"/> (the vertical hue slider, <c>colorSlider</c>). The operator picks a
-    /// colour, or selects one of sixteen presets, and the chosen colour is exposed via
-    /// <see cref="UseThisColor"/>.
+    /// [XPLAT] Code-behind for the colour picker dialog — a 1:1 behavioural parity port of the
+    /// WinForms <c>FormColorPicker</c>. The operator either dials in a colour with the 2-D spectrum
+    /// (<c>colorBox2D</c>) and the vertical hue slider (<c>colorSlider</c>), or clicks one of sixteen
+    /// preset swatches. The chosen colour is exposed through <see cref="UseThisColor"/> and returned
+    /// to the caller when the dialog closes.
     /// </summary>
     /// <remarks>
-    /// Imperative dialog (NO DataContext / x:DataType / MVVM bindings); controls are addressed by
-    /// x:Name and every handler is wired programmatically in the constructor (the .axaml declares
-    /// none). The dialog is fully self-contained: the sixteen presets are loaded from and saved to
-    /// <c>Properties.Settings.Default.setDisplay_customColors</c> (the same CSV the original persisted), so no
-    /// FormGPS god-object is required.
-    /// <list type="bullet">
-    ///   <item><see cref="SetInitialColor"/> seeds the picker from the caller's colour (mirrors the
-    ///         original <c>inColor</c> ctor argument + <c>UpdateColor</c>).</item>
-    ///   <item>The spectrum and slider are kept in sync through <see cref="HsvColor"/> (replacing the
-    ///         original <c>HslColor</c> round-trip), guarded against re-entrancy.</item>
-    ///   <item>The sixteen swatches share <see cref="OnPresetClick"/>, reading the slot index from
-    ///         <c>Tag</c> ("00".."15") instead of the WinForms <c>Name.Substring(3,2)</c>. In "use"
-    ///         mode a click adopts the swatch colour; in "save" mode it writes the current colour into
-    ///         that slot and persists.</item>
-    ///   <item><see cref="OnUseToggled"/> swaps the lock glyph and group caption exactly as the
-    ///         original <c>chkUse_CheckedChanged</c>; <see cref="OnSaveClick"/> closes the dialog.</item>
-    /// </list>
-    /// No fabricated calls to not-yet-projected services are made here — see
-    /// MIGRATION_DOCS/TRANSITION_MAP.md.
+    /// This is an imperative, code-behind-driven dialog (no <c>DataContext</c>, no <c>x:DataType</c>,
+    /// no bindings): controls are addressed by <c>x:Name</c> and every handler is subscribed here with
+    /// <c>+=</c>, mirroring the original WinForms Designer. The dialog is self-contained — the sixteen
+    /// presets are injected (and mutated in place) plus persisted to
+    /// <c>Settings.Default.setDisplay_customColors</c>, so no <c>FormGPS</c> reference is required.
     /// </remarks>
     public partial class FormColorPickerView : Window
     {
-        // [XPLAT] true = clicking a swatch adopts its colour; false = clicking a swatch saves the
-        // current colour into that slot (the original isUse flag, inverted by chkUse).
+        // [XPLAT] The injected 16-entry preset array (replaces the FormGPS `mf.customColorsList`).
+        // Each int is an ARGB-packed colour, identical in layout to System.Drawing.Color.ToArgb().
+        // Mutated in place when a preset is saved, exactly as the WinForms code mutated mf's array.
+        private readonly int[] _customColors;
+
+        // [XPLAT] Mirrors the source `isUse` flag. true  => clicking a swatch APPLIES its colour;
+        // false => clicking a swatch SAVES the current colour into that preset slot. The source
+        // initialises isUse = true and chkUse starts unchecked (locked glyph), so true is the
+        // start state here too.
         private bool _isUse = true;
 
-        // [XPLAT] Re-entrancy guard: assigning HsvColor on one control raises ColorChanged on it.
+        // [XPLAT] Re-entrancy guard: assigning HsvColor on one editor raises its ColorChanged, which
+        // would otherwise bounce back and re-sync the sibling in an infinite loop.
         private bool _suppressColorSync;
 
-        private Button[] _swatches;
+        // [XPLAT] The sixteen preset swatch buttons, indexed 0..15 by their Tag ("00".."15").
+        private readonly Button[] _swatches;
+
+        // [XPLAT] Lazily-loaded, cached lock/unlock glyphs for chkUse (avoids re-reading the asset on
+        // every toggle). A missing asset degrades gracefully to a null source (no glyph) rather than
+        // throwing.
+        private Bitmap _lockedGlyph;
+        private Bitmap _unlockedGlyph;
 
         /// <summary>
-        /// The colour the operator selected. Mirrors the original public <c>useThisColor</c> property;
-        /// the caller reads it after the dialog closes.
+        /// [XPLAT] The colour the operator selected. Replaces the WinForms public
+        /// <c>useThisColor</c> field (was <c>System.Drawing.Color</c>; now
+        /// <see cref="Avalonia.Media.Color"/>). The caller reads it from the
+        /// <c>ShowDialog&lt;Color?&gt;</c> result, or directly after the dialog closes.
         /// </summary>
         public Color UseThisColor { get; private set; }
 
+        /// <summary>
+        /// [XPLAT] Parameterless constructor required by the Avalonia XAML loader and the design-time
+        /// previewer, both of which instantiate the view without arguments. It loads the markup, caches
+        /// the swatch buttons, and wires every event handler programmatically (the <c>.axaml</c>
+        /// declares none). Application code constructs the dialog through
+        /// <see cref="FormColorPickerView(Color, int[])"/>.
+        /// </summary>
         public FormColorPickerView()
         {
             InitializeComponent();
 
+            // [XPLAT] Cache the sixteen preset swatches (replaces the individually-named btn00..btn15
+            // fields the WinForms Designer added one by one). A safe empty preset set keeps the array
+            // non-null on the previewer-only path; the parameterised ctor replaces it with the injected
+            // array.
+            _customColors = new int[16];
             _swatches = new[]
             {
                 btn00, btn01, btn02, btn03, btn04, btn05, btn06, btn07,
                 btn08, btn09, btn10, btn11, btn12, btn13, btn14, btn15
             };
 
-            // [XPLAT] Designer-wired events reproduced programmatically (the .axaml declares none).
-            colorBox2D.ColorChanged += OnSpectrumColorChanged;
-            colorSlider.ColorChanged += OnSliderColorChanged;
-            chkUse.IsCheckedChanged += OnUseToggled;
-            btnSave.Click += OnSaveClick;
+            // [XPLAT] Designer-wired events reproduced programmatically. The two editors share one
+            // handler (Editor_ColorChanged); all sixteen swatches share Preset_Click — exactly as the
+            // WinForms Designer pointed every btnXX.Click at the single btn00_Click handler.
+            colorBox2D.ColorChanged += Editor_ColorChanged;
+            colorSlider.ColorChanged += Editor_ColorChanged;
+            chkUse.IsCheckedChanged += ChkUse_Changed;
+            btnSave.Click += BtnSave_Click;
             foreach (Button swatch in _swatches)
             {
-                swatch.Click += OnPresetClick;
+                swatch.Click += Preset_Click;
             }
         }
 
         /// <summary>
-        /// [XPLAT] Seed the picker from the caller's colour (the original ctor's <c>_inColor</c>).
-        /// Forces full opacity, matching the original <c>CheckColorFor255()</c>.
+        /// [XPLAT] Parity with the WinForms <c>FormColorPicker(Form callingForm, Color _inColor)</c>
+        /// constructor, with the <c>FormGPS</c> argument replaced by injected values.
         /// </summary>
-        public void SetInitialColor(Color inColor)
+        /// <param name="initialColor">The colour the dialog opens on (the original <c>_inColor</c>).</param>
+        /// <param name="customColors">
+        /// The 16-entry ARGB-packed preset array (the original <c>mf.customColorsList</c>). It is
+        /// mutated in place as presets are saved, so the caller observes the updated presets.
+        /// </param>
+        public FormColorPickerView(Color initialColor, int[] customColors)
+            : this()
         {
-            UpdateColor(Force255(inColor));
+            _customColors = customColors;
+
+            // [XPLAT] Localise the chrome — verbatim from the WinForms ctor (this.Text/btnDay.Text/
+            // btnNight.Text/groupBoxSelectPresetColor.Text). Button captions become Button.Content.
+            Title = gStr.gsColorPicker;
+            btnDay.Content = gStr.gsDay;
+            btnNight.Content = gStr.gsNight;
+            groupBoxSelectPresetColor.Text = gStr.gsPresetColor;
+
+            // [XPLAT] Source ctor: useThisColor = inColor; UpdateColor(inColor). Seeds the spectrum,
+            // the slider and both Day/Night preview swatches from the initial colour.
+            UpdateColor(initialColor);
+
+            // [XPLAT] Source FormColorPicker_Load: clamp every stored preset, write the clamped value
+            // back into the array, paint each swatch, then persist once.
+            LoadPresets();
         }
 
-        // [XPLAT] FormColorPicker_Load: paint the sixteen preset swatches from the persisted CSV.
-        protected override void OnOpened(EventArgs e)
-        {
-            base.OnOpened(e);
-            LoadPresetSwatches();
-        }
-
-        // [XPLAT] colorBox2D_ColorChanged: adopt the spectrum colour, keep the slider hue in sync.
-        private void OnSpectrumColorChanged(object sender, ColorChangedEventArgs e)
+        /// <summary>
+        /// [XPLAT] Shared replacement for the source <c>colorBox2D_ColorChanged</c> and
+        /// <c>colorSlider_ColorChanged</c> handlers. Reads the new colour, clamps it, keeps the
+        /// sibling editor in sync (the source synced the other control via HSL), and refreshes the
+        /// public colour plus both preview swatches.
+        /// </summary>
+        private void Editor_ColorChanged(object sender, ColorChangedEventArgs e)
         {
             if (_suppressColorSync)
             {
                 return;
             }
 
-            Color rgb = Force255(colorBox2D.Color);
-            _suppressColorSync = true;
-            colorSlider.HsvColor = colorBox2D.HsvColor;
-            _suppressColorSync = false;
-            ApplySelectedColor(rgb);
-        }
+            Color rgb = CheckColorFor255(e.NewColor);
 
-        // [XPLAT] colorSlider_ColorChanged: adopt the slider colour, keep the spectrum plane in sync.
-        private void OnSliderColorChanged(object sender, ColorChangedEventArgs e)
-        {
-            if (_suppressColorSync)
+            // [XPLAT] Sync the OTHER editor only (the source never wrote the clamped value back into
+            // the control that changed), guarded so the assignment does not re-enter this handler.
+            _suppressColorSync = true;
+            if (ReferenceEquals(sender, colorBox2D))
             {
-                return;
+                colorSlider.HsvColor = rgb.ToHsv();
             }
-
-            Color rgb = Force255(colorSlider.Color);
-            _suppressColorSync = true;
-            colorBox2D.HsvColor = colorSlider.HsvColor;
+            else
+            {
+                colorBox2D.HsvColor = rgb.ToHsv();
+            }
             _suppressColorSync = false;
+
             ApplySelectedColor(rgb);
         }
 
-        // [XPLAT] UpdateColor: set both controls' HSV from the colour and refresh the preview swatches.
+        /// <summary>
+        /// [XPLAT] Source <c>UpdateColor</c>: clamp the colour, drive BOTH editors to its HSV, and
+        /// refresh the public colour and preview swatches.
+        /// </summary>
         private void UpdateColor(Color col)
         {
+            col = CheckColorFor255(col);
+
             _suppressColorSync = true;
             HsvColor hsv = col.ToHsv();
             colorSlider.HsvColor = hsv;
             colorBox2D.HsvColor = hsv;
             _suppressColorSync = false;
+
             ApplySelectedColor(col);
         }
 
-        // [XPLAT] Shared tail of the colour-change handlers: store the result and recolour the
-        // Day/Night preview buttons (the original set btnDay/btnNight.BackColor).
+        /// <summary>
+        /// [XPLAT] Shared tail of the colour-change paths: store the result and recolour the Day/Night
+        /// preview buttons (the source set <c>btnDay.BackColor</c> and <c>btnNight.BackColor</c>).
+        /// </summary>
         private void ApplySelectedColor(Color col)
         {
             UseThisColor = col;
@@ -145,126 +204,145 @@ namespace AgOpenGPS.Views.Pickers
             btnNight.Background = new SolidColorBrush(col);
         }
 
-        // [XPLAT] btn00_Click ... btn15_Click (shared): use-mode adopts the swatch; save-mode writes
-        // the current colour into the Tag-indexed slot and persists the CSV.
-        private void OnPresetClick(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// [XPLAT] Source <c>btn00_Click</c>, shared by all sixteen swatches. In "use" mode a click
+        /// adopts the swatch colour; in "save" mode it writes the current colour into the Tag-indexed
+        /// preset slot, mutates the injected array, and persists.
+        /// </summary>
+        private void Preset_Click(object sender, RoutedEventArgs e)
         {
-            var swatch = (Button)sender;
+            var button = (Button)sender;
 
             if (_isUse)
             {
-                if (swatch.Background is ISolidColorBrush scb)
+                // [XPLAT] Apply mode: useThisColor = swatch.BackColor.CheckColorFor255(); UpdateColor(..).
+                if (button.Background is ISolidColorBrush scb)
                 {
-                    UpdateColor(Force255(scb.Color));
+                    UpdateColor(CheckColorFor255(scb.Color));
                 }
             }
             else
             {
-                Color col = Force255(UseThisColor);
-                swatch.Background = new SolidColorBrush(col);
-                SaveCustomColors();
+                // [XPLAT] Save mode. Index comes from Tag ("00".."15") instead of the WinForms
+                // Name.Substring(3, 2); InvariantCulture keeps parsing locale-independent (§0.6.5).
+                int index = int.Parse((string)button.Tag, CultureInfo.InvariantCulture);
+
+                UseThisColor = CheckColorFor255(UseThisColor);
+                int iCol = ToArgb(UseThisColor);
+                _customColors[index] = iCol;
+                button.Background = new SolidColorBrush(UseThisColor);
+
+                SaveCustomColor();
             }
         }
 
-        // [XPLAT] chkUse_CheckedChanged: toggle use/save mode, swap the lock glyph and the caption.
-        private void OnUseToggled(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// [XPLAT] Source <c>chkUse_CheckedChanged</c>. Swaps the lock glyph and the group caption and
+        /// flips the use/save mode. The two captions are HARD-CODED English literals in the WinForms
+        /// source (not gStr keys) and are preserved verbatim for parity. The checked PaleGreen
+        /// background is supplied declaratively by the <c>.axaml</c> (<c>:checked</c> style).
+        /// </summary>
+        private void ChkUse_Changed(object sender, RoutedEventArgs e)
         {
             if (chkUse.IsChecked == true)
             {
-                _isUse = false;
                 groupBoxSelectPresetColor.Text = "Pick New Color and Select Square Below to Save Preset";
-                chkUseImage.Source = LoadGlyph("ColorUnlocked.png");
+                chkUseImage.Source = UnlockedGlyph;
+                _isUse = false;
             }
             else
             {
                 _isUse = true;
                 groupBoxSelectPresetColor.Text = "Select Preset Color";
-                chkUseImage.Source = LoadGlyph("ColorLocked.png");
+                chkUseImage.Source = LockedGlyph;
             }
         }
 
-        // [XPLAT] btnSave_Click: close the dialog (caller reads UseThisColor).
-        private void OnSaveClick(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// [XPLAT] Source <c>btnSave_Click</c> (the button carried DialogResult.OK). Closes the dialog
+        /// returning the chosen colour to a <c>ShowDialog&lt;Color?&gt;</c> caller.
+        /// </summary>
+        private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
-            Close();
+            Close(UseThisColor);
         }
 
-        // [XPLAT] Load the sixteen presets from Settings.setDisplay_customColors (CSV of ARGB ints).
-        private void LoadPresetSwatches()
+        /// <summary>
+        /// [XPLAT] Source <c>FormColorPicker_Load</c> body. Clamps every stored preset (no channel
+        /// stays at 255), writes the clamped value back into the injected array, paints the matching
+        /// swatch, then persists the cleaned set once.
+        /// </summary>
+        private void LoadPresets()
         {
-            int[] colors = ParseCustomColors(Properties.Settings.Default.setDisplay_customColors);
-            for (int i = 0; i < _swatches.Length && i < colors.Length; i++)
+            for (int i = 0; i < 16; i++)
             {
-                _swatches[i].Background = new SolidColorBrush(IntToColor(colors[i]));
+                Color clamped = CheckColorFor255(FromArgb(_customColors[i]));
+                _customColors[i] = ToArgb(clamped);
+                _swatches[i].Background = new SolidColorBrush(clamped);
             }
+
+            SaveCustomColor();
         }
 
-        // [XPLAT] SaveCustomColor: serialise the sixteen swatch colours back to the CSV setting.
-        private void SaveCustomColors()
+        /// <summary>
+        /// [XPLAT] Source <c>SaveCustomColor</c>. Serialises the sixteen preset ints to the CSV setting
+        /// in the exact original layout — indices 0..14 each followed by a comma, then index 15 with no
+        /// trailing comma — using InvariantCulture so the persisted text is byte-identical on every OS.
+        /// </summary>
+        private void SaveCustomColor()
         {
-            var sb = new System.Text.StringBuilder();
-            for (int i = 0; i < _swatches.Length; i++)
+            var sb = new StringBuilder();
+            for (int i = 0; i < 15; i++)
             {
-                Color col = _swatches[i].Background is ISolidColorBrush scb
-                    ? Force255(scb.Color)
-                    : Colors.Black;
-                if (i > 0)
-                {
-                    sb.Append(',');
-                }
-                sb.Append(ColorToInt(col).ToString(CultureInfo.InvariantCulture));
+                sb.Append(_customColors[i].ToString(CultureInfo.InvariantCulture)).Append(',');
             }
+            sb.Append(_customColors[15].ToString(CultureInfo.InvariantCulture));
 
             Properties.Settings.Default.setDisplay_customColors = sb.ToString();
             Properties.Settings.Default.Save();
         }
 
-        // [XPLAT] Parse a CSV of up to sixteen signed ARGB integers (default-safe).
-        private static int[] ParseCustomColors(string csv)
+        /// <summary>
+        /// [XPLAT] Local replacement for the WinForms <c>Color.CheckColorFor255()</c> extension
+        /// (CExtensionMethods.cs): clamps each fully-saturated (255) RGB channel down to 254 while
+        /// preserving the alpha channel, so a colour never round-trips as pure 255 in a channel.
+        /// </summary>
+        private static Color CheckColorFor255(Color c)
         {
-            var result = new int[16];
-            if (string.IsNullOrEmpty(csv))
-            {
-                return result;
-            }
-
-            string[] parts = csv.Split(',');
-            for (int i = 0; i < result.Length && i < parts.Length; i++)
-            {
-                int.TryParse(parts[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out result[i]);
-            }
-
-            return result;
+            byte r = c.R == 255 ? (byte)254 : c.R;
+            byte g = c.G == 255 ? (byte)254 : c.G;
+            byte b = c.B == 255 ? (byte)254 : c.B;
+            return Color.FromArgb(c.A, r, g, b);
         }
 
-        // [XPLAT] Force full opacity (the original CheckColorFor255()).
-        private static Color Force255(Color c)
-        {
-            return Color.FromArgb(255, c.R, c.G, c.B);
-        }
+        /// <summary>
+        /// [XPLAT] Pack a colour into a 32-bit ARGB int with the identical bit layout to
+        /// <c>System.Drawing.Color.ToArgb()</c>, so the persisted preset ints match the originals.
+        /// </summary>
+        private static int ToArgb(Color c) => (c.A << 24) | (c.R << 16) | (c.G << 8) | c.B;
 
-        // [XPLAT] 32-bit signed ARGB int -> Color (matches WinForms Color.FromArgb(int)).
-        private static Color IntToColor(int v)
-        {
-            byte a = (byte)((v >> 24) & 0xFF);
-            byte r = (byte)((v >> 16) & 0xFF);
-            byte g = (byte)((v >> 8) & 0xFF);
-            byte b = (byte)(v & 0xFF);
-            return Color.FromArgb(a, r, g, b);
-        }
+        /// <summary>
+        /// [XPLAT] Unpack a 32-bit ARGB int into a colour, mirroring
+        /// <c>System.Drawing.Color.FromArgb(int)</c> (0xAARRGGBB), so the injected preset ints decode
+        /// identically.
+        /// </summary>
+        private static Color FromArgb(int i) =>
+            Color.FromArgb((byte)(i >> 24), (byte)(i >> 16), (byte)(i >> 8), (byte)i);
 
-        // [XPLAT] Color -> 32-bit signed ARGB int (identical bit layout to the original iCol maths).
-        private static int ColorToInt(Color c)
-        {
-            return (c.A << 24) | (c.R << 16) | (c.G << 8) | c.B;
-        }
+        // [XPLAT] Cached lock/unlock glyphs, loaded on first use from the packaged Avalonia resources.
+        private Bitmap LockedGlyph => _lockedGlyph ??= LoadGlyph("ColorLocked.png");
 
-        // [XPLAT] Best-effort glyph load; a missing asset never breaks the dialog.
-        private static Bitmap LoadGlyph(string file)
+        private Bitmap UnlockedGlyph => _unlockedGlyph ??= LoadGlyph("ColorUnlocked.png");
+
+        /// <summary>
+        /// [XPLAT] Best-effort glyph loader from the packaged <c>btnImages</c> Avalonia resources. A
+        /// missing asset never breaks the dialog — it simply yields a null image source.
+        /// </summary>
+        private static Bitmap LoadGlyph(string fileName)
         {
             try
             {
-                return new Bitmap(AssetLoader.Open(new Uri("avares://AgOpenGPS/btnImages/" + file)));
+                return new Bitmap(AssetLoader.Open(new Uri("avares://AgOpenGPS/btnImages/" + fileName)));
             }
             catch
             {

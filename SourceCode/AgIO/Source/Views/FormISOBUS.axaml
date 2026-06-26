@@ -1,0 +1,243 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormISOBUS"
+        x:DataType="vm:FormISOBUSViewModel"
+        Title="ISOBUS"
+        RequestedThemeVariant="Light"
+        Background="Gainsboro"
+        Width="660" Height="540"
+        MinWidth="560" MinHeight="420"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!-- [XPLAT] migrated from net48/WinForms FormISOBUS.cs + FormISOBUS.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms AgIO "ISOBUS" dialog
+        (Forms/FormISOBUS.Designer.cs + Forms/FormISOBUS.cs + FormISOBUS.resx). Per AAP §0.3.3 this is a
+        visual/behavioral PARITY rebuild of the current Windows Forms look — never a redesign. It lets the
+        operator pick a CAN adapter + channel and Open/Close the external AOG-TaskController (the AOG Task
+        Controller), with an OK / Cancel command bar.
+
+        Bound via COMPILED bindings (x:DataType="vm:FormISOBUSViewModel") to FormISOBUSViewModel. The
+        view-model owns ALL logic — the adapter/channel lists, the Windows-only Registry install lookup and
+        Process launch/stop (both fenced behind #if WINDOWS), and settings persistence
+        (isobus_canAdapterIndex / isobus_canChannelIndex / isobus_isOn). This view only data-binds; it
+        declares no event handlers. The dialog outcome is surfaced by the code-behind
+        (FormISOBUS.axaml.cs) in response to the view-model's RequestClose event — a window concern, not
+        declared in this markup.
+
+        Parity mapping (WinForms FormISOBUS.Designer.cs / FormISOBUS.cs  ->  Avalonia):
+          • Form Text "ISOBUS Settings" / agent-prompt Title "ISOBUS"  -> Title="ISOBUS".
+          • BackColor Gainsboro                                        -> Background="Gainsboro".
+          • ClientSize 644x526; textBoxRcv anchored Top|Bottom|Left|   -> Width/Height 660x540,
+            Right (=> the form was resizable)                             CanResize="True" + MinWidth/MinHeight.
+          • Opened from an owner window                                -> WindowStartupLocation="CenterOwner".
+          • Font Tahoma                                                -> FontFamily="Tahoma" FontSize="14.25".
+          • lblCurrentAdapter "CANbus Adapter" (Tahoma 11.25 Bold)     -> bold TextBlock above the adapter combo.
+          • cboxRadioAdapter — 4 fixed items, Tahoma 18 Bold,          -> ComboBox cboxRadioAdapter,
+            DropDownList                                                  ItemsSource={Binding AdapterNames}
+                                                                          (the SAME four entries: PEAK-PCAN /
+                                                                          InnoMaker-USB2CAN / Rusoku-TouCAN /
+                                                                          SYS-TEC-USB2CAN), SelectedIndex
+                                                                          two-way bound to SelectedAdapterIndex.
+          • lblChannel "Channel"                                       -> bold TextBlock above the channel combo.
+          • cboxRadioChannel — rebuilt to 1..N at runtime by           -> ComboBox cboxRadioChannel,
+            UpdateChannelSelection()                                      ItemsSource={Binding ChannelOptions}
+                                                                          (dynamic 1..N for the selected adapter),
+                                                                          SelectedIndex two-way bound to
+                                                                          SelectedChannelIndex.
+          • btnOpenIsobus (USB_Connect bitmap)                         -> "Open ISOBUS" button -> OpenIsobusCommand.
+          • btnCloseIsobus (USB_Disconnect bitmap)                     -> "Close ISOBUS" button -> CloseIsobusCommand.
+          • flowLayoutDownloadIsobus (lblDownloadIsobus + LinkLabel)   -> download prompt shown when ShowDownloadLink.
+          • textBoxRcv (read-only, multiline, ScrollBars=Both,         -> read-only multiline TextBox bound
+            WordWrap=false, BackColor=Window)                            one-way to LogText.
+          • btnIsobusOK (OK64 bitmap; Click -> Hide())                 -> "OK" button -> OkCommand (IsDefault).
+          • (the WinForms form had no Cancel; the VM adds one)         -> "Cancel" button -> CancelCommand (IsCancel).
+
+        Buttons render as TEXT, not the WinForms OK64 / USB_Connect / USB_Disconnect bitmaps: the migrated
+        AgIO.csproj registers NO btnImages assets as <AvaloniaResource> (only GPS/AgOpenGPS.csproj does) and
+        excludes Properties/Resources.Designer.cs from compilation (System.Drawing purged). Referencing
+        avares://AgIO/btnImages/* here would NOT resolve and would render a broken image — so, consistent
+        with every sibling AgIO view (FormYes / FormSource / FormPGN / FormRadioChannel), affordances are
+        text. See MIGRATION_DOCS/TRANSITION_MAP.md.
+
+        Windows feature-gate (AAP §0.6.3 / §0.7.2 graceful degradation): launching the AOG-TaskController is
+        Windows-only. The view-model's IsSupported is true only on Windows, so the Open/Close buttons bind
+        IsEnabled="{Binding IsSupported}" and are disabled on Linux/macOS, where the "Available on Windows
+        only" hint is shown instead (IsVisible="{Binding !IsSupported}", Avalonia compiled-binding boolean
+        negation). The adapter panel, the download prompt and the log are driven by the view-model's
+        ShowAdapterPanel / ShowDownloadLink / ShowLog flags, reproducing the WinForms
+        UpdateComponentVisibility() show/hide split.
+
+        Theme: Light only — App.axaml pins RequestedThemeVariant="Light" (AgIO has no day/night toggle);
+        restated here for explicitness (mirrors FormSource / FormPGN).
+    -->
+    <DockPanel Margin="12" LastChildFill="True">
+
+        <!-- Bottom command bar. Cancel sits to the LEFT of OK so OK stays right-aligned (the WinForms
+             btnIsobusOK was bottom-right; the view-model adds an explicit Cancel). Text affordances,
+             touch-friendly (>= 44px). IsDefault maps Enter to OK; IsCancel maps Escape to Cancel. The
+             actual window close is performed by the code-behind in response to the view-model's
+             RequestClose event (a window concern, not declared here). -->
+        <StackPanel DockPanel.Dock="Bottom"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Spacing="12"
+                    Margin="0,12,0,0">
+            <Button x:Name="btnCancel"
+                    Content="Cancel"
+                    Command="{Binding CancelCommand}"
+                    IsCancel="True"
+                    Width="96" Height="64"
+                    MinWidth="64" MinHeight="44"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="Cancel" />
+            <Button x:Name="btnIsobusOK"
+                    Content="OK"
+                    Command="{Binding OkCommand}"
+                    IsDefault="True"
+                    Width="101" Height="64"
+                    MinWidth="64" MinHeight="44"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="OK" />
+        </StackPanel>
+
+        <!-- "Available on Windows only" hint — shown ONLY when the platform cannot launch the task
+             controller (Linux / macOS). IsVisible uses Avalonia's compiled-binding boolean negation of
+             IsSupported (the view-model exposes no IsNotSupported flag). On Windows IsSupported is true,
+             so this collapses and the adapter panel / download prompt / log are shown instead. -->
+        <TextBlock DockPanel.Dock="Top"
+                   Text="Available on Windows only"
+                   IsVisible="{Binding !IsSupported}"
+                   FontWeight="Bold"
+                   FontSize="16"
+                   Foreground="#555555"
+                   TextWrapping="Wrap"
+                   HorizontalAlignment="Center"
+                   Margin="0,8,0,12"
+                   AutomationProperties.Name="ISOBUS availability notice" />
+
+        <!-- Download prompt (WinForms flowLayoutDownloadIsobus): shown when the platform supports the
+             feature but the task controller is not installed (ShowDownloadLink). The label and URL are
+             frozen reference text reproduced verbatim from the WinForms lblDownloadIsobus / linkDownloadIsobus.
+             The URL is rendered as a selectable styled text line — opening a browser is a code-behind
+             concern, deliberately kept out of this declarative view (no Process dependency in the markup). -->
+        <StackPanel DockPanel.Dock="Top"
+                    IsVisible="{Binding ShowDownloadLink}"
+                    Orientation="Vertical"
+                    Spacing="2"
+                    Margin="0,0,0,12">
+            <TextBlock Text="AOG-TaskController not installed, please download from:"
+                       FontWeight="Bold"
+                       FontSize="11.25"
+                       TextWrapping="Wrap" />
+            <SelectableTextBlock Text="https://github.com/GwnDaan/AOG-TaskController"
+                                 FontWeight="Bold"
+                                 FontSize="11.25"
+                                 Foreground="#1A0DAB"
+                                 TextWrapping="Wrap"
+                                 AutomationProperties.Name="AOG-TaskController download URL" />
+        </StackPanel>
+
+        <!-- Adapter / Channel selection + Open/Close (WinForms flowLayoutCANAdapter + flowLayoutChannel +
+             btnOpenIsobus + btnCloseIsobus). Shown when the task controller is installed (ShowAdapterPanel).
+             The combos are disabled while the process runs (IsAdapterSelectionEnabled), reproducing the
+             WinForms enable/disable. Open/Close bind IsEnabled to IsSupported per the agent-prompt; their
+             commands' CanExecute additionally gate installed/running, so on Windows exactly one is
+             actionable at a time (Open when stopped, Close when running) — the functional equivalent of the
+             WinForms show/hide of the two buttons. -->
+        <StackPanel DockPanel.Dock="Top"
+                    IsVisible="{Binding ShowAdapterPanel}"
+                    Orientation="Horizontal"
+                    Spacing="16"
+                    Margin="0,0,0,8">
+
+            <!-- WinForms flowLayoutCANAdapter: lblCurrentAdapter "CANbus Adapter" + cboxRadioAdapter. -->
+            <StackPanel Orientation="Vertical" Spacing="2">
+                <TextBlock Text="CANbus Adapter"
+                           FontWeight="Bold"
+                           FontSize="11.25"
+                           HorizontalAlignment="Center" />
+                <ComboBox x:Name="cboxRadioAdapter"
+                          ItemsSource="{Binding AdapterNames}"
+                          SelectedIndex="{Binding SelectedAdapterIndex, Mode=TwoWay}"
+                          IsEnabled="{Binding IsAdapterSelectionEnabled}"
+                          Width="221"
+                          MinHeight="37"
+                          FontSize="18"
+                          FontWeight="Bold"
+                          VerticalContentAlignment="Center"
+                          AutomationProperties.Name="CANbus adapter" />
+            </StackPanel>
+
+            <!-- WinForms flowLayoutChannel: lblChannel "Channel" + cboxRadioChannel (dynamic 1..N items). -->
+            <StackPanel Orientation="Vertical" Spacing="2">
+                <TextBlock Text="Channel"
+                           FontWeight="Bold"
+                           FontSize="11.25"
+                           HorizontalAlignment="Center" />
+                <ComboBox x:Name="cboxRadioChannel"
+                          ItemsSource="{Binding ChannelOptions}"
+                          SelectedIndex="{Binding SelectedChannelIndex, Mode=TwoWay}"
+                          IsEnabled="{Binding IsAdapterSelectionEnabled}"
+                          Width="116"
+                          MinHeight="37"
+                          FontSize="18"
+                          FontWeight="Bold"
+                          VerticalContentAlignment="Center"
+                          AutomationProperties.Name="CAN channel" />
+            </StackPanel>
+
+            <!-- WinForms btnOpenIsobus (USB_Connect bitmap). Enabled only on Windows (IsSupported); the
+                 command's CanExecute (CanOpenTaskController) further requires installed + not-running. -->
+            <Button x:Name="btnOpenIsobus"
+                    Content="Open ISOBUS"
+                    Command="{Binding OpenIsobusCommand}"
+                    IsEnabled="{Binding IsSupported}"
+                    Width="120" Height="58"
+                    MinHeight="44"
+                    VerticalAlignment="Bottom"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="Open ISOBUS" />
+
+            <!-- WinForms btnCloseIsobus (USB_Disconnect bitmap). Enabled only on Windows (IsSupported); the
+                 command's CanExecute (CanCloseTaskController) further requires the process to be running. -->
+            <Button x:Name="btnCloseIsobus"
+                    Content="Close ISOBUS"
+                    Command="{Binding CloseIsobusCommand}"
+                    IsEnabled="{Binding IsSupported}"
+                    Width="120" Height="58"
+                    MinHeight="44"
+                    VerticalAlignment="Bottom"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="Close ISOBUS" />
+        </StackPanel>
+
+        <!-- Process output log (WinForms textBoxRcv): read-only, multiline, no word-wrap, both scrollbars,
+             white background; shown when the task controller is installed (ShowLog). This is the DockPanel
+             last child, so it fills the remaining space. Bound one-way to LogText (the view-model appends
+             the task-controller process output on Windows; it stays empty on other platforms). -->
+        <TextBox x:Name="textBoxRcv"
+                 Text="{Binding LogText, Mode=OneWay}"
+                 IsReadOnly="True"
+                 AcceptsReturn="True"
+                 TextWrapping="NoWrap"
+                 IsVisible="{Binding ShowLog}"
+                 Background="White"
+                 FontFamily="Tahoma"
+                 FontSize="11.25"
+                 FontWeight="Bold"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 AutomationProperties.Name="ISOBUS task controller log" />
+    </DockPanel>
+</Window>

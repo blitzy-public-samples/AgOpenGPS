@@ -1,11 +1,10 @@
-// [XPLAT] migrated from net48/WinForms (Forms/FormUpdate.cs) — see MIGRATION_DOCS/TRANSITION_MAP.md
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -15,37 +14,18 @@ using AgOpenGPS.Updater.Services;
 namespace AgOpenGPS.Updater.Forms
 {
     /// <summary>
-    /// [XPLAT] Main updater window for checking and installing AgOpenGPS updates.
-    /// Avalonia reimplementation of the WinForms <c>FormUpdate</c>; all update logic (GitHub / USB
-    /// detection, download, install, restart) is unchanged and continues to flow through the existing
-    /// <see cref="UpdateService"/> / <see cref="UsbUpdateService"/> services. WinForms-specific calls
-    /// (Invoke/BeginInvoke, ShowDialog, BackColor/Text/Enabled/Visible) are mapped to their Avalonia
-    /// equivalents (Dispatcher.UIThread, awaited ShowDialog, Background/Content/IsEnabled/IsVisible).
+    /// [XPLAT] Main updater window for checking and installing AgOpenGPS updates. This is the Avalonia
+    /// code-behind reimplementation of the Windows Forms <c>FormUpdate</c> (<c>Forms/FormUpdate.cs</c>).
+    /// The update logic (GitHub / USB detection, download, copy, install and restart) is a 1:1
+    /// behavioral port and continues to flow through the unchanged <see cref="UpdateService"/> and
+    /// <see cref="UsbUpdateService"/> services; only the WinForms-specific surface — Invoke /
+    /// BeginInvoke, modal ShowDialog, and BackColor / Text / Enabled / Visible — is mapped to its
+    /// Avalonia equivalent (<see cref="Dispatcher"/>, awaited dialogs, and Background / Content /
+    /// IsEnabled / IsVisible).
     /// </summary>
     public partial class FormUpdate : Window
     {
-        // [XPLAT] Palette brushes resolved from App.axaml's single-source-of-truth resource dictionary
-        // instead of repeating the hex literals that already live there; used dynamically below to switch
-        // button/label colors per update state. The fallback argument is the exact WinForms Color.FromArgb
-        // parity value, used only if the resource cannot be resolved, so rendering can never regress.
-        private static readonly IBrush TealBrush = PaletteBrush("AccentBrush", Color.FromRgb(27, 151, 160));          // #1B97A0
-        private static readonly IBrush GrayBrush = PaletteBrush("NeutralButtonBrush", Color.FromRgb(100, 100, 100));  // #646464
-        private static readonly IBrush CloseRedBrush = PaletteBrush("ButtonDangerBrush", Color.FromRgb(220, 80, 80)); // #DC5050
-        private static readonly IBrush CancelRedBrush = PaletteBrush("DangerPressedBrush", Color.FromRgb(200, 60, 60));// #C83C3C
-        private static readonly IBrush UpToDateBrush = PaletteBrush("UpToDateBrush", Color.FromRgb(60, 60, 80));      // #3C3C50
-
-        // [XPLAT] Resolves a named SolidColorBrush from App.axaml's application-level resources so the
-        // updater palette has a single source of truth. Falls back to the supplied WinForms-parity color
-        // if the application or resource is unavailable (e.g. design-time), guaranteeing no visual change.
-        private static IBrush PaletteBrush(string key, Color fallback)
-        {
-            if (Application.Current is { } app && app.TryFindResource(key, out object value) && value is IBrush brush)
-            {
-                return brush;
-            }
-
-            return new SolidColorBrush(fallback);
-        }
+        private enum _updateSource { Web, Local }
 
         private readonly UpdateService _updateService;
         private string _currentVersion;
@@ -58,23 +38,37 @@ namespace AgOpenGPS.Updater.Forms
         private bool _versionFromCommandLine;
         private CancellationTokenSource _cancellationTokenSource;
         private bool _isInstalling;
-        private bool _autoCheckRequested;
 
-        private enum _updateSource { Web, Local }
+        // [XPLAT] Static, reusable brushes reproducing the exact WinForms Color.FromArgb values the
+        // original applied in code-behind. Allocated once (warning-clean: no per-call allocation). The
+        // shared palette colors that also live in App.axaml (AccentBrush) are instead resolved at
+        // runtime via GetBrush so the markup stays the single source of truth for them.
+        private static readonly IBrush GrayBrush = new SolidColorBrush(Color.FromRgb(100, 100, 100));   // #646464
+        private static readonly IBrush CloseRedBrush = new SolidColorBrush(Color.FromRgb(220, 80, 80));  // #DC5050
+        private static readonly IBrush CancelRedBrush = new SolidColorBrush(Color.FromRgb(200, 60, 60)); // #C83C3C
+        private static readonly IBrush UpToDateBrush = new SolidColorBrush(Color.FromRgb(60, 60, 80));    // #3C3C50
 
         /// <summary>
-        /// [XPLAT] Parameterless constructor required by Avalonia's runtime XAML loader / previewer
-        /// (avoids AVLN3001). Behaves like a standalone launch (no command-line version), so the
-        /// OnOpened guard shows the "must be started from AgOpenGPS" error — identical to the WinForms
-        /// behavior when launched without --current-version.
+        /// [XPLAT] Parameterless constructor required by Avalonia's runtime XAML loader / design-time
+        /// previewer (which instantiate via <c>Activator.CreateInstance</c>, satisfying AVLN3001). It
+        /// delegates to the primary constructor with no command-line version, so it behaves exactly like
+        /// a standalone launch — the <see cref="FormUpdate_Opened"/> guard shows the "must be started
+        /// from AgOpenGPS" error — identical to the WinForms form when launched without
+        /// <c>--current-version</c>. The real entry point remains
+        /// <c>new FormUpdate(currentVersion, installPath)</c> from <c>App.axaml.cs</c>.
         /// </summary>
         public FormUpdate() : this(null, null)
         {
         }
 
-        public FormUpdate(string currentVersion, string installPath)
+        /// <summary>
+        /// Initializes the updater window. The optional command-line-derived <paramref name="currentVersion"/>
+        /// and <paramref name="installPath"/> mirror the WinForms constructor arguments; both default to
+        /// <see langword="null"/> so the type stays trivially constructible and the
+        /// <c>new FormUpdate(currentVersion, installPath)</c> call site in <c>App.axaml.cs</c> resolves.
+        /// </summary>
+        public FormUpdate(string currentVersion = null, string installPath = null)
         {
-            // [XPLAT] Pattern B: InitializeComponent + typed x:Name fields generated from the XAML.
             InitializeComponent();
 
             _updateService = new UpdateService();
@@ -82,15 +76,30 @@ namespace AgOpenGPS.Updater.Forms
             _installPath = installPath ?? UpdateService.GetCurrentApplicationPath();
             currentSource = _updateSource.Web;
 
-            // [XPLAT] The WinForms build detected "started from AgOpenGPS" purely from the --current-version
-            // command-line flag. App.OnFrameworkInitializationCompleted derives `currentVersion` from that
-            // very same flag and passes it here, so treating a non-null currentVersion as "from command line"
-            // is behaviorally identical: AgOpenGPS always launches with --current-version (=> true), and a
-            // standalone launch with no version (=> null => false) still shows the guard error below.
-            _versionFromCommandLine = currentVersion != null;
+            // [XPLAT] replaces the WinForms designer wiring `this.Load += FormUpdate_Load`.
+            Opened += FormUpdate_Opened;
 
             // Handle command line arguments
             ParseCommandLineArgs();
+        }
+
+        /// <summary>
+        /// [XPLAT] Resolves a named palette brush (for example <c>"AccentBrush"</c>) from the
+        /// application-level resources declared in <c>App.axaml</c>, keeping that markup the single
+        /// source of truth for the updater color scheme. Returns <see cref="Brushes.Transparent"/> only
+        /// if the application or resource is unavailable (for example at design time); App.axaml always
+        /// defines these keys at runtime.
+        /// </summary>
+        private IBrush GetBrush(string key)
+        {
+            if (Application.Current != null &&
+                Application.Current.TryGetResource(key, Application.Current.ActualThemeVariant, out var value) &&
+                value is IBrush brush)
+            {
+                return brush;
+            }
+
+            return Brushes.Transparent;
         }
 
         private void ParseCommandLineArgs()
@@ -116,21 +125,20 @@ namespace AgOpenGPS.Updater.Forms
                 }
                 else if (arg.Equals("--auto-check", StringComparison.OrdinalIgnoreCase))
                 {
-                    // [XPLAT] defer the auto-check until the window is shown (OnOpened), replacing the
-                    // WinForms BeginInvoke(...) queued from the constructor.
-                    _autoCheckRequested = true;
+                    // Auto-check for updates on load
+                    // [XPLAT] replaces WinForms BeginInvoke(new Action(async () => await CheckForUpdatesAsync()))
+                    Dispatcher.UIThread.Post(async () => await CheckForUpdatesAsync());
                 }
             }
         }
 
         /// <summary>
-        /// [XPLAT] Equivalent of the WinForms <c>FormUpdate_Load</c> event handler; runs once the window
-        /// is shown so modal dialogs (which require an open owner) work correctly.
+        /// [XPLAT] Equivalent of the WinForms <c>FormUpdate_Load</c> handler, wired to the
+        /// <see cref="Window.Opened"/> event so the modal child dialogs (which require an already-open
+        /// owner) work correctly.
         /// </summary>
-        protected override async void OnOpened(EventArgs e)
+        private async void FormUpdate_Opened(object sender, EventArgs e)
         {
-            base.OnOpened(e);
-
             // Check if updater was started by AgOpenGPS (version passed via command line)
             if (!_versionFromCommandLine)
             {
@@ -138,10 +146,12 @@ namespace AgOpenGPS.Updater.Forms
                 await FormDialog.ShowError(this, "Updater Error",
                     "The updater must be started from AgOpenGPS.\n\n" +
                     "Please start AgOpenGPS first and use:\n" +
-                    "Menu \u2192 Tools \u2192 Check for Updates\n\n" +
+                    "Menu → Tools → Check for Updates\n\n" +
                     "This is required to detect your current version.");
 
-                Close();
+                // [XPLAT] replaces WinForms this.BeginInvoke(new Action(() => this.Close())); deferring the
+                // close onto the dispatcher avoids re-entrancy from inside the Opened handler.
+                Dispatcher.UIThread.Post(() => Close());
                 return;
             }
 
@@ -172,17 +182,11 @@ namespace AgOpenGPS.Updater.Forms
             }
 
             UpdateSourceUI();
-
-            // [XPLAT] honor --auto-check now that the window is shown.
-            if (_autoCheckRequested)
-            {
-                Dispatcher.UIThread.Post(async () => await CheckForUpdatesAsync());
-            }
         }
 
         private bool CheckForLocalUpdate()
         {
-            var (found, filePath, version, location, message) = UsbUpdateService.CheckForLocalUpdate();
+            var (found, filePath, version, _, message) = UsbUpdateService.CheckForLocalUpdate();
             _localUpdatePath = filePath;
             _localUpdateVersion = version;
 
@@ -218,7 +222,7 @@ namespace AgOpenGPS.Updater.Forms
             else
             {
                 BtnToggleSource.Content = "Use Web";
-                BtnToggleSource.Background = TealBrush;
+                BtnToggleSource.Background = GetBrush("AccentBrush");
                 BtnToggleSource.IsEnabled = true;
                 BtnCheckForUpdates.IsEnabled = false;
                 BtnCheckForUpdates.IsVisible = false;
@@ -327,7 +331,7 @@ namespace AgOpenGPS.Updater.Forms
             if (hasUpdate && _availableUpdate != null)
             {
                 LblLatestVersion.Text = $"Latest Version: {_availableUpdate.Version} (New!)";
-                LblLatestVersion.Foreground = TealBrush;
+                LblLatestVersion.Foreground = GetBrush("AccentBrush");
             }
             else
             {
@@ -338,7 +342,7 @@ namespace AgOpenGPS.Updater.Forms
 
         private void SetStatus(string message, bool isProgress = false, int progressPercent = 0)
         {
-            // [XPLAT] marshal to the UI thread (replaces WinForms InvokeRequired/Invoke).
+            // [XPLAT] marshal to the UI thread (replaces the WinForms InvokeRequired/Invoke recursion).
             if (!Dispatcher.UIThread.CheckAccess())
             {
                 Dispatcher.UIThread.Post(() => SetStatus(message, isProgress, progressPercent));
@@ -413,7 +417,7 @@ namespace AgOpenGPS.Updater.Forms
                     SetStatus("Checking USB drive...");
                     await Task.Delay(500); // Brief pause for UI update
 
-                    var (found, filePath, version, location, message) = UsbUpdateService.CheckForLocalUpdate();
+                    var (found, filePath, version, _, _) = UsbUpdateService.CheckForLocalUpdate();
                     _localUpdatePath = filePath;
                     _localUpdateVersion = version;
 
@@ -467,10 +471,10 @@ namespace AgOpenGPS.Updater.Forms
                 this,
                 "Install Update",
                 $"Install update from {updateSource}?\n\nSource: {updateInfo}\n\nThis will:\n" +
-                "\u2022 Close AgOpenGPS and AgIO\n" +
-                "\u2022 Create a backup of your current installation\n" +
-                "\u2022 Install the update\n" +
-                "\u2022 Restart AgOpenGPS\n\n" +
+                "• Close AgOpenGPS and AgIO\n" +
+                "• Create a backup of your current installation\n" +
+                "• Install the update\n" +
+                "• Restart AgOpenGPS\n\n" +
                 "Do you want to continue?",
                 "Install",
                 "Cancel");
@@ -617,7 +621,9 @@ namespace AgOpenGPS.Updater.Forms
                 SetStatus("Restarting...", true, 100);
                 await Task.Delay(1000);
 
-                var (restarted, restartMsg) = _updateService.RestartApplication(_installPath);
+                // [XPLAT] RestartApplication releases the updater single-instance guard internally; the
+                // WinForms code likewise read the returned (success, message) tuple but did not surface it.
+                _ = _updateService.RestartApplication(_installPath);
 
                 // Show success message briefly
                 SetStatus("Complete! Restarting...");
@@ -647,9 +653,9 @@ namespace AgOpenGPS.Updater.Forms
             }
         }
 
+        // [XPLAT] marshal a modal error dialog onto the UI thread (replaces the WinForms InvokeRequired/Invoke).
         private async Task ShowErrorFromBackground(string title, string message)
         {
-            // [XPLAT] marshal the modal dialog onto the UI thread (replaces InvokeRequired/Invoke).
             if (Dispatcher.UIThread.CheckAccess())
             {
                 await FormDialog.ShowError(this, title, message);
@@ -660,6 +666,7 @@ namespace AgOpenGPS.Updater.Forms
             }
         }
 
+        // [XPLAT] marshal a modal info dialog onto the UI thread (replaces the WinForms InvokeRequired/Invoke).
         private async Task ShowInfoFromBackground(string title, string message)
         {
             if (Dispatcher.UIThread.CheckAccess())
@@ -713,19 +720,6 @@ namespace AgOpenGPS.Updater.Forms
             {
                 // Just close the form
                 Close();
-            }
-        }
-
-        /// <summary>
-        /// [XPLAT] Esc triggers the same logic as the Close/Cancel button, replacing the WinForms
-        /// <c>CancelButton = BtnClose</c> behavior.
-        /// </summary>
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            base.OnKeyDown(e);
-            if (e.Key == Key.Escape)
-            {
-                BtnCancel_Click(this, new RoutedEventArgs());
             }
         }
     }
