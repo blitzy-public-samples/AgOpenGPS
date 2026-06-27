@@ -208,6 +208,67 @@
          alongside CTrack/CTool when the FormGPS->services guidance decoupling lands (AAP §0.6.1). -->
     <Compile Remove="Views\Guidance\FormNudgeView.axaml.cs" />
 
+    <!-- [XPLAT] (3b) Guidance dialog that injects gated domain types. FormQuickABView.axaml.cs is the
+         1:1 DI reimplementation of WinForms FormQuickAB (the multi-panel Quick-AB / Tracks builder); its
+         production ctor is signature-correct against the REAL domain types CABCurve (mf.curve), CABLine
+         (mf.ABLine), CTrack (mf.trk) + CTool (mf.tool), but all four providers are gated in (2) above
+         (they still hold the FormGPS back-reference), so the view is excluded in lockstep to preserve the
+         "no compiling consumer of an excluded file" invariant — exactly as FormNudgeView (which also
+         injects CTrack + CTool) is handled above. No compiling source constructs FormQuickABView (verified
+         by reference scan — only a doc comment in Classes\CTrk.cs mentions it), so this is a clean cut.
+         The track-building math is behaviour-frozen and ported VERBATIM (AAP §0.2.2). Re-enabled alongside
+         CABCurve/CABLine/CTrack/CTool when the FormGPS->services guidance decoupling lands (AAP §0.6.1). -->
+    <Compile Remove="Views\Guidance\FormQuickABView.axaml.cs" />
+    <!-- [XPLAT] (3b-ii) Guidance dialog that injects gated domain types. FormRefNudgeView.axaml.cs is the
+         1:1 DI reimplementation of WinForms FormRefNudge (Forms/Guidance/FormRefNudge.cs +
+         FormRefNudge.designer.cs); its production ctor is signature-correct against the REAL domain types
+         CTrack (mf.trk) + CTool (mf.tool) + CABLine (mf.ABLine) + CABCurve (mf.curve), all gated in (2)
+         above (their FormGPS->services guidance decoupling lands in a later checkpoint, AAP §0.6.1), so
+         the view is excluded in lockstep to preserve the "no compiling consumer of an excluded file"
+         invariant — exactly as the sibling FormNudgeView (which also injects CTrack/CTool) is handled
+         above. No compiling source constructs FormRefNudgeView (verified by reference scan), so this is a
+         clean cut. Re-enabled alongside CTrack/CTool/CABLine/CABCurve when the guidance decoupling lands.
+         See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Views\Guidance\FormRefNudgeView.axaml.cs" />
+    <!-- [XPLAT] (3b-2) Guidance dialog that injects a gated domain type. Views\Guidance\FormSmoothABView.axaml.cs
+         is the 1:1 DI reimplementation of WinForms FormSmoothAB (Forms/Guidance/FormSmoothAB.cs +
+         FormSmoothAB.Designer.cs); its production ctor is signature-correct against the REAL domain type
+         CABCurve (was mf.curve) — verified members curve.SmoothAB(int), curve.SaveSmoothList(),
+         curve.smooList, curve.isSmoothWindowOpen — plus two injected Action callbacks (was
+         mf.oglMain.Refresh() / mf.FileSaveTracks()), so it holds no FormGPS reference. CABCurve is gated
+         in (2) above (Classes\CABCurve.cs: it still carries coupled CTrack/CABLine/CYouTurn/CBoundary/CGuidance
+         peer fields awaiting the guidance-pipeline decoupling), so the view is excluded in lockstep to
+         preserve the "no compiling consumer of an excluded file" invariant — exactly as
+         FormNudgeView (which also injects a gated guidance type) is handled above. No compiling source
+         constructs FormSmoothABView (verified by reference scan), so this is a clean cut. Re-enabled
+         alongside CABCurve when the FormGPS->services guidance decoupling lands (AAP §0.6.1).
+         See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Views\Guidance\FormSmoothABView.axaml.cs" />
+    <!-- [XPLAT] (3b-ii) Guidance dialog that injects gated domain types. FormTramView.axaml.cs is the
+         1:1 DI reimplementation of WinForms FormTram (the simple tram-line dialog); its production ctor is
+         signature-correct against the REAL domain types CTram (mf.tram), CTool (mf.tool), CBoundary (mf.bnd),
+         CABCurve (mf.curve), CABLine (mf.ABLine), CTrack (mf.trk) and CVehicle (mf.vehicle) — every one of
+         which is gated in (2) above (they still hold the FormGPS back-reference), so the view is excluded in
+         lockstep to preserve the "no compiling consumer of an excluded file" invariant — exactly as
+         FormNudgeView (which also injects CTrack/CTool) is handled above. No compiling source constructs
+         FormTramView (verified by reference scan), so this is a clean cut. The file itself is fully validated
+         (frozen tram geometry: verbatim btnSwapAB AB/curve point maths, 1..999 passes clamp, alpha 0..1,
+         generate-mode All/Lines/Outer cycle) under both net8.0 and net8.0-windows. Re-enabled alongside
+         CTram/CTool/CBoundary/CABCurve/CABLine/CTrack/CVehicle when the FormGPS->services guidance decoupling
+         lands (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Views\Guidance\FormTramView.axaml.cs" />
+    <!-- [XPLAT] (3b-2) Guidance dialog that injects gated domain types. FormBuildTracksView.axaml.cs is the
+         1:1 DI reimplementation of WinForms FormBuildTracks (the full Track Manager: list management +
+         multi-mode AB/A+/Curve/KML/LatLon/Pivot track builder, all track-building math behavior-frozen per
+         AAP §0.2.2/§0.7.1). Its production ctor is signature-correct against the REAL domain types it injects —
+         CTrack (mf.trk), CABCurve (mf.curve), CABLine (mf.ABLine) and CTool (mf.tool) — but all four providers
+         are gated in (2) above (they still hold the FormGPS back-reference), so the view is excluded in lockstep
+         to preserve the "no compiling consumer of an excluded file" invariant — exactly as FormNudgeView (which
+         also injects CTrack+CTool) is handled above. No compiling source constructs FormBuildTracksView
+         (verified by reference scan), so this is a clean cut. Re-enabled alongside CTrack/CABCurve/CABLine/CTool
+         when the FormGPS->services guidance decoupling lands (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Views\Guidance\FormBuildTracksView.axaml.cs" />
+
     <!-- [XPLAT] (3c) Extracted transport/PGN service that consumes gated domain types. Services\PgnDispatcher.cs
          is the cross-platform extraction of the FormGPS UDPComm/PGN partials (AAP §0.6.1); its DI ctor is
          signature-correct against the REAL collaborators (CAHRS/CModuleComm/CNMEA already compile), but it
@@ -267,6 +328,39 @@
          the code-behind is gated. Re-enabled with FormNudgeView.axaml.cs when CTrack/CTool land. -->
     <AvaloniaXaml Remove="Views\Guidance\FormNudgeView.axaml" />
     <AvaloniaResource Remove="Views\Guidance\FormNudgeView.axaml" />
+    <!-- [XPLAT] FormQuickABView's markup is excluded in lockstep with its gated code-behind (above):
+         the compiled-XAML loader generates the InitializeComponent partial against the code-behind
+         class, so the markup must leave BOTH the XAML compilation and the embedded resource set while
+         the code-behind is gated. Re-enabled with FormQuickABView.axaml.cs when CABCurve/CABLine/CTrack/CTool land. -->
+    <AvaloniaXaml Remove="Views\Guidance\FormQuickABView.axaml" />
+    <AvaloniaResource Remove="Views\Guidance\FormQuickABView.axaml" />
+    <!-- [XPLAT] FormRefNudgeView's markup is excluded in lockstep with its gated code-behind (above):
+         the compiled-XAML loader generates the InitializeComponent partial against the code-behind
+         class, so the markup must leave BOTH the XAML compilation and the embedded resource set while
+         the code-behind is gated. Re-enabled with FormRefNudgeView.axaml.cs when
+         CTrack/CTool/CABLine/CABCurve land. -->
+    <AvaloniaXaml Remove="Views\Guidance\FormRefNudgeView.axaml" />
+    <AvaloniaResource Remove="Views\Guidance\FormRefNudgeView.axaml" />
+    <!-- [XPLAT] FormSmoothABView's markup is excluded in lockstep with its gated code-behind (above):
+         the compiled-XAML loader generates the InitializeComponent partial against the code-behind
+         class, so the markup must leave BOTH the XAML compilation and the embedded resource set while
+         the code-behind is gated. Re-enabled with FormSmoothABView.axaml.cs when CABCurve lands. -->
+    <AvaloniaXaml Remove="Views\Guidance\FormSmoothABView.axaml" />
+    <AvaloniaResource Remove="Views\Guidance\FormSmoothABView.axaml" />
+    <!-- [XPLAT] FormTramView's markup is excluded in lockstep with its gated code-behind (above):
+         the compiled-XAML loader generates the InitializeComponent partial against the code-behind
+         class, so the markup must leave BOTH the XAML compilation and the embedded resource set while
+         the code-behind is gated. Re-enabled with FormTramView.axaml.cs when
+         CTram/CTool/CBoundary/CABCurve/CABLine/CTrack/CVehicle land. -->
+    <AvaloniaXaml Remove="Views\Guidance\FormTramView.axaml" />
+    <AvaloniaResource Remove="Views\Guidance\FormTramView.axaml" />
+    <!-- [XPLAT] FormBuildTracksView's markup is excluded in lockstep with its gated code-behind (above):
+         the compiled-XAML loader generates the InitializeComponent partial against the code-behind class,
+         so the markup must leave BOTH the XAML compilation and the embedded resource set while the
+         code-behind is gated. Re-enabled with FormBuildTracksView.axaml.cs when
+         CTrack/CABCurve/CABLine/CTool land. -->
+    <AvaloniaXaml Remove="Views\Guidance\FormBuildTracksView.axaml" />
+    <AvaloniaResource Remove="Views\Guidance\FormBuildTracksView.axaml" />
   </ItemGroup>
 
   <ItemGroup>

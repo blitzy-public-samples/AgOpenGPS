@@ -204,6 +204,15 @@ namespace AgOpenGPS.Core
         public byte[] machinePgnEF = new byte[] { 0x80, 0x81, 0x7f, 0xEF, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0xCC };
         public int machinePgnEFHydLift = 7;
 
+        // [XPLAT] PGN 0xEF (239) "uturn" command byte index relocated here from the deleted WinForms host
+        // (FormGPS, PGN.Designer.cs: `public CPGN_EF p_239` whose `uturn = 5`) so the portable,
+        // cross-platform U-turn generator (CYouTurn.ResetYouTurn / ResetCreatedYouTurn) can clear the
+        // U-turn-active byte of the same canonical machine PGN frame above, with no WinForms coupling —
+        // mirroring the machinePgnEFHydLift index used by CHead. The byte index (5) is preserved verbatim
+        // from CPGN_EF so the machine-byte semantics stay byte-for-byte identical.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public int machinePgnEFUturn = 5;
+
         // [XPLAT] Section/applied-coverage day colour relocated here from the deleted WinForms host form
         // (FormGPS, GUI.Designer.cs: `public Color sectionColorDay;`, loaded at startup from
         // Properties.Settings.Default.setDisplay_colorSectionsDay.CheckColorFor255()) so the portable,
@@ -226,6 +235,25 @@ namespace AgOpenGPS.Core
         // The type (int) and default (0) are preserved exactly so the diagnostic tally stays identical.
         // See MIGRATION_DOCS/TRANSITION_MAP.md.
         public int patchCounter;
+
+        // [XPLAT] U-turn sequencing counter relocated here from the deleted WinForms host form (FormGPS,
+        // GUI.Designer.cs: `public int makeUTurnCounter = 0;`, advanced by the per-fix GUI/scan timer and
+        // read/reset by the U-turn generator) so the portable, cross-platform U-turn generator (CYouTurn)
+        // and the fix/scan-loop pipeline read and write the SAME canonical counter live-by-reference, with
+        // no WinForms coupling — mirroring the sentenceCounter/patchCounter relocations above. The type
+        // (int) and default (0) are preserved exactly so the U-turn trigger sequencing stays identical.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public int makeUTurnCounter;
+
+        // [XPLAT] Live pivot-to-turn-line distance relocated here from the deleted WinForms host form
+        // (FormGPS, Position.designer.cs: `public double distancePivotToTurnLine = -2222;`) so the portable,
+        // cross-platform U-turn generator (CYouTurn) writes it and the fix/scan-loop pipeline (turn
+        // triggering), the status read-outs and the renderer read the SAME canonical distance
+        // live-by-reference, with no WinForms coupling. The type (double) and — critically — the sentinel
+        // default (-2222, the "no valid distance yet" marker that the > 0 display/trigger guards key on)
+        // are preserved exactly so the turn-trigger distances and read-outs stay byte-for-byte identical
+        // (turn parity). See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public double distancePivotToTurnLine = -2222;
     }
 
     // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
