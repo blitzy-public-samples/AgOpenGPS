@@ -1,0 +1,279 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormUDPMonitor"
+        x:DataType="vm:FormUDPMonitorViewModel"
+        Title="UDP Monitor"
+        WindowStartupLocation="CenterOwner"
+        RequestedThemeVariant="Light"
+        Background="White"
+        Width="456"
+        Height="291"
+        MinWidth="456"
+        MinHeight="291"
+        CanResize="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!-- [XPLAT] migrated from net48/WinForms FormUDPMonitor.cs + FormUDPMonitor.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms `Forms/FormUDPMonitor`
+        (FormUDPMonitor.designer.cs + FormUDPMonitor.cs + FormUDPMonitor.resx) — the AgIO "UDP
+        Monitor": a large read-only receive area that mirrors the live UDP loopback traffic, with
+        Log / Log-NMEA / Log-NTRIP capture toggles, Clear, Save, a "Guide ->" link to the PGN
+        reference window, and Close. Per AAP §0.3.3 this is a visual PARITY reimplementation of the
+        original Windows Forms look — never a redesign. No Figma was supplied (AAP §0.8); the
+        rendered WinForms dialog is the sole visual reference.
+
+        Bound (compiled bindings, x:DataType="vm:FormUDPMonitorViewModel") to FormUDPMonitorViewModel.
+        That view-model already replaced the WinForms `FormLoop mf` god-object back-reference and the
+        333 ms drain timer; this view is purely declarative. The view-model's RequestClose /
+        RequestOpenPgn / RequestTimedMessage events and Cleanup() are window-level concerns handled
+        by the code-behind (FormUDPMonitor.axaml.cs), not here.
+
+        Root-attribute parity mapping (WinForms FormUDPMonitor.designer.cs -> Avalonia):
+          • Form Text "UDP Monitor"              -> Title="UDP Monitor".
+          • BackColor White                      -> Background="White" (white receive area framed by
+                                                    the window — matches the original).
+          • ClientSize 456 x 291                 -> Width="456" Height="291" (initial size; the
+                                                    sibling-view convention maps WinForms ClientSize
+                                                    directly to Width/Height). The WinForms
+                                                    MinimumSize (465 x 307 total, i.e. ~= the 456x291
+                                                    client plus the thin tool-window border) means the
+                                                    form opened at its floor and could only grow, so
+                                                    MinWidth/MinHeight are pinned to the initial size.
+          • FormBorderStyle SizableToolWindow    -> CanResize="True" (the original was resizable; the
+                                                    receive box grew with it — see below).
+          • MaximizeBox=false / MinimizeBox=false
+            / ControlBox=false                   -> NOT reproduced: hiding only the title-bar system
+                                                    buttons is not portable across Windows/Linux/macOS
+                                                    and risks trapping the operator. SystemDecorations
+                                                    ="Full" keeps a standard, usable frame; the dialog
+                                                    is dismissed via the Close button (parity of
+                                                    intent — matches sibling FormEventViewer).
+          • StartPosition CenterParent           -> WindowStartupLocation="CenterOwner".
+          • Font Tahoma                          -> base FontFamily="Tahoma" FontSize="14.25"
+                                                    (sibling-view convention); children override their
+                                                    own sizes below.
+          • RequestedThemeVariant="Light"        -> AgIO is light-only (App.axaml pins Light, no
+                                                    day/night toggle); restated here for parity.
+          • ShowInTaskbar                         -> "False" (a child monitor dialog, not a taskbar
+                                                    window). The original was a non-modal monitor and
+                                                    was NOT TopMost, so Topmost is deliberately unset.
+
+        Buttons render as TEXT, not the WinForms OK64 / LogNMEA / VehFileSave / Trash / Nmea /
+        NTRIP_Client bitmaps: the migrated AgIO.csproj registers NO btnImages assets as
+        <AvaloniaResource> (only GPS/AgOpenGPS.csproj does) and excludes Properties/Resources.
+        Designer.cs from compilation (System.Drawing purged), so an avares://AgIO/btnImages/*
+        reference would not resolve and would render a broken image. Every migrated AgIO view
+        therefore renders affordances as text — consistent with the sibling FormEventViewer /
+        FormPGN / FormYes / FormSource and the agent-prompt's text-fallback path. See
+        MIGRATION_DOCS/TRANSITION_MAP.md.
+    -->
+    <DockPanel Margin="6" LastChildFill="True">
+
+        <!-- Top header row — the WinForms static column headers over the receive log:
+               lblSteerAngle "Time" (x=15), label1 "IP Address : Port" (x=100),
+               label2 "PGN" (x=310), and the clickable lblPGNGuide "Guide ->" (x=381).
+             "Time" + "IP Address : Port" form the left group; "PGN" + "Guide ->" the right group,
+             separated by a star spacer (parity with the original left/right clustering). The three
+             header captions are static (the view-model exposes no Time/IP/PGN values — the data
+             they label scrolls inside the receive box), so they are plain TextBlocks; only
+             "Guide ->" is interactive. Tahoma Bold 12 + near-black reproduce the WinForms labels
+             (Tahoma 11.25 Bold, ForeColor ActiveCaptionText). -->
+        <Grid DockPanel.Dock="Top"
+              ColumnDefinitions="Auto,Auto,*,Auto,Auto"
+              Margin="0,2,0,6">
+            <TextBlock Grid.Column="0"
+                       x:Name="lblSteerAngle"
+                       Text="Time"
+                       FontWeight="Bold"
+                       FontSize="12"
+                       Foreground="Black"
+                       VerticalAlignment="Center"
+                       Margin="9,0,0,0" />
+            <TextBlock Grid.Column="1"
+                       x:Name="label1"
+                       Text="IP Address : Port"
+                       FontWeight="Bold"
+                       FontSize="12"
+                       Foreground="Black"
+                       VerticalAlignment="Center"
+                       Margin="40,0,0,0" />
+            <TextBlock Grid.Column="3"
+                       x:Name="label2"
+                       Text="PGN"
+                       FontWeight="Bold"
+                       FontSize="12"
+                       Foreground="Black"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0" />
+
+            <!-- WinForms lblPGNGuide.Click -> lblPGNGuide_Click -> new FormPGN().Show(this).
+                 Rendered as a flat, link-style Button (a clickable label is a real action, so it
+                 is a <Button> for keyboard operability rather than a text element with a click
+                 handler). Command -> OpenPgnCommand, which raises the view-model's RequestOpenPgn
+                 event; the code-behind opens the Avalonia FormPGN reference window. The original
+                 caption "Guide ->" is preserved verbatim. -->
+            <Button Grid.Column="4"
+                    x:Name="lblPGNGuide"
+                    Content="Guide ->"
+                    Command="{Binding OpenPgnCommand}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="4,2"
+                    MinWidth="0"
+                    MinHeight="0"
+                    FontWeight="Bold"
+                    FontSize="12"
+                    Foreground="#1B6FB3"
+                    VerticalAlignment="Center"
+                    HorizontalContentAlignment="Right"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Open the PGN reference guide" />
+        </Grid>
+
+        <!-- Bottom command bar — the WinForms bottom button row (all Anchor Bottom|Right), in the
+             original left-to-right order:
+               btnClear (Trash) | btnFileSave (VehFileSave) | btnLogNTRIP (NTRIP_Client) |
+               btnLogNMEA (Nmea) | btnLog (LogNMEA, opens green) | btnSerialCancel (OK64, Close).
+             Laid out as six equal-width columns so the row spans the dialog width and reflows
+             cleanly on resize without overflowing (the original buttons were ~53px wide with ~18px
+             gaps spanning x=6..451 of the 456 client). Heights are raised from the WinForms ~53 to
+             a touch-friendly floor (Height 54, MinHeight 44 — AAP §0.3.3 "touch-friendly large
+             controls"; sibling FormPGN/FormEventViewer use the same 44px floor). Each button is a
+             text affordance (no System.Drawing imagery on this platform — see the header comment). -->
+        <Grid DockPanel.Dock="Bottom"
+              ColumnDefinitions="*,*,*,*,*,*"
+              Margin="0,6,0,0">
+
+            <!-- WinForms btnClear.Click -> btnClear_Click (textBoxRcv.Text = ""). -->
+            <Button Grid.Column="0"
+                    x:Name="btnClear"
+                    Content="Clear"
+                    Command="{Binding ClearCommand}"
+                    Height="54"
+                    MinHeight="44"
+                    Margin="3,0"
+                    FontSize="12"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Clear the receive area" />
+
+            <!-- WinForms btnFileSave.Click -> btnFileSave_Click (write text to zAgIO_UDP_log.txt). -->
+            <Button Grid.Column="1"
+                    x:Name="btnFileSave"
+                    Content="Save"
+                    Command="{Binding SaveFileCommand}"
+                    Height="54"
+                    MinHeight="44"
+                    Margin="3,0"
+                    FontSize="12"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Save the captured text to zAgIO_UDP_log.txt" />
+
+            <!-- WinForms btnLogNTRIP.Click -> btnLogNTRIP_Click (toggles mf.isNTRIPLogOn; BackColor
+                 LightGreen on / Salmon off). Background bound to the view-model's NtripLogButtonBrush
+                 so the toggle colour tracks state exactly (Brushes.LightGreen / Brushes.Salmon are
+                 byte-identical to the System.Drawing colours of the original). -->
+            <Button Grid.Column="2"
+                    x:Name="btnLogNTRIP"
+                    Content="Log NTRIP"
+                    Command="{Binding ToggleNtripLogCommand}"
+                    Background="{Binding NtripLogButtonBrush}"
+                    Height="54"
+                    MinHeight="44"
+                    Margin="3,0"
+                    FontSize="12"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Toggle logging of NTRIP / RTCM traffic" />
+
+            <!-- WinForms btnLogNMEA.Click -> btnLogNMEA_Click (toggles mf.isGPSLogOn; BackColor
+                 LightGreen on / Salmon off). Background bound to NmeaLogButtonBrush. -->
+            <Button Grid.Column="3"
+                    x:Name="btnLogNMEA"
+                    Content="Log NMEA"
+                    Command="{Binding ToggleNmeaLogCommand}"
+                    Background="{Binding NmeaLogButtonBrush}"
+                    Height="54"
+                    MinHeight="44"
+                    Margin="3,0"
+                    FontSize="12"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Toggle logging of NMEA sentences" />
+
+            <!-- WinForms btnLog.Click -> btnLog_Click (the master capture toggle; designer opened
+                 green/LightGreen). Background bound to LogButtonBrush (LightGreen while capturing,
+                 Salmon while stopped) — the view-model's IsLogOn setter starts/stops the drain
+                 timer as it flips. -->
+            <Button Grid.Column="4"
+                    x:Name="btnLog"
+                    Content="Log"
+                    Command="{Binding ToggleLogCommand}"
+                    Background="{Binding LogButtonBrush}"
+                    Height="54"
+                    MinHeight="44"
+                    Margin="3,0"
+                    FontSize="12"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Start or pause capturing UDP traffic" />
+
+            <!-- WinForms btnSerialCancel.Click -> btnSerialCancel_Click (mf.isUDPMonitorOn=false;
+                 Close()). Command -> CloseCommand (runs Cleanup() then raises RequestClose; the
+                 code-behind closes the window). IsCancel maps Esc to the close affordance for
+                 keyboard parity (same pattern as sibling FormEventViewer's Exit button). -->
+            <Button Grid.Column="5"
+                    x:Name="btnClose"
+                    Content="Close"
+                    Command="{Binding CloseCommand}"
+                    IsCancel="True"
+                    Height="54"
+                    MinHeight="44"
+                    Margin="3,0"
+                    FontSize="12"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Close the UDP monitor" />
+        </Grid>
+
+        <!-- Receive area — the WinForms `textBoxRcv` (read-only multiline TextBox, ScrollBars=Both,
+             anchored all sides so it grew with the form). Reimplemented as a read-only multi-line
+             TextBox that fills the remaining DockPanel space (LastChildFill, so it grows/shrinks
+             with the window — parity with the all-sides anchor) and is bound to the running mirror
+             of the drained UDP sentences. The TextBox carries its own ScrollViewer in its control
+             template, driven here via the attached ScrollViewer.* visibilities (the idiomatic,
+             sibling-view approach — wrapping a multi-line TextBox in an EXTERNAL ScrollViewer is an
+             anti-pattern that breaks the caret/selection auto-scroll), so the text is scrollable as
+             the agent-prompt requires.
+
+             TextWrapping="Wrap" is set per the explicit agent-prompt directive; with wrapping there
+             is no horizontal overflow, so the vertical scrollbar shows on demand and the horizontal
+             one is disabled. ReceivedText is bound OneWay (the view-model property is get-only to
+             the view: it has a private setter and a read-only control), which also avoids any
+             compiled-binding write-back. The monospace font stack (Courier New first for
+             Windows/macOS parity, then common Linux monospaces) preserves a fixed-pitch, readable
+             log layout per the agent-prompt's "monospace ... readability parity"; FontSize 12 + Bold
+             mirror the WinForms Tahoma 11.25 Bold weight. -->
+        <TextBox x:Name="textBoxRcv"
+                 Text="{Binding ReceivedText, Mode=OneWay}"
+                 IsReadOnly="True"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 FontFamily="Courier New, DejaVu Sans Mono, Liberation Mono, Consolas, Menlo, monospace"
+                 FontSize="12"
+                 FontWeight="Bold"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+    </DockPanel>
+</Window>

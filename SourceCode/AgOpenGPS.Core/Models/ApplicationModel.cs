@@ -93,6 +93,28 @@ namespace AgOpenGPS.Core
         // See MIGRATION_DOCS/TRANSITION_MAP.md.
         public bool isFirstHeadingSet;
         public string headingFromSource;
+
+        // [XPLAT] Tool/tank hitch headings and the field-job gate relocated here from the WinForms host
+        // form (FormGPS) so the portable, cross-platform fix/position pipeline writes them, and the
+        // cross-platform tool renderer (CTool.DrawTool) reads them, live-by-reference with no WinForms
+        // coupling. Only the heading scalars (not the full vec3 tool/tank positions, which remain in the
+        // GPS layer because vec3 is a GPS type) are relocated, exactly as needed by the draw, and the
+        // job gate that the section/coverage logic already keys on. Names, types and defaults are
+        // preserved so behavior stays byte-for-byte identical:
+        //   ToolPivotHeading - tool-pivot heading in radians (was FormGPS.toolPivotPos.heading, double).
+        //                      Stored as the portable GeoDir (its AngleInRadians is what the draw rotates
+        //                      by); GeoDir's [0, 2pi) normalization is rotation-neutral for GL.Rotate, so
+        //                      the rendered tool orientation is unchanged. Mirrors the existing
+        //                      FixHeading GeoDir property.
+        //   TankHeading      - towed-tank (TBT) heading in radians (was FormGPS.tankPos.heading, double),
+        //                      stored as GeoDir for the same reason; only read when isToolTBT &&
+        //                      isToolTrailing, identical to the original.
+        //   isJobStarted     - field-job gate (was FormGPS.isJobStarted, bool, default false). When true
+        //                      the tool draw renders the look-ahead section lines; gating is unchanged.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public GeoDir ToolPivotHeading { get; set; }
+        public GeoDir TankHeading { get; set; }
+        public bool isJobStarted;
     }
 
     // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md

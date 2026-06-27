@@ -1,6 +1,5 @@
-// [XPLAT] migrated from net48/WinForms frmStart (Form1.cs) — see MIGRATION_DOCS/TRANSITION_MAP.md
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
-using System.ComponentModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
@@ -37,7 +36,7 @@ namespace GPS_Out.Views
     /// <see cref="OnLoaded"/>.</item>
     /// </list>
     /// </remarks>
-    public partial class MainWindow : Window, ISerialStatusSink, IWindowState, INmeaHost
+    public partial class MainWindow : Window, INmeaHost, ISerialStatusSink, IWindowState
     {
         // ---- Public surface consumed by the ported helper classes (was frmStart's public fields) ----
         public UDPComm AGIOcomm;
@@ -68,7 +67,7 @@ namespace GPS_Out.Views
         PGN54908 INmeaHost.AGIOdata => AGIOdata;
 
         // ---- Private state (matches frmStart) ----
-        private string HeadingType;
+        private string HeadingType = "";
 
         // [XPLAT] WinForms Color.Orange BackColor -> Avalonia brush applied to the quality readouts.
         private readonly IBrush SimColor = Brushes.Orange;
@@ -80,8 +79,12 @@ namespace GPS_Out.Views
         private bool _isLoaded;
         private bool _hasInitialized;
 
-        // [XPLAT] background sender (System.ComponentModel.BackgroundWorker is in-box on net8).
-        private readonly BackgroundWorker backgroundWorker1 = new BackgroundWorker();
+        // [XPLAT] send-pump re-entrancy guard. Replaces the WinForms BackgroundWorker (which the
+        // migration spec forbids): frmStart.Send() called backgroundWorker1.RunWorkerAsync() only when
+        // !IsBusy. SerialSend.SendStringData is synchronous and swallows its own port exceptions, so the
+        // synchronous Send() below uses this flag for the identical "skip if already sending" semantics
+        // while preserving the exact send order and clear-after-send — no worker thread is needed.
+        private bool _sending;
 
         // [XPLAT] WinForms designer Timers -> DispatcherTimers. Intervals reproduce the designer values
         // (tmrGGA 5000, tmrGSA 1000, tmrDisplay 500, tmrMinimize 120000); the rate timers' intervals are
@@ -102,6 +105,19 @@ namespace GPS_Out.Views
         public MainWindow()
         {
             InitializeComponent();
+
+            // [XPLAT] frmStart carried the satellite icon; set the Avalonia titlebar icon from the
+            // retained satellite.ico (declared as <ApplicationIcon>). Guarded because the .ico is only
+            // guaranteed to be embedded in the EXE header — if it is not also packed as an
+            // AvaloniaResource the avares load throws, and a missing window icon must never block startup.
+            try
+            {
+                Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://GPS_Out/satellite.ico")));
+            }
+            catch (Exception)
+            {
+                // non-fatal: window simply uses the default icon when satellite.ico is not an avares asset.
+            }
 
             // Construction order mirrors frmStart exactly (Tls first so the comm/PGN classes can use it).
             // [XPLAT] clsTools is now parameterless (the frmStart back-reference was removed; the help
@@ -124,12 +140,8 @@ namespace GPS_Out.Views
             SER = new SerialSend(Tls, this);
             RMC = new PGN_RMC(this);
             AOGdata = new PGN100(this);
-            backgroundWorker1.WorkerSupportsCancellation = true;
             ZDA = new PGN_ZDA(this);
             GSA = new PGN_GSA(this);
-
-            backgroundWorker1.DoWork += backgroundWorker1_DoWork;
-            backgroundWorker1.RunWorkerCompleted += backgroundWorker1_RunWorkerCompleted;
 
             tmrGGA.Tick += tmrGGA_Tick;
             tmrVTG.Tick += tmrVTG_Tick;
@@ -337,8 +349,18 @@ namespace GPS_Out.Views
             }
         }
 
-        /// <summary>[XPLAT] <see cref="ISerialStatusSink"/>: refresh the port indicator (was mf.SetPortButtons1()).</summary>
-        public void OnPortStateChanged() => SetPortButtons1();
+        /// <summary>[XPLAT] <see cref="ISerialStatusSink"/>: refresh the port indicator (was mf.SetPortButtons1()).
+        /// SerialSend's watchdog (a DispatcherTimer) already ticks on the UI thread, but the marshal guard
+        /// keeps this safe if any caller raises it off-thread — Avalonia controls are UI-thread-affine.</summary>
+        public void OnPortStateChanged()
+        {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.Post(OnPortStateChanged);
+                return;
+            }
+            SetPortButtons1();
+        }
 
         // ---- IWindowState (explicit; preserves the WinForms Form.Name="frmStart" settings keys) ----
         string IWindowState.Name => "frmStart";
@@ -363,21 +385,47 @@ namespace GPS_Out.Views
             SetPortButtons1();
         }
 
-        /// <summary>[XPLAT] applies the DayColour palette (App.axaml.cs computed the DayBrush from the
-        /// persisted "R, G, B" string) to the window and tab surfaces — was four BackColor assignments.</summary>
+        /// <summary>[XPLAT] frmStart_Load applied the persisted DayColour to four BackColor surfaces
+        /// (this.BackColor, tabPage1/2.BackColor, PortIndicator1.BackColor). Here the DayColour setting —
+        /// migrated from a WinForms System.Drawing.Color to a cross-platform "R, G, B" string — is parsed
+        /// locally (see <see cref="ParseDayColour"/>) and applied as an Avalonia brush to the equivalent
+        /// surfaces. Parsing is self-contained (no dependency on App resources) and never crashes startup.</summary>
         private void ApplyDayColour()
         {
-            IBrush dayBrush = Brushes.Transparent;
-            if (Application.Current is { } app &&
-                app.TryGetResource("DayBrush", null, out object res) && res is IBrush b)
-            {
-                dayBrush = b;
-            }
-
+            IBrush dayBrush = ParseDayColour();
             Background = dayBrush;
             tab1Canvas.Background = dayBrush;
             tab2Canvas.Background = dayBrush;
             PortIndicator1Bg.Background = dayBrush;
+        }
+
+        /// <summary>[XPLAT] Parses the persisted <c>Settings.DayColour</c> "R, G, B" string into an
+        /// Avalonia brush using <see cref="CultureInfo.InvariantCulture"/> (so the saved value round-trips
+        /// identically across locales — the cross-platform numeric-I/O rule). On any parse failure the
+        /// documented default (210, 220, 230) is returned and the error is logged via the shared tools
+        /// logger, so a malformed setting degrades gracefully instead of interrupting startup.</summary>
+        private IBrush ParseDayColour()
+        {
+            try
+            {
+                string raw = Properties.Settings.Default.DayColour;
+                if (!string.IsNullOrWhiteSpace(raw))
+                {
+                    string[] parts = raw.Split(',');
+                    if (parts.Length == 3)
+                    {
+                        byte r = byte.Parse(parts[0].Trim(), CultureInfo.InvariantCulture);
+                        byte g = byte.Parse(parts[1].Trim(), CultureInfo.InvariantCulture);
+                        byte b = byte.Parse(parts[2].Trim(), CultureInfo.InvariantCulture);
+                        return new SolidColorBrush(Color.FromRgb(r, g, b));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Tls.WriteErrorLog("GPS_Out: failed to parse Settings.DayColour - using default. " + ex.Message);
+            }
+            return new SolidColorBrush(Color.FromRgb(210, 220, 230));
         }
 
         /// <summary>Enables/disables a sentence timer from its rate combo (was the cbo*_SelectedIndexChanged body).</summary>
@@ -455,11 +503,35 @@ namespace GPS_Out.Views
         private static Bitmap LoadAsset(string name)
             => new Bitmap(AssetLoader.Open(new Uri("avares://GPS_Out/Resources/" + name)));
 
+        /// <summary>[XPLAT] frmStart.Send() port. WinForms kicked backgroundWorker1.RunWorkerAsync()
+        /// only when !IsBusy; BackgroundWorker is forbidden by the migration spec, so this sends
+        /// synchronously under <see cref="_sending"/>. The send order (GGA, VTG, RMC, ZDA, GSA) and the
+        /// clear-all-five-after-send are preserved byte-for-byte from the former DoWork /
+        /// RunWorkerCompleted bodies. SerialSend.SendStringData is synchronous and swallows its own port
+        /// exceptions, so running it inline on the dispatcher adds no latency on the receive→send path.</summary>
         private void Send()
         {
-            if (!backgroundWorker1.IsBusy)
+            if (_sending)
             {
-                backgroundWorker1.RunWorkerAsync();
+                return;
+            }
+            _sending = true;
+            try
+            {
+                if (GGAsentence != "") SER.SendStringData(GGAsentence);
+                if (VTGsentence != "") SER.SendStringData(VTGsentence);
+                if (RMCsentence != "") SER.SendStringData(RMCsentence);
+                if (ZDAsentence != "") SER.SendStringData(ZDAsentence);
+                if (GSAsentence != "") SER.SendStringData(GSAsentence);
+            }
+            finally
+            {
+                GGAsentence = "";
+                VTGsentence = "";
+                RMCsentence = "";
+                ZDAsentence = "";
+                GSAsentence = "";
+                _sending = false;
             }
         }
 
@@ -516,36 +588,6 @@ namespace GPS_Out.Views
         }
 
         // ====================================================================================
-        //  BackgroundWorker
-        // ====================================================================================
-
-        private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
-        {
-            BackgroundWorker worker = sender as BackgroundWorker;
-            if (worker != null && worker.CancellationPending)
-            {
-                e.Cancel = true;
-            }
-            else
-            {
-                if (GGAsentence != "") SER.SendStringData(GGAsentence);
-                if (VTGsentence != "") SER.SendStringData(VTGsentence);
-                if (RMCsentence != "") SER.SendStringData(RMCsentence);
-                if (ZDAsentence != "") SER.SendStringData(ZDAsentence);
-                if (GSAsentence != "") SER.SendStringData(GSAsentence);
-            }
-        }
-
-        private void backgroundWorker1_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
-        {
-            GGAsentence = "";
-            VTGsentence = "";
-            RMCsentence = "";
-            ZDAsentence = "";
-            GSAsentence = "";
-        }
-
-        // ====================================================================================
         //  Timer ticks
         // ====================================================================================
 
@@ -565,9 +607,11 @@ namespace GPS_Out.Views
             else
             {
                 Watchdog++;
-                if (Watchdog > 10 && backgroundWorker1.WorkerSupportsCancellation && !backgroundWorker1.CancellationPending)
+                // [XPLAT] frmStart cancelled the BackgroundWorker after 10 stalled ticks; with the
+                // synchronous send pump the equivalent is clearing the send-pump re-entrancy guard.
+                if (Watchdog > 10)
                 {
-                    backgroundWorker1.CancelAsync();
+                    _sending = false;
                 }
             }
         }
@@ -582,9 +626,11 @@ namespace GPS_Out.Views
             else
             {
                 Watchdog++;
-                if (Watchdog > 10 && backgroundWorker1.WorkerSupportsCancellation && !backgroundWorker1.CancellationPending)
+                // [XPLAT] frmStart cancelled the BackgroundWorker after 10 stalled ticks; with the
+                // synchronous send pump the equivalent is clearing the send-pump re-entrancy guard.
+                if (Watchdog > 10)
                 {
-                    backgroundWorker1.CancelAsync();
+                    _sending = false;
                 }
             }
         }
@@ -601,9 +647,11 @@ namespace GPS_Out.Views
             else
             {
                 Watchdog++;
-                if (Watchdog > 10 && backgroundWorker1.WorkerSupportsCancellation && !backgroundWorker1.CancellationPending)
+                // [XPLAT] frmStart cancelled the BackgroundWorker after 10 stalled ticks; with the
+                // synchronous send pump the equivalent is clearing the send-pump re-entrancy guard.
+                if (Watchdog > 10)
                 {
-                    backgroundWorker1.CancelAsync();
+                    _sending = false;
                 }
             }
         }
@@ -618,9 +666,11 @@ namespace GPS_Out.Views
             else
             {
                 Watchdog++;
-                if (Watchdog > 10 && backgroundWorker1.WorkerSupportsCancellation && !backgroundWorker1.CancellationPending)
+                // [XPLAT] frmStart cancelled the BackgroundWorker after 10 stalled ticks; with the
+                // synchronous send pump the equivalent is clearing the send-pump re-entrancy guard.
+                if (Watchdog > 10)
                 {
-                    backgroundWorker1.CancelAsync();
+                    _sending = false;
                 }
             }
         }
@@ -635,9 +685,11 @@ namespace GPS_Out.Views
             else
             {
                 Watchdog++;
-                if (Watchdog > 10 && backgroundWorker1.WorkerSupportsCancellation && !backgroundWorker1.CancellationPending)
+                // [XPLAT] frmStart cancelled the BackgroundWorker after 10 stalled ticks; with the
+                // synchronous send pump the equivalent is clearing the send-pump re-entrancy guard.
+                if (Watchdog > 10)
                 {
-                    backgroundWorker1.CancelAsync();
+                    _sending = false;
                 }
             }
         }

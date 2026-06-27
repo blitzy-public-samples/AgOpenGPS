@@ -1,0 +1,255 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormGPSData"
+        x:DataType="vm:FormGPSDataViewModel"
+        Title="System Data"
+        WindowStartupLocation="CenterOwner"
+        RequestedThemeVariant="Light"
+        Background="#FFDCDCDC"
+        Width="547"
+        Height="525"
+        MinWidth="470"
+        MinHeight="505"
+        CanResize="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!-- [XPLAT] migrated from net48/WinForms FormGPSData.cs + FormGPSData.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms AgIO "System Data"
+        dialog (Forms/FormGPSData.Designer.cs + FormGPSData.cs + FormGPSData.resx) — a read-only,
+        250 ms timer-driven readout of the live parsed NMEA / GPS / IMU state plus the raw NMEA
+        sentence boxes. Per AAP §0.3.3 this is a visual PARITY reimplementation of the original
+        Windows Forms look — never a redesign. No Figma was supplied (AAP §0.8); the rendered
+        WinForms dialog is the sole visual reference.
+
+        Root-attribute parity mapping (WinForms FormGPSData.Designer.cs -> Avalonia):
+          • Form Text "System Data"                 -> Title="System Data" (exact WinForms caption).
+          • BackColor Gainsboro (ARGB 220,220,220)  -> Background="#FFDCDCDC" (the light-gray frame
+                                                       around the white NMEA-sentence boxes).
+          • ClientSize 547 x 357                     -> Width="547"; Height raised to 525. The width
+                                                       is the exact WinForms client width; the height
+                                                       grows because (a) the agent-prompt mandates an
+                                                       explicit bottom OK button the WinForms form
+                                                       lacked, and (b) the Fluent TextBox is taller
+                                                       (~30 DIP) than the legacy WinForms textbox
+                                                       (~20 px), so the eight stacked NMEA boxes need
+                                                       more vertical room. Height/MinHeight are sized so
+                                                       all content clears the OK button without overlap
+                                                       (verified by a headless Skia render); the form
+                                                       never scrolled in WinForms and does not here.
+          • Sizable border + textboxes Anchor
+            Top|Left|Right                           -> CanResize="True"; the raw sentence boxes live
+                                                       in a star column so they stretch with width,
+                                                       exactly as the WinForms right-anchor did.
+          • MaximizeBox/MinimizeBox = false,
+            ShowInTaskbar = false                    -> ShowInTaskbar="False". Hiding only the
+                                                       max/min title-bar buttons is not portable
+                                                       across Windows/Linux/macOS, so
+                                                       SystemDecorations="Full" keeps a standard,
+                                                       usable frame (parity of intent).
+          • StartPosition CenterParent               -> WindowStartupLocation="CenterOwner".
+          • Form Font "Tahoma"                        -> base FontFamily="Tahoma" (sibling-view
+                                                       convention). Per-control sizes below convert
+                                                       the WinForms points to DIPs (×96/72):
+                                                       11.25pt->15, 12pt->16, 9.75pt->13, 8.25pt->11.
+          • RequestedThemeVariant="Light"            -> AgIO is light-only (App.axaml pins Light);
+                                                       set here too for self-documentation.
+
+        Bound (compiled bindings, x:DataType="vm:FormGPSDataViewModel") to FormGPSDataViewModel —
+        a PURE DISPLAY SURFACE. The WinForms 250 ms timer1_Tick that copied mf.* into the labels,
+        and FormGPSData_FormClosing (mf.isGPSSentencesOn = false), now live in the view-model
+        (DispatcherTimer + Stop()); this view is purely declarative and binds preformatted strings
+        (the VM does all InvariantCulture N7/N1/N2 formatting — AAP §0.6.5 culture safety). The
+        dialog carried NO command state in WinForms, so there are no Command bindings; the OK
+        button is closed by the code-behind (FormGPSData.axaml.cs) via its x:Name.
+    -->
+    <Grid RowDefinitions="Auto,*,Auto"
+          Margin="12"
+          RowSpacing="12">
+
+        <!-- ============================================================ -->
+        <!-- Row 0 — top readout matrix. The WinForms label grid is        -->
+        <!-- reproduced as four caption/value GROUPS laid out in columns   -->
+        <!-- (gap columns separate the groups). Caption = regular          -->
+        <!-- TextBlock; live value = Bold TextBlock. Value columns carry a -->
+        <!-- MinWidth so the layout does not jitter as the live values     -->
+        <!-- change each refresh. Captions are taken EXACTLY from          -->
+        <!-- FormGPSData.Designer.cs (some are terse/quirky in the          -->
+        <!-- original — annotated inline where the caption and the bound   -->
+        <!-- field differ, e.g. "VTG"->HeadingTrue, "Yaw"->ImuHeading).    -->
+        <!-- ============================================================ -->
+        <Grid Grid.Row="0"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Top"
+              RowSpacing="6">
+            <!-- [XPLAT] Avalonia note: WinForms set the base font (Tahoma 11.25pt) on the      -->
+            <!-- container and children inherited it. Avalonia Grid/Panel has NO FontSize        -->
+            <!-- property, so the 11.25pt->15px readout size is applied to all child TextBlocks  -->
+            <!-- via a scoped Style. Per-element FontSize (e.g. the 16px heading values) is a    -->
+            <!-- local value and therefore overrides this Style setter, preserving parity.       -->
+            <Grid.Styles>
+                <Style Selector="TextBlock">
+                    <Setter Property="FontSize" Value="15" />
+                </Style>
+            </Grid.Styles>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" /><!-- 0  group A caption -->
+                <ColumnDefinition Width="Auto" /><!-- 1  group A value   -->
+                <ColumnDefinition Width="14" />  <!-- 2  group gap       -->
+                <ColumnDefinition Width="Auto" /><!-- 3  group B caption -->
+                <ColumnDefinition Width="Auto" /><!-- 4  group B value   -->
+                <ColumnDefinition Width="14" />  <!-- 5  group gap       -->
+                <ColumnDefinition Width="Auto" /><!-- 6  group C caption -->
+                <ColumnDefinition Width="Auto" /><!-- 7  group C value   -->
+                <ColumnDefinition Width="14" />  <!-- 8  group gap       -->
+                <ColumnDefinition Width="Auto" /><!-- 9  group D caption -->
+                <ColumnDefinition Width="Auto" /><!-- 10 group D value   -->
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Group A — WinForms left block: Lon / Lat / Speed / Quality. -->
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Lon" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LonText}" FontWeight="Bold" MinWidth="88" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Lat" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LatText}" FontWeight="Bold" MinWidth="88" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Speed" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Speed}" FontWeight="Bold" MinWidth="88" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="Quality" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding FixQuality}" FontWeight="Bold" MinWidth="88" VerticalAlignment="Center" />
+
+            <!-- Group B — WinForms mid-left block: HDOP / # Sats / Elev / Age.
+                 "Elev" is the WinForms caption for the altitude value (label8 -> lblAltitude). -->
+            <TextBlock Grid.Row="0" Grid.Column="3" Text="HDOP" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="0" Grid.Column="4" Text="{Binding Hdop}" FontWeight="Bold" MinWidth="44" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="1" Grid.Column="3" Text="# Sats" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="1" Grid.Column="4" Text="{Binding Satellites}" FontWeight="Bold" MinWidth="44" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="2" Grid.Column="3" Text="Elev" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="2" Grid.Column="4" Text="{Binding Altitude}" FontWeight="Bold" MinWidth="44" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="3" Grid.Column="3" Text="Age" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="3" Grid.Column="4" Text="{Binding Age}" FontWeight="Bold" MinWidth="44" VerticalAlignment="Center" />
+
+            <!-- Group C — WinForms GPS heading/roll block. NOTE the WinForms captions:
+                 "VTG" labels the true GPS heading (label16 -> lblGPSHeading -> HeadingTrue,
+                 because that heading is derived from the VTG sentence); "Dual" labels the
+                 dual-antenna heading (label10 -> lblDualHeading -> HeadingTrueDual); "Roll"
+                 labels the GPS roll (label1 -> lblRoll -> Roll). Heading values were 12pt
+                 (->16 DIP) in the original; Roll was 11.25pt (->15, inherited). -->
+            <TextBlock Grid.Row="0" Grid.Column="6" Text="VTG" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="0" Grid.Column="7" Text="{Binding HeadingTrue}" FontWeight="Bold" FontSize="16" MinWidth="56" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="1" Grid.Column="6" Text="Dual" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="1" Grid.Column="7" Text="{Binding HeadingTrueDual}" FontWeight="Bold" FontSize="16" MinWidth="56" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="2" Grid.Column="6" Text="Roll" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="2" Grid.Column="7" Text="{Binding Roll}" FontWeight="Bold" MinWidth="56" VerticalAlignment="Center" />
+
+            <!-- Group D — WinForms IMU block (far-right column). The WinForms captions are
+                 Yaw / Roll / Pitch / YawRate, but their value labels are lblIMUHeading /
+                 lblIMURoll / lblIMUPitch / lblIMUYawRate — i.e. the "Yaw" row shows the IMU
+                 heading (yaw == heading for an AHRS). Preserved verbatim for parity. -->
+            <TextBlock Grid.Row="0" Grid.Column="9" Text="Yaw" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="0" Grid.Column="10" Text="{Binding ImuHeading}" FontWeight="Bold" MinWidth="46" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="1" Grid.Column="9" Text="Roll" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="1" Grid.Column="10" Text="{Binding ImuRoll}" FontWeight="Bold" MinWidth="46" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="2" Grid.Column="9" Text="Pitch" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="2" Grid.Column="10" Text="{Binding ImuPitch}" FontWeight="Bold" MinWidth="46" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="3" Grid.Column="9" Text="YawRate" Margin="0,0,6,0" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="3" Grid.Column="10" Text="{Binding ImuYawRate}" FontWeight="Bold" MinWidth="46" VerticalAlignment="Center" />
+        </Grid>
+
+        <!-- ============================================================ -->
+        <!-- Row 1 — raw NMEA sentence boxes (read-only). WinForms had     -->
+        <!-- eight single-line ReadOnly TextBoxes, each captioned by a     -->
+        <!-- terse 3-char label and anchored to stretch horizontally. The -->
+        <!-- caption column is Auto; the box column is star so the boxes   -->
+        <!-- stretch with the window (parity with Anchor Right). Bindings  -->
+        <!-- are Mode=OneWay (the VM properties expose only a private      -->
+        <!-- setter; the boxes are display-only mirrors, never edited).    -->
+        <!-- AutomationProperties.Name carries the full sentence type for  -->
+        <!-- screen readers (invisible a11y; also disambiguates the terse  -->
+        <!-- visible captions). Order top->bottom matches Designer.cs.     -->
+        <!-- ============================================================ -->
+        <Grid Grid.Row="1"
+              VerticalAlignment="Top"
+              ColumnSpacing="8"
+              RowSpacing="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" /><!-- terse sentence caption -->
+                <ColumnDefinition Width="*" />   <!-- read-only sentence box (stretches) -->
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- GGA (label19 "GGA" -> tboxGGA). -->
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="GGA" FontSize="11" FontWeight="Bold" MinWidth="34" VerticalAlignment="Center" />
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding GgaText, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" FontSize="13" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="GGA sentence" />
+
+            <!-- VTG (label26 "VTG" -> tboxVTG). -->
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="VTG" FontSize="11" FontWeight="Bold" MinWidth="34" VerticalAlignment="Center" />
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding VtgText, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" FontSize="13" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="VTG sentence" />
+
+            <!-- "NDA" is the WinForms terse caption for the PANDA sentence (label5 -> tboxPANDA). -->
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="NDA" FontSize="11" FontWeight="Bold" MinWidth="34" VerticalAlignment="Center" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PandaText, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" FontSize="13" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="PANDA sentence" />
+
+            <!-- "OGI" is the WinForms terse caption for the PAOGI sentence (label11 -> tboxPAOGI). -->
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="OGI" FontSize="11" FontWeight="Bold" MinWidth="34" VerticalAlignment="Center" />
+            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding PaogiText, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" FontSize="13" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="PAOGI sentence" />
+
+            <!-- HDT (label30 "HDT" -> tboxHDT). -->
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="HDT" FontSize="11" FontWeight="Bold" MinWidth="34" VerticalAlignment="Center" />
+            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding HdtText, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" FontSize="13" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="HDT sentence" />
+
+            <!-- AVR (label29 "AVR" -> tboxAVR). -->
+            <TextBlock Grid.Row="5" Grid.Column="0" Text="AVR" FontSize="11" FontWeight="Bold" MinWidth="34" VerticalAlignment="Center" />
+            <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding AvrText, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" FontSize="13" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="AVR sentence" />
+
+            <!-- HPD (label4 "HPD" -> tboxHPD). -->
+            <TextBlock Grid.Row="6" Grid.Column="0" Text="HPD" FontSize="11" FontWeight="Bold" MinWidth="34" VerticalAlignment="Center" />
+            <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding HpdText, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" FontSize="13" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="HPD sentence" />
+
+            <!-- "SXT" is the WinForms terse caption for the KSXT sentence (label13 -> tboxKSXT). -->
+            <TextBlock Grid.Row="7" Grid.Column="0" Text="SXT" FontSize="11" FontWeight="Bold" MinWidth="34" VerticalAlignment="Center" />
+            <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding KsxtText, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" FontSize="13" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="KSXT sentence" />
+        </Grid>
+
+        <!-- ============================================================ -->
+        <!-- Row 2 — Close/OK button. The WinForms FormGPSData had NO      -->
+        <!-- button (it closed via the title-bar X), but the agent-prompt  -->
+        <!-- mandates an explicit close affordance named btnOK that the    -->
+        <!-- code-behind (FormGPSData.axaml.cs) wires to Close() by name — -->
+        <!-- hence NO Click attribute here (a Click="..." pointing at a    -->
+        <!-- handler the code-behind may not declare would break the       -->
+        <!-- compiled-XAML build). IsCancel="True" maps Esc to the button  -->
+        <!-- (keyboard parity; build-safe, references no handler). Text     -->
+        <!-- content only — AgIO registers no btnImages as AvaloniaResource -->
+        <!-- so every migrated AgIO view renders buttons as text. Height 44 -->
+        <!-- is the touch-friendly floor (AAP §0.3.3 / sibling views).      -->
+        <!-- ============================================================ -->
+        <Button Grid.Row="2"
+                x:Name="btnOK"
+                Content="OK"
+                IsCancel="True"
+                Width="110"
+                Height="44"
+                FontSize="13"
+                FontWeight="Bold"
+                HorizontalAlignment="Right"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center" />
+    </Grid>
+</Window>

@@ -1,6 +1,7 @@
 // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using AgOpenGPS.Updater.Forms;
@@ -8,42 +9,99 @@ using AgOpenGPS.Updater.Forms;
 namespace AgOpenGPS.Updater
 {
     /// <summary>
-    /// [XPLAT] Avalonia application class for the cross-platform AgOpenGPS Updater.
-    /// Replaces the WinForms <c>Application.EnableVisualStyles()</c> / <c>Application.Run(Form)</c>
-    /// bootstrap that previously lived in <see cref="Program"/>. The startup window is selected from
-    /// the same command-line flags the old <c>Program.Main</c> parsed (<c>--firmware</c> chooses the
-    /// firmware placeholder; otherwise the main updater flow), preserving launch behavior exactly.
+    /// [XPLAT] Avalonia <see cref="Application"/> for the cross-platform AgOpenGPS Updater. This
+    /// code-behind is paired with <c>App.axaml</c> (<c>x:Class="AgOpenGPS.Updater.App"</c>), which
+    /// supplies the base Fluent theme and the semantic color palette the updater dialogs consume.
     /// </summary>
+    /// <remarks>
+    /// It replaces the WinForms bootstrap that used to live in <c>Program.Main</c>
+    /// (<c>Application.EnableVisualStyles()</c> / <c>Application.SetCompatibleTextRenderingDefault(false)</c>
+    /// followed by <c>Application.Run(new FormUpdate(...))</c>). The command-line parsing and the
+    /// firmware-vs-update window selection that lived in that <c>Main</c> are reproduced here in
+    /// <see cref="OnFrameworkInitializationCompleted"/>; <see cref="Program"/> now simply forwards the
+    /// process arguments to the classic-desktop lifetime so they surface as <c>desktop.Args</c>.
+    ///
+    /// The updater is intentionally self-contained: it does NOT reference <c>AgOpenGPS.Core</c> or
+    /// <c>IPlatformServices</c>, and it deliberately performs no single-instance/mutex, settings, or
+    /// culture setup here. It is a short-lived child process launched by AgOpenGPS, and the
+    /// update-activity signalling mutex lives in <c>Services/UpdateService.cs</c> (AAP §0.3.2, §0.4.2).
+    /// </remarks>
     public partial class App : Application
     {
         /// <summary>
-        /// Loads the compiled XAML for this application (styles + the semantic Accent/Error/Success
-        /// brushes consumed by the updater dialogs).
+        /// Loads the compiled XAML declared in <c>App.axaml</c> (the Fluent theme plus the shared
+        /// Accent/Error/Success/panel brushes), making those application-level resources available to
+        /// every updater window.
         /// </summary>
         public override void Initialize()
         {
-            // [XPLAT] Pattern B: the Avalonia source generator emits InitializeComponent and the
-            // typed x:Name fields for every view; the application itself just loads its XAML here.
+            // [XPLAT] MUST load App.axaml so the theme and palette resource dictionary are applied;
+            // the Avalonia source generator emits the InitializeComponent/x:Name members for the views.
             AvaloniaXamlLoader.Load(this);
         }
 
         /// <summary>
-        /// Selects and assigns the main window once the framework is initialized. Mirrors the
-        /// original <c>Program.Main</c> logic: parse <c>--current-version</c>, <c>--install-path</c>
-        /// and <c>--firmware</c>, then show either <see cref="FormFirmwareUpdate"/> or
-        /// <see cref="FormUpdate"/>.
+        /// Selects and assigns the startup window once the framework is initialized, mirroring the
+        /// original <c>Program.Main</c>: show <see cref="FormFirmwareUpdate"/> when <c>--firmware</c> is
+        /// present, otherwise the main <see cref="FormUpdate"/> seeded with the command-line
+        /// <c>--current-version</c> and <c>--install-path</c> values.
         /// </summary>
         public override void OnFrameworkInitializationCompleted()
         {
+            // Only a classic desktop lifetime exposes a single top-level MainWindow to assign; this
+            // guard also keeps the design-time / previewer host (a different lifetime) working.
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                string currentVersion = null;
-                string installPath = null;
-                bool showFirmwareUpdate = false;
+                desktop.MainWindow = BuildStartupWindow(desktop.Args ?? Array.Empty<string>());
+            }
 
-                // [XPLAT] desktop.Args carries the process command line (WinForms read
-                // Environment.GetCommandLineArgs()); parse the same three flags as the old entry point.
-                string[] args = desktop.Args ?? Array.Empty<string>();
+            base.OnFrameworkInitializationCompleted();
+        }
+
+        /// <summary>
+        /// Parses the startup arguments and constructs the matching updater window, preserving the
+        /// original WinForms routing exactly: <c>--firmware</c> selects <see cref="FormFirmwareUpdate"/>;
+        /// otherwise a <see cref="FormUpdate"/> is built with the parsed current-version and install-path
+        /// so the install path and version flow through to the update flow unchanged.
+        /// </summary>
+        /// <param name="args">
+        /// The process command-line arguments as exposed by the classic-desktop lifetime
+        /// (<c>desktop.Args</c>). Unlike <see cref="Environment.GetCommandLineArgs"/> — whose element 0 is
+        /// the executable path, which is why the source-branch loop started at index 1 — this array
+        /// contains only the real arguments, so <see cref="ParseStartupArgs"/> scans it from index 0.
+        /// </param>
+        /// <returns>The Avalonia <see cref="Window"/> to display as the application's main window.</returns>
+        private static Window BuildStartupWindow(string[] args)
+        {
+            (string currentVersion, string installPath, bool showFirmware) = ParseStartupArgs(args);
+
+            // Parity with the WinForms selection:
+            // showFirmwareUpdate ? new FormFirmwareUpdate() : new FormUpdate(currentVersion, installPath).
+            return showFirmware
+                ? new FormFirmwareUpdate()
+                : new FormUpdate(currentVersion, installPath);
+        }
+
+        /// <summary>
+        /// Pure (side-effect-free) reproduction of the original <c>Program.Main</c> argument loop. It is
+        /// kept separate from <see cref="BuildStartupWindow"/> so the parity-critical parsing can be
+        /// exercised in isolation, without constructing Avalonia windows.
+        /// </summary>
+        /// <param name="args">The raw startup arguments (no executable-path element; scanned from 0).</param>
+        /// <returns>
+        /// The parsed <c>currentVersion</c> and <c>installPath</c> (each <see langword="null"/> when the
+        /// corresponding flag is absent) together with whether <c>--firmware</c> was requested.
+        /// </returns>
+        private static (string currentVersion, string installPath, bool showFirmware) ParseStartupArgs(string[] args)
+        {
+            string currentVersion = null;
+            string installPath = null;
+            bool showFirmware = false;
+
+            if (args != null)
+            {
+                // Identical flag set, comparison mode (OrdinalIgnoreCase) and "i + 1 < args.Length"
+                // value-token bounds checks as the source-branch Program.Main loop.
                 for (int i = 0; i < args.Length; i++)
                 {
                     string arg = args[i];
@@ -58,22 +116,12 @@ namespace AgOpenGPS.Updater
                     }
                     else if (arg.Equals("--firmware", StringComparison.OrdinalIgnoreCase))
                     {
-                        showFirmwareUpdate = true;
+                        showFirmware = true;
                     }
-                }
-
-                // Show the appropriate window (parity with the WinForms Application.Run selection).
-                if (showFirmwareUpdate)
-                {
-                    desktop.MainWindow = new FormFirmwareUpdate();
-                }
-                else
-                {
-                    desktop.MainWindow = new FormUpdate(currentVersion, installPath);
                 }
             }
 
-            base.OnFrameworkInitializationCompleted();
+            return (currentVersion, installPath, showFirmware);
         }
     }
 }

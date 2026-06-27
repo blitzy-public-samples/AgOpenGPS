@@ -1,0 +1,243 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormEthernet"
+        x:DataType="vm:FormEthernetViewModel"
+        Title="Ethernet Configuration"
+        RequestedThemeVariant="Light"
+        Width="800" Height="340"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14">
+    <!-- [XPLAT] migrated from net48/WinForms FormEthernet.cs + FormEthernet.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms AgIO "Ethernet"
+        loopback-config dialog (Forms/FormEthernet.Designer.cs + Forms/FormEthernet.cs). This dialog
+        sets the four bytes of the UDP loopback address AgIO uses to reach AgOpenGPS over the local
+        loopback fabric, plus the master "UDP on" flag. NO redesign (AAP §0.3.3) — the layout mirrors
+        the WinForms designer exactly.
+
+        Parity mapping to FormEthernet.Designer.cs:
+          • Form Text "Ethernet Configuration"  -> Title="Ethernet Configuration".
+          • ClientSize 772 x 254 / FixedDialog   -> compact fixed Width=800 Height=340, CanResize="False"
+                                                    (the WinForms form had FormBorderStyle.FixedDialog
+                                                    and ControlBox=false — a fixed footprint).
+          • StartPosition CenterParent           -> WindowStartupLocation="CenterOwner".
+          • ShowInTaskbar = false                -> ShowInTaskbar="False".
+          • Form Font Tahoma                     -> FontFamily="Tahoma".
+          • groupBox3 Text "Linux Only !"        -> the titled Border on the left (header TextBlock).
+          • nudFirstIP=127 . nudSecndIP=255 .    -> four NumericUpDown octets (0..255, increment 1) in a
+            nudThirdIP=255 . nudFourthIP=255        horizontal row, separated by "." TextBlocks, reading
+            (label2/label3/label1 were the dots)    like the dotted-quad loopback address.
+          • cboxIsUDPOn "UDP Is On/Off" toggle   -> CheckBox x:Name="cboxIsUDPOn" Content="UDP On".
+          • label4 "Turn UDP On And Hit OK"      -> the hint TextBlock above the checkbox.
+          • btnSerialCancel (carried OK64, was   -> split per the agent-prompt into an explicit
+            the SAVE action) + Program.Restart()    btnSerialOK (accept/save) and btnSerialCancel
+                                                    (dismiss), in the bottom command bar.
+
+        Bound to FormEthernetViewModel via COMPILED bindings (x:DataType above):
+          • The four octets TwoWay-bind to LoopOne / LoopTwo / LoopThree / LoopFour (held as int by the
+            view-model precisely so they bind cleanly to the numeric editors / on-screen keypad; the
+            (byte) narrowing and the 0..255 clamp live in the view-model).
+          • The check box TwoWay-binds to IsUdpOn.
+          • OK/Cancel bind to SaveCommand / CancelCommand (RelayCommand). SaveCommand persists the bytes
+            + flag, then raises RequestConfirm / RequestRestart / RequestClose; CancelCommand raises
+            RequestClose without persisting. Those events are handled by the hosting window's code-behind
+            (FormEthernet.axaml.cs) — they are NOT a XAML concern.
+
+        On-screen numeric keypad: the former NumericUpDown.ShowKeypad(this) tap-to-edit behaviour is
+        presented by the code-behind via the Controls/NumericUpDownExtensions.ShowKeypad helper, which
+        finds these editors by their x:Name. The view therefore declares NO event attributes, staying
+        fully decoupled from that wiring (mirrors the sibling FormRadioChannel / FormSource convention).
+
+        Buttons render as TEXT, not the WinForms OK64 / Cancel64 bitmaps: the migrated AgIO.csproj
+        registers NO btnImages assets as <AvaloniaResource> (only GPS/AgOpenGPS.csproj does) and excludes
+        Properties/Resources.Designer.cs from compilation (System.Drawing purged). Referencing
+        avares://AgIO/btnImages/* here would not resolve and would render a broken image, so every
+        migrated AgIO view uses text affordances — consistent with the documented convention in the
+        sibling FormSource.axaml / FormRadioChannel.axaml / FormYes.axaml. See MIGRATION_DOCS/TRANSITION_MAP.md.
+
+        Theme: Light only — App.axaml pins RequestedThemeVariant="Light" (AgIO has no day/night toggle);
+        it is restated on the window for explicitness/parity, mirroring the sibling AgIO views.
+    -->
+    <Grid Margin="20" RowDefinitions="*,Auto" RowSpacing="16">
+
+        <!-- Row 0 — top content: the loopback-octet group (left) and the UDP toggle + hint (right). -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="24">
+
+            <!--
+                WinForms groupBox3 "Linux Only !" — a titled frame around the four octet editors.
+                Avalonia has no GroupBox primitive, so a Border + header TextBlock reproduces the look.
+            -->
+            <Border Grid.Column="0"
+                    BorderBrush="#40000000"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="16,10,16,16"
+                    VerticalAlignment="Center">
+                <StackPanel Spacing="8">
+
+                    <!-- groupBox3.Text "Linux Only !" (Tahoma 15.75 Bold). -->
+                    <TextBlock Text="Linux Only !"
+                               FontSize="16"
+                               FontWeight="Bold" />
+
+                    <!--
+                        The four loopback octets, separated by "." so the row reads as a dotted-quad
+                        address. Each editor is large and centre-aligned for touch (Phase 3). The
+                        spinner is shown but spin is disabled — the primary input is the on-screen
+                        keypad wired by the code-behind, exactly like the WinForms original which
+                        disabled the editable up/down box and used ShowKeypad.
+                    -->
+                    <StackPanel Orientation="Horizontal"
+                                VerticalAlignment="Center">
+
+                        <!-- nudFirstIP -> LoopOne (WinForms default 127). -->
+                        <NumericUpDown x:Name="nudFirstIP"
+                                       Width="118" Height="62"
+                                       Minimum="0" Maximum="255" Increment="1"
+                                       Value="{Binding LoopOne, Mode=TwoWay}"
+                                       FormatString="0"
+                                       ClipValueToMinMax="True"
+                                       ShowButtonSpinner="True"
+                                       AllowSpin="False"
+                                       TextAlignment="Center"
+                                       HorizontalContentAlignment="Center"
+                                       VerticalContentAlignment="Center"
+                                       FontSize="22" FontWeight="Bold"
+                                       AutomationProperties.Name="Loopback address octet 1" />
+
+                        <TextBlock Text="."
+                                   FontSize="28" FontWeight="Bold"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0" />
+
+                        <!-- nudSecndIP -> LoopTwo. -->
+                        <NumericUpDown x:Name="nudSecndIP"
+                                       Width="118" Height="62"
+                                       Minimum="0" Maximum="255" Increment="1"
+                                       Value="{Binding LoopTwo, Mode=TwoWay}"
+                                       FormatString="0"
+                                       ClipValueToMinMax="True"
+                                       ShowButtonSpinner="True"
+                                       AllowSpin="False"
+                                       TextAlignment="Center"
+                                       HorizontalContentAlignment="Center"
+                                       VerticalContentAlignment="Center"
+                                       FontSize="22" FontWeight="Bold"
+                                       AutomationProperties.Name="Loopback address octet 2" />
+
+                        <TextBlock Text="."
+                                   FontSize="28" FontWeight="Bold"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0" />
+
+                        <!-- nudThirdIP -> LoopThree. -->
+                        <NumericUpDown x:Name="nudThirdIP"
+                                       Width="118" Height="62"
+                                       Minimum="0" Maximum="255" Increment="1"
+                                       Value="{Binding LoopThree, Mode=TwoWay}"
+                                       FormatString="0"
+                                       ClipValueToMinMax="True"
+                                       ShowButtonSpinner="True"
+                                       AllowSpin="False"
+                                       TextAlignment="Center"
+                                       HorizontalContentAlignment="Center"
+                                       VerticalContentAlignment="Center"
+                                       FontSize="22" FontWeight="Bold"
+                                       AutomationProperties.Name="Loopback address octet 3" />
+
+                        <TextBlock Text="."
+                                   FontSize="28" FontWeight="Bold"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0" />
+
+                        <!-- nudFourthIP -> LoopFour. -->
+                        <NumericUpDown x:Name="nudFourthIP"
+                                       Width="118" Height="62"
+                                       Minimum="0" Maximum="255" Increment="1"
+                                       Value="{Binding LoopFour, Mode=TwoWay}"
+                                       FormatString="0"
+                                       ClipValueToMinMax="True"
+                                       ShowButtonSpinner="True"
+                                       AllowSpin="False"
+                                       TextAlignment="Center"
+                                       HorizontalContentAlignment="Center"
+                                       VerticalContentAlignment="Center"
+                                       FontSize="22" FontWeight="Bold"
+                                       AutomationProperties.Name="Loopback address octet 4" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Right group — the WinForms label4 hint stacked above the cboxIsUDPOn toggle. -->
+            <StackPanel Grid.Column="1"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="12">
+
+                <!-- label4 "Turn UDP On And Hit OK" (Tahoma 14.25 Bold), centred over the toggle. -->
+                <TextBlock Text="Turn UDP On And Hit OK"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxWidth="200" />
+
+                <!--
+                    cboxIsUDPOn -> IsUdpOn. The WinForms control was a button-appearance check box that
+                    toggled its caption between "UDP Is On"/"UDP Is Off"; the view-model exposes only the
+                    boolean IsUdpOn, so this is a large touch-friendly CheckBox whose checked state is the
+                    on/off indicator. Kept as a CheckBox (not a ToggleButton) to match the x:Name contract.
+                -->
+                <CheckBox x:Name="cboxIsUDPOn"
+                          Content="UDP On"
+                          IsChecked="{Binding IsUdpOn, Mode=TwoWay}"
+                          MinHeight="56"
+                          Padding="14,8"
+                          FontSize="18"
+                          FontWeight="Bold"
+                          HorizontalAlignment="Center"
+                          VerticalContentAlignment="Center"
+                          AutomationProperties.Name="UDP networking on" />
+            </StackPanel>
+        </Grid>
+
+        <!--
+            Row 1 — command bar. Cancel sits to the LEFT of OK so OK (the accept action) stays
+            right-aligned, mirroring the sibling AgIO views. OK = SaveCommand (persist + confirm +
+            restart + close); Cancel = CancelCommand (dismiss without persisting).
+        -->
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Spacing="12">
+
+            <!-- WinForms btnSerialCancel (dismiss). IsCancel maps Escape to this command. -->
+            <Button x:Name="btnSerialCancel"
+                    Content="Cancel"
+                    Command="{Binding CancelCommand}"
+                    IsCancel="True"
+                    Width="101" Height="64"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Close without saving"
+                    AutomationProperties.Name="Cancel" />
+
+            <!-- WinForms btnSerialCancel/OK64 accept action -> btnSerialOK. IsDefault maps Enter to OK. -->
+            <Button x:Name="btnSerialOK"
+                    Content="OK"
+                    Command="{Binding SaveCommand}"
+                    IsDefault="True"
+                    Width="101" Height="64"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Save the loopback configuration and restart AgIO"
+                    AutomationProperties.Name="OK" />
+        </StackPanel>
+    </Grid>
+</Window>

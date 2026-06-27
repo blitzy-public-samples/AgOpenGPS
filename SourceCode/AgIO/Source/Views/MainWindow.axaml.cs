@@ -477,20 +477,23 @@ namespace AgIO.Views
         }
 
         // [XPLAT] FormLoop toolStripSettings ("Advanced Settings") -> open the migrated Avalonia dialog.
-        // The view-model is dependency-free; its toggles write live to Settings.Default and Save persists,
-        // exactly as the WinForms FormAdvancedSettings checkbox handlers + btnClose did.
+        // FormAdvancedSettings is self-contained (single-ctor MVVM code-behind): it builds its own
+        // dependency-free view-model and wires RequestClose->Close, so it is constructed parameterless.
+        // Its toggles write live to Settings.Default and Save persists, exactly as the WinForms
+        // FormAdvancedSettings checkbox handlers + btnClose did.
         private async void OnShowAdvancedSettingsClick(object sender, RoutedEventArgs e)
         {
-            var dialog = new FormAdvancedSettings(new FormAdvancedSettingsViewModel());
+            var dialog = new FormAdvancedSettings();
             await dialog.ShowDialog(this);
         }
 
-        // [XPLAT] FormLoop isobusToolStripMenuItem -> open the migrated Avalonia ISOBUS dialog. The
-        // view-model takes the optional cross-platform error presenter (the same instance the serial
-        // service uses) so its Windows-only task-controller notices surface through the shared channel.
+        // [XPLAT] FormLoop isobusToolStripMenuItem -> open the migrated Avalonia ISOBUS dialog.
+        // FormISOBUS takes the optional cross-platform error presenter (the same instance the serial
+        // service uses) and builds its own view-model from it, so its Windows-only task-controller
+        // notices surface through the shared channel.
         private async void OnShowIsobusClick(object sender, RoutedEventArgs e)
         {
-            var dialog = new FormISOBUS(new FormISOBUSViewModel(RegistrySettings.ErrorPresenter));
+            var dialog = new FormISOBUS(RegistrySettings.ErrorPresenter);
             await dialog.ShowDialog(this);
         }
 

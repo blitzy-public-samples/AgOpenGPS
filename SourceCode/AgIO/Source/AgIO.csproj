@@ -71,13 +71,17 @@
     <Compile Remove="Properties\Resources.Designer.cs" />
 
     <!-- [XPLAT] Services/CommCoordinatorService.cs (the AAP §0.3.2 "Facade" comms aggregate that owns and
-         wires the four extracted comm services Udp/Nmea/Serial/Ntrip) is now COMPILED: the AgIO live
-         GPS-Data dialog view-model (Views/FormGPSDataViewModel.cs) consumes it as a constructor-injected
-         dependency, reading the live parsed NMEA/GPS state through comm.Nmea. The facade is therefore an
-         adopted, referenced type rather than a dead parallel orchestration path, which resolves the earlier
-         AGIO-1 deferral that had excluded it while it had zero references. The file is now picked up by the
-         SDK's default compile glob (no <Compile Remove>); no explicit item is needed.
-         See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+         wires the four extracted comm services Udp/Nmea/Serial/Ntrip for the AgIO composition root) is now
+         COMPILED. It was previously excluded while it had zero references (review finding AGIO-1, to avoid a
+         dead parallel orchestration path); that deferral has ended now that two migrated dialog view-models
+         consume it: Views/FormGPSDataViewModel.cs reads the live parsed NMEA/GPS state through comm.Nmea, and
+         Views/FormUDPViewModel.cs takes it via its AAP-mandated constructor — FormUDPViewModel(CommCoordinatorService) —
+         reading scan-reply/endpoint/module-status state through it instead of the removed FormLoop "mf"
+         back-reference. Its own dependencies (NmeaService/UdpLoopbackService/SerialCommService/NtripService and
+         the AgOpenGPS.Core IPlatformServices/IErrorPresenter interfaces) are all present and compiled, so it is
+         picked up by the SDK's default compile glob (no <Compile Remove>; no explicit item needed) and including
+         it is behaviour-neutral for the loopback/NTRIP/scan comm path. See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+
   </ItemGroup>
 
 </Project>

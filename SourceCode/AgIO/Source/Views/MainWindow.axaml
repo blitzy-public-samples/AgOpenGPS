@@ -1,31 +1,69 @@
-<!-- [XPLAT] migrated from net48/WinForms Forms/FormLoop (shell + status display) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!-- [XPLAT] migrated from net48/WinForms FormLoop.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
         x:Class="AgIO.Views.MainWindow"
-        Width="430" Height="560"
-        CanResize="false"
+        x:DataType="vm:MainWindowViewModel"
+        Width="440" Height="660"
+        CanResize="False"
         WindowStartupLocation="CenterScreen"
+        RequestedThemeVariant="Light"
+        Background="#FFDCDCDC"
         FontFamily="Tahoma"
         FontSize="13"
         Title="AgIO">
-    <!--
-        [XPLAT] Avalonia reimplementation of the WinForms FormLoop main shell. This is the AgIO
-        "comms hub" status window: it hosts the extracted UDP-loopback / serial / NTRIP / NMEA transport
-        services (instantiated and wired in the code-behind composition root) and surfaces their live
-        status. Module connection indicators reproduce the FormLoop DoHelloAlarmLogic / SetModulesOnOff
-        colours (LimeGreen talking / Red silent) via the App.axaml status brushes; the one-second scan
-        loop in the code-behind drives every readout below. The self-contained dialogs (Advanced Settings,
-        ISOBUS, PGN Guide) are reachable from the footer command bar; the remaining transport-configuration
-        dialog surface (Ethernet/NTRIP/Serial/Radio/Profiles/...), which needs the service-peer plumbing, is
-        reimplemented in a later UI wiring checkpoint tracked in MIGRATION_DOCS/TRANSITION_MAP.md.
-    -->
-    <Grid Margin="10" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
 
-        <!-- Module connection status row (GPS / IMU / Steer / Machine) -->
-        <UniformGrid Grid.Row="0" Columns="4" Height="92">
+    <!--
+        [XPLAT] Avalonia reimplementation of the WinForms FormLoop main shell (FormLoop.Designer.cs ~1261L
+        layout source; FormLoop.cs behaviour source). This is the AgIO "comms hub" status window assigned to
+        desktop.MainWindow by App.axaml.cs. It hosts the extracted UDP-loopback / serial / NTRIP / NMEA
+        transport services (instantiated and wired in the code-behind composition root, MainWindow.axaml.cs)
+        and surfaces their live status.
+
+        DATA-FLOW CONTRACT (verified against App.axaml + MainWindow.axaml.cs):
+          * App.axaml.cs sets `desktop.MainWindow = new MainWindow();` WITHOUT a DataContext, so the
+            code-behind is the composition root and drives every live readout DIRECTLY (imperative
+            .Text / .Background / .IsVisible) through the named elements below. The one-second
+            DispatcherTimer scan loop in the code-behind mirrors FormLoop's oneSecondLoopTimer_Tick.
+          * Code-behind-OWNED elements therefore carry an x:Name + a parity initial value and are NOT
+            data-bound (binding them would fight the imperative updates). Module status colours use the
+            {DynamicResource Aog*Brush} keys from App.axaml as their initial value; the code-behind then
+            calls GetBrush("AogModuleOkBrush"/"AogModuleAlarmBrush"/"AogNtripActiveBrush"/"AogNtripIdleBrush").
+          * Non-conflicting controls (action buttons, module-enable checkboxes, the advanced flyout and its
+            readouts, plus the To-GPS / Watch / RTCM readouts that have no code-behind owner) bind to
+            MainWindowViewModel. AvaloniaUseCompiledBindingsByDefault=true + x:DataType means every binding
+            is compiled against the view-model, so an unknown member is a BUILD error. FallbackValue is set
+            on these so they render correct parity placeholders under the CP2 null-DataContext shell and
+            light up automatically once a DataContext is wired in a later checkpoint.
+
+        PARITY / SCOPE NOTE: the full configuration-dialog surface (Ethernet / NTRIP / Serial / Radio /
+        Profiles / Comm-settings / monitors) is reimplemented in a later UI checkpoint and is tracked in
+        MIGRATION_DOCS/TRANSITION_MAP.md. Those launchers appear in the bottom menu (parity to FormLoop's two
+        statusStrip drop-downs); CP2 delivers the runnable hub, its live status display, and the GPS-data /
+        PGN reference dialog (the one dialog whose Avalonia view exists in CP2). Per the migrated AgIO.csproj,
+        NO btnImages are registered as <AvaloniaResource> (only GPS/AgOpenGPS.csproj does) and
+        System.Drawing / Properties.Resources are unavailable, so affordances are rendered as TEXT, not icons.
+    -->
+
+    <Grid Margin="10" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto">
+
+        <!-- Row 0 — Top bar: GPS-data/PGN dialog (the one wired dialog) + Exit. -->
+        <!-- Window minimise is provided by the OS title bar (no custom minimise handler exists in CP2). -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
+            <Button Grid.Column="0" Content="GPS Data" Click="OnShowPgnGuideClick"
+                    MinHeight="40" Padding="14,4" ToolTip.Tip="Show the PGN reference guide (GPS data)" />
+            <Button Grid.Column="2" Content="Exit" Command="{Binding ExitCommand}"
+                    MinWidth="72" MinHeight="40" Padding="14,4" ToolTip.Tip="Exit AgIO" />
+        </Grid>
+
+        <!-- Row 1 — Module connection status (GPS / IMU / Steer / Machine). -->
+        <!-- borderGPS/IMU/Steer/Machine.Background is driven by the code-behind DoHelloAlarmLogic mirror; -->
+        <!-- the {DynamicResource AogModuleAlarmBrush} here is the parity "silent/red" initial state. -->
+        <UniformGrid Grid.Row="1" Columns="4" Height="90">
 
             <Border x:Name="borderGPS" Margin="3" CornerRadius="6" BorderThickness="1"
-                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}">
+                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}"
+                    ToolTip.Tip="GPS module connection status">
                 <StackPanel Margin="4" VerticalAlignment="Center" HorizontalAlignment="Center">
                     <TextBlock Text="GPS" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" />
                     <TextBlock x:Name="lblGPS1Comm" Text="" FontSize="11" HorizontalAlignment="Center" Foreground="White" />
@@ -33,7 +71,8 @@
             </Border>
 
             <Border x:Name="borderIMU" Margin="3" CornerRadius="6" BorderThickness="1"
-                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}">
+                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}"
+                    ToolTip.Tip="IMU module connection status">
                 <StackPanel Margin="4" VerticalAlignment="Center" HorizontalAlignment="Center">
                     <TextBlock Text="IMU" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" />
                     <TextBlock x:Name="lblIMUComm" Text="" FontSize="11" HorizontalAlignment="Center" Foreground="White" />
@@ -41,7 +80,8 @@
             </Border>
 
             <Border x:Name="borderSteer" Margin="3" CornerRadius="6" BorderThickness="1"
-                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}">
+                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}"
+                    ToolTip.Tip="Steer module connection status">
                 <StackPanel Margin="4" VerticalAlignment="Center" HorizontalAlignment="Center">
                     <TextBlock Text="Steer" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" />
                     <TextBlock x:Name="lblMod1Comm" Text="" FontSize="11" HorizontalAlignment="Center" Foreground="White" />
@@ -49,7 +89,8 @@
             </Border>
 
             <Border x:Name="borderMachine" Margin="3" CornerRadius="6" BorderThickness="1"
-                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}">
+                    BorderBrush="#80000000" Background="{DynamicResource AogModuleAlarmBrush}"
+                    ToolTip.Tip="Machine module connection status">
                 <StackPanel Margin="4" VerticalAlignment="Center" HorizontalAlignment="Center">
                     <TextBlock Text="Machine" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" />
                     <TextBlock x:Name="lblMod2Comm" Text="" FontSize="11" HorizontalAlignment="Center" Foreground="White" />
@@ -58,60 +99,133 @@
 
         </UniformGrid>
 
-        <!-- GPS position / data-rate readouts -->
-        <Border Grid.Row="1" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
-            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+        <!-- Row 2 — Module enable check-boxes (IMU / Steer / Machine; GPS has no enable toggle in FormLoop). -->
+        <!-- Aligned under their status columns; always visible so a disconnected module can still be enabled. -->
+        <UniformGrid Grid.Row="2" Columns="4" Margin="0,4,0,0">
+            <TextBlock /> <!-- spacer under GPS (no enable toggle) -->
+            <CheckBox Content="IMU" HorizontalAlignment="Center"
+                      IsChecked="{Binding IsImuModuleEnabled, FallbackValue=False}" />
+            <CheckBox Content="Steer" HorizontalAlignment="Center"
+                      IsChecked="{Binding IsSteerModuleEnabled, FallbackValue=False}" />
+            <CheckBox Content="Machine" HorizontalAlignment="Center"
+                      IsChecked="{Binding IsMachineModuleEnabled, FallbackValue=False}" />
+        </UniformGrid>
+
+        <!-- Row 3 — GPS position / traffic / watchdog / RTCM readouts. -->
+        <!-- lblFromGPS / lblCurrentLat / lblCurrentLon are code-behind-owned; To-GPS / Watch / RTCM bind to the VM. -->
+        <Border Grid.Row="3" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
+            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="From GPS:" Margin="0,0,8,2" />
                 <TextBlock Grid.Row="0" Grid.Column="1" x:Name="lblFromGPS" Text="---" FontWeight="Bold" />
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Latitude:" Margin="0,0,8,2" />
-                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="lblCurrentLat" Text="" />
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Longitude:" Margin="0,0,8,0" />
-                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="lblCurrentLon" Text="" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="To GPS:" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ToGpsText, FallbackValue=---}" FontWeight="Bold" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Latitude:" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="lblCurrentLat" Text="" />
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Longitude:" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="lblCurrentLon" Text="" />
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Watch:" Margin="0,0,8,2" />
+                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding WatchText, FallbackValue=0}" />
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="RTCM:" Margin="0,0,8,0" />
+                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding RtcmMessagesText, FallbackValue=---}" />
             </Grid>
         </Border>
 
-        <!-- NTRIP status -->
-        <Border Grid.Row="2" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
-            <Grid ColumnDefinitions="Auto,*">
-                <Border Grid.Column="0" x:Name="lblNTRIPBytes" MinWidth="60" Padding="6,2" CornerRadius="4"
-                        Background="Transparent" VerticalAlignment="Center">
+        <!-- Row 4 — NTRIP byte-activity indicator + start/stop. -->
+        <!-- lblNTRIPBytes.Background + lblNTRIPBytesText/.lblNTRIPMessages.Text are code-behind-owned -->
+        <!-- (CornflowerBlue active / DarkOrange idle / Transparent off). The toggle binds to the VM command. -->
+        <Border Grid.Row="4" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Grid.Column="0" x:Name="lblNTRIPBytes" MinWidth="64" Padding="6,2" CornerRadius="4"
+                        Background="Transparent" BorderThickness="1" BorderBrush="#40000000" VerticalAlignment="Center">
                     <TextBlock x:Name="lblNTRIPBytesText" Text="NTRIP" HorizontalAlignment="Center" />
                 </Border>
-                <TextBlock Grid.Column="1" x:Name="lblNTRIPMessages" Margin="8,0,0,0" Text="" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" x:Name="lblNTRIPMessages" Margin="8,0,8,0" Text="" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <Button Grid.Column="2" Content="On/Off" Command="{Binding StartStopNtripCommand}"
+                        MinHeight="36" Padding="12,4" ToolTip.Tip="Start / stop the NTRIP client" />
             </Grid>
         </Border>
 
-        <!-- Network / IP -->
-        <Border Grid.Row="3" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
+        <!-- Row 5 — Local IP list (code-behind-owned; "Off" until the network scan runs). -->
+        <Border Grid.Row="5" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
             <Grid ColumnDefinitions="Auto,*">
                 <TextBlock Grid.Column="0" Text="IP:" Margin="0,0,8,0" VerticalAlignment="Top" />
                 <TextBlock Grid.Column="1" x:Name="lblIP" Text="Off" TextWrapping="Wrap" />
             </Grid>
         </Border>
 
-        <!-- Serial ports list -->
-        <Border Grid.Row="4" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
+        <!-- Row 6 — Primary command buttons (bind to VM RelayCommands; light up once a DataContext is wired). -->
+        <UniformGrid Grid.Row="6" Columns="3" Margin="0,8,0,0">
+            <Button Content="Run AOG" Command="{Binding StartAogCommand}" MinHeight="44" Margin="3"
+                    ToolTip.Tip="Launch AgOpenGPS" />
+            <Button Content="GPS_Out" Command="{Binding StartGpsOutCommand}" MinHeight="44" Margin="3"
+                    ToolTip.Tip="Launch the GPS_Out relay" />
+            <Button Content="Advanced" Command="{Binding ToggleAdvancedViewCommand}" MinHeight="44" Margin="3"
+                    ToolTip.Tip="Toggle the advanced module readouts" />
+        </UniformGrid>
+
+        <!-- Row 7 — Serial-port list (code-behind-owned; flexible/scrollable). -->
+        <Border Grid.Row="7" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="Serial Ports" FontWeight="Bold" Margin="0,0,0,4" />
+                <TextBlock DockPanel.Dock="Top" Text="Com Ports:" FontWeight="Bold" Margin="0,0,0,4" />
                 <ScrollViewer>
                     <TextBlock x:Name="lblSerialPorts" Text="None" TextWrapping="Wrap" />
                 </ScrollViewer>
             </DockPanel>
         </Border>
 
-        <!-- [XPLAT] Footer: access to the self-contained AgIO dialogs, reproducing the FormLoop
-             toolStripDropDownButton menu items "Advanced Settings" (toolStripSettings) and "ISOBUS"
-             (isobusToolStripMenuItem), alongside the PGN reference guide. These three dialogs are
-             dependency-free / safely constructible, so they are wired here directly (the same
-             code-behind ShowDialog convention as PGN Guide). The remaining transport-configuration
-             dialog surface (UDP / NTRIP / Radio / Source / Ethernet / Serial-pass / monitors) requires
-             the service-peer plumbing tracked as the later UI wiring checkpoint in
-             MIGRATION_DOCS/TRANSITION_MAP.md. -->
-        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0" Spacing="6">
-            <Button Content="Advanced Settings" Click="OnShowAdvancedSettingsClick" />
-            <Button Content="ISOBUS" Click="OnShowIsobusClick" />
-            <Button Content="PGN Guide" Click="OnShowPgnGuideClick" />
-        </StackPanel>
+        <!-- Row 8 — Advanced readouts flyout. Collapsed by default; IsVisible binds to the VM toggle -->
+        <!-- (FallbackValue=False keeps it hidden under the CP2 null-DataContext shell). Parity to the -->
+        <!-- FormLoop btnSlide-revealed advanced panel; the readouts have no code-behind owner so they bind. -->
+        <Border Grid.Row="8" Margin="0,8,0,0" Padding="8" CornerRadius="6" BorderThickness="1" BorderBrush="#40000000"
+                IsVisible="{Binding IsAdvancedView, FallbackValue=False}">
+            <StackPanel>
+                <TextBlock Text="Advanced" FontWeight="Bold" Margin="0,0,0,4" />
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Steer Angle:" Margin="0,0,8,2" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SteerAngleText, FallbackValue=-}" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="WAS Counts:" Margin="0,0,8,2" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding WasCountsText, FallbackValue=-}" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Switch Status:" Margin="0,0,8,2" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SwitchStatusText, FallbackValue=-}" />
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Ping:" Margin="0,0,8,2" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PingText, FallbackValue=-}" />
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Station ID:" Margin="0,0,8,2" />
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding StationIdText, FallbackValue=-}" />
+                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Mount:" Margin="0,0,8,0" />
+                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding MountText, FallbackValue=-}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Row 9 — Bottom menu (parity to FormLoop's two statusStrip drop-downs). The launchers open the -->
+        <!-- configuration dialogs reimplemented in a later UI checkpoint (see MIGRATION_DOCS/TRANSITION_MAP.md). -->
+        <Menu Grid.Row="9" Margin="0,6,0,0">
+            <MenuItem Header="Settings">
+                <!-- [XPLAT] Advanced Settings + ISOBUS are self-contained, dependency-free dialogs whose
+                     Avalonia views already exist, so they are wired directly to the code-behind ShowDialog
+                     handlers (OnShowAdvancedSettingsClick / OnShowIsobusClick), the same convention as the
+                     GPS Data / PGN Guide launcher. The remaining launchers stay unwired until the later
+                     UI wiring checkpoint adds their service-peer plumbing (see MIGRATION_DOCS/TRANSITION_MAP.md). -->
+                <MenuItem Header="Advanced Settings" Click="OnShowAdvancedSettingsClick" />
+                <MenuItem Header="Profiles" />
+                <MenuItem Header="Log Viewer" />
+                <MenuItem Header="UDP Monitor" />
+                <MenuItem Header="Serial Monitor" />
+                <MenuItem Header="AgDiag" />
+                <MenuItem Header="Module Simulator" />
+                <MenuItem Header="Linux Users" />
+                <MenuItem Header="Device Manager" />
+                <MenuItem Header="ISOBUS" Click="OnShowIsobusClick" />
+            </MenuItem>
+            <MenuItem Header="Sources">
+                <MenuItem Header="Comm Settings (GPS)" />
+                <MenuItem Header="Ethernet" />
+                <MenuItem Header="NTRIP" />
+                <MenuItem Header="Radio" />
+                <MenuItem Header="Serial Port" />
+                <MenuItem Header="UDP" />
+            </MenuItem>
+        </Menu>
 
     </Grid>
 </Window>

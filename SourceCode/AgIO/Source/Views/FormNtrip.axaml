@@ -1,0 +1,515 @@
+<!-- [XPLAT] migrated from net48/WinForms FormNtrip.cs + FormNtrip.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        xmlns:sys="using:System"
+        x:Class="AgIO.Views.FormNtrip"
+        x:DataType="vm:FormNtripViewModel"
+        Title="NTRIP Client Settings"
+        RequestedThemeVariant="Light"
+        Background="WhiteSmoke"
+        Width="784" Height="704"
+        MinWidth="720" MinHeight="600"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+
+    <!-- [XPLAT] migrated from net48/WinForms FormNtrip.cs + FormNtrip.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms AgIO "NTRIP Client
+        Settings" dialog (Forms/FormNtrip.Designer.cs + Forms/FormNtrip.cs + FormNtrip.resx, WinForms
+        class AgIO.FormNtrip : Form). Per AAP §0.3.3 this is a visual/behavioural PARITY rebuild of the
+        current Windows Forms look — never a redesign. It configures the NTRIP RTK-correction caster:
+        broadcaster URL/IP/port, credentials, mountpoint + source-table picker, GGA interval + manual
+        fix, TCP/HTTP toggles, RTCM packet size, send-to-serial/UDP forwarding, and the local-IP list.
+
+        Bound via COMPILED bindings (x:DataType="vm:FormNtripViewModel") to FormNtripViewModel. The
+        view-model owns ALL behaviour — every setNTRIP_* settings read/write, the source-table fetch,
+        the DNS IP resolution, the mutual-exclusion of the serial/UDP routing, and the
+        reconfigure/restart decision. This view only data-binds; it declares no event handlers. The
+        dialog's window/dialog/lifecycle concerns (RequestClose/RequestConfirm/RequestTimedMessage/
+        RequestPickSource/RequestRestart, the on-screen keyboard, and the current-fix display timer) are
+        the code-behind's responsibility (FormNtrip.axaml.cs), exactly mirroring the sibling AgIO views.
+
+        Parity mapping (WinForms FormNtrip.Designer.cs  ->  Avalonia):
+          • Form Text "NTRIP Client Settings"          -> Title="NTRIP Client Settings".
+          • ClientSize 767x648; BackColor WhiteSmoke    -> Width/Height 784x704 (+chrome), Background="WhiteSmoke".
+          • StartPosition CenterParent                  -> WindowStartupLocation="CenterOwner".
+          • Form Font Tahoma                             -> FontFamily="Tahoma" FontSize="14.25".
+          • TabControl (tabPage1/2/3)                    -> TabControl with three TabItems (Source/Position/
+                                                            Advanced); disabled while NTRIP is off
+                                                            (WinForms "if (!cboxIsNTRIPOn.Checked)
+                                                            tabControl1.Enabled = false") via
+                                                            IsEnabled="{Binding IsNtripOn}".
+          • cboxIsNTRIPOn "NTRIP On"                     -> bottom-bar CheckBox (IsChecked + ToggleNtripOnCommand).
+          • btnSerialOK (OK64) / btnSerialCancel (Cancel64) -> "OK" / "Cancel" text buttons (Save/Cancel commands).
+          • btnHelp (Help)                               -> "Help" text button; the WinForms handler was a
+                                                            no-op (the Process.Start call is commented out),
+                                                            so there is no command — kept for visual parity.
+
+        Buttons render as TEXT, not the WinForms OK64 / Cancel64 / Help bitmaps: the migrated AgIO.csproj
+        registers NO btnImages assets as <AvaloniaResource> (only GPS/AgOpenGPS.csproj does) and excludes
+        Properties/Resources.Designer.cs from compilation (System.Drawing purged). Referencing
+        avares://AgIO/btnImages/* here would NOT resolve and would render a broken image — so, consistent
+        with EVERY sibling AgIO view (FormSource / FormISOBUS / FormProfiles / FormYes / FormPGN /
+        FormRadioChannel), affordances are text. See MIGRATION_DOCS/TRANSITION_MAP.md.
+
+        Theme: Light only — App.axaml pins RequestedThemeVariant="Light" (AgIO has no day/night toggle);
+        restated here for explicitness (mirrors FormSource / FormISOBUS / FormProfiles).
+    -->
+    <DockPanel Margin="12" LastChildFill="True">
+
+        <!--
+            Bottom command bar (WinForms btnHelp + cboxIsNTRIPOn + btnSerialCancel + btnSerialOK, all
+            anchored along the bottom of the form). Three columns: Help on the left, the "NTRIP On"
+            enable toggle centred, and Cancel + OK on the right. The enable toggle two-way binds
+            IsChecked AND fires ToggleNtripOnCommand (the WinForms cboxIsNTRIPOn_Click persisted the
+            state, cleared the conflicting radio/serial-pass sources, and restarted AgIO — ToggleButton
+            sets IsChecked before invoking Command, so the command reads the updated IsNtripOn). IsDefault
+            maps Enter to OK; IsCancel maps Escape to Cancel. The actual window close/restart is performed
+            by the code-behind in response to the view-model's RequestClose / RequestRestart intents.
+        -->
+        <Grid DockPanel.Dock="Bottom"
+              ColumnDefinitions="Auto,*,Auto"
+              Margin="0,12,0,0">
+
+            <!-- WinForms btnHelp (Help bitmap; the click handler body is commented out -> a no-op). Kept
+                 as a text button for visual parity; it intentionally has no Command (matching the original
+                 no-op) so it never performs an unimplemented action. -->
+            <Button x:Name="btnHelp"
+                    Grid.Column="0"
+                    Content="Help"
+                    Width="96" Height="64"
+                    MinWidth="64" MinHeight="44"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="NTRIP help"
+                    AutomationProperties.Name="Help" />
+
+            <!-- WinForms cboxIsNTRIPOn "NTRIP On" (Appearance=Button toggle). CheckBox per the agent
+                 prompt; IsChecked two-way binds IsNtripOn and Command fires ToggleNtripOnCommand so
+                 toggling NTRIP persists + restarts exactly as the original. -->
+            <CheckBox x:Name="cboxIsNTRIPOn"
+                      Grid.Column="1"
+                      Content="NTRIP On"
+                      IsChecked="{Binding IsNtripOn}"
+                      Command="{Binding ToggleNtripOnCommand}"
+                      FontSize="16" FontWeight="Bold"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      AutomationProperties.Name="Enable NTRIP client" />
+
+            <!-- Right group: Cancel + OK (WinForms btnSerialCancel @left of btnSerialOK). -->
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="12"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
+
+                <!-- WinForms btnSerialCancel (Cancel64; DialogResult.Cancel): dismiss without saving. -->
+                <Button x:Name="btnSerialCancel"
+                        Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True"
+                        Width="105" Height="64"
+                        MinWidth="64" MinHeight="44"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Close without saving"
+                        AutomationProperties.Name="Cancel" />
+
+                <!-- WinForms btnSerialOK (OK64; DialogResult.OK): persist all NTRIP settings then
+                     reconfigure-in-place or restart. IsDefault maps the Enter key. -->
+                <Button x:Name="btnSerialOK"
+                        Content="OK"
+                        Command="{Binding SaveCommand}"
+                        IsDefault="True"
+                        Width="105" Height="64"
+                        MinWidth="64" MinHeight="44"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Save NTRIP settings"
+                        AutomationProperties.Name="OK" />
+            </StackPanel>
+        </Grid>
+
+        <!--
+            WinForms tabControl1 (tabPage1 "Source", tabPage2 "Position", tabPage3 "Advanced").
+            Disabled while NTRIP is off, reproducing FormNtrip_Load's
+            "if (!cboxIsNTRIPOn.Checked) tabControl1.Enabled = false" via IsEnabled binding.
+        -->
+        <TabControl x:Name="tabControl1"
+                    IsEnabled="{Binding IsNtripOn}">
+
+            <!-- =====================================================================================
+                 TAB 1 — "Source" (WinForms tabPage1): host/local-IP info, broadcaster URL/IP/port,
+                 credentials, mountpoint + source-table fetch.
+                 ===================================================================================== -->
+            <TabItem Header="Source">
+                <Grid Margin="10"
+                      ColumnDefinitions="*,16,*"
+                      RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*">
+
+                    <!-- Left col, row 0: WinForms label14 "Host" + tboxHostName (read-only host name). -->
+                    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Host" FontWeight="Bold" VerticalAlignment="Center" Width="48" />
+                        <TextBox x:Name="tboxHostName"
+                                 Text="{Binding HostName, Mode=OneWay}"
+                                 IsReadOnly="True"
+                                 Background="Gainsboro"
+                                 BorderThickness="0"
+                                 MinWidth="200"
+                                 VerticalContentAlignment="Center"
+                                 AutomationProperties.Name="Local host name" />
+                    </StackPanel>
+
+                    <!-- Right col, rows 0-1: WinForms label3 "Username" + tboxUserName (masked) + reveal,
+                         and label12 "Password" + tboxUserPassword (masked) + reveal. Both fields were
+                         PasswordChar='*' in the original; the "(o)" ToggleButtons reproduce
+                         btnPassUsername/btnPassPassword by toggling each box's RevealPassword. -->
+                    <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Vertical" Spacing="2">
+                        <TextBlock Text="Username" FontWeight="Bold" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBox x:Name="tboxUserName"
+                                     Text="{Binding UserName}"
+                                     PasswordChar="*"
+                                     RevealPassword="{Binding #togUserName.IsChecked, Mode=OneWay}"
+                                     Width="252"
+                                     VerticalContentAlignment="Center"
+                                     AutomationProperties.Name="NTRIP user name" />
+                            <ToggleButton x:Name="togUserName"
+                                          Content="(o)"
+                                          Width="56" MinHeight="40"
+                                          VerticalAlignment="Center"
+                                          ToolTip.Tip="Show or hide the user name"
+                                          AutomationProperties.Name="Reveal user name" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Vertical" Spacing="2" Margin="0,8,0,0">
+                        <TextBlock Text="Password" FontWeight="Bold" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBox x:Name="tboxUserPassword"
+                                     Text="{Binding UserPassword}"
+                                     PasswordChar="*"
+                                     RevealPassword="{Binding #togUserPassword.IsChecked, Mode=OneWay}"
+                                     Width="252"
+                                     VerticalContentAlignment="Center"
+                                     AutomationProperties.Name="NTRIP password" />
+                            <ToggleButton x:Name="togUserPassword"
+                                          Content="(o)"
+                                          Width="56" MinHeight="40"
+                                          VerticalAlignment="Center"
+                                          ToolTip.Tip="Show or hide the password"
+                                          AutomationProperties.Name="Reveal password" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Left col, rows 1-2: WinForms label10 "IP" + listboxIP (the local IPv4 list). The
+                         original list was Enabled=false (display-only, Gainsboro); reproduced as a
+                         non-interactive, readable info list bound to LocalIpList. -->
+                    <StackPanel Grid.Row="1" Grid.Column="0" Grid.RowSpan="2" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                        <TextBlock Text="IP" FontWeight="Bold" VerticalAlignment="Top" Margin="0,6,0,0" Width="48" />
+                        <ListBox x:Name="listboxIP"
+                                 ItemsSource="{Binding LocalIpList}"
+                                 IsHitTestVisible="False"
+                                 Focusable="False"
+                                 Background="Gainsboro"
+                                 MinWidth="221" Height="116"
+                                 FontSize="16"
+                                 AutomationProperties.Name="Local IP addresses" />
+                    </StackPanel>
+
+                    <!-- Right col, row 2: WinForms btnGetSourceTable "Get Source Table" -> GetSourceTableCommand
+                         (fetches the caster source-table and opens the mountpoint picker). -->
+                    <Button x:Name="btnGetSourceTable"
+                            Grid.Row="2" Grid.Column="2"
+                            Content="Get Source Table"
+                            Command="{Binding GetSourceTableCommand}"
+                            Width="235" Height="52"
+                            MinHeight="44"
+                            HorizontalAlignment="Left"
+                            Margin="0,8,0,0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            ToolTip.Tip="Fetch the caster mountpoint source-table"
+                            AutomationProperties.Name="Get source table" />
+
+                    <!-- Full-width row 3: WinForms label4 "Enter Broadcaster URL or IP:". -->
+                    <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
+                               Text="Enter Broadcaster URL or IP:"
+                               FontSize="15.75"
+                               VerticalAlignment="Bottom"
+                               Margin="0,14,0,2" />
+
+                    <!-- Left col, row 4: WinForms tboxEnterURL (broadcaster URL) -> CasterUrl. -->
+                    <TextBox x:Name="tboxEnterURL"
+                             Grid.Row="4" Grid.Column="0"
+                             Text="{Binding CasterUrl}"
+                             FontSize="15.75"
+                             VerticalContentAlignment="Center"
+                             AutomationProperties.Name="Broadcaster URL or IP" />
+
+                    <!-- Right col, row 4: WinForms label13 "Mount:" + tboxMount -> Mount. -->
+                    <StackPanel Grid.Row="4" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Mount:" FontSize="15.75" VerticalAlignment="Center" />
+                        <TextBox x:Name="tboxMount"
+                                 Text="{Binding Mount}"
+                                 FontSize="15.75"
+                                 MinWidth="244"
+                                 VerticalContentAlignment="Center"
+                                 AutomationProperties.Name="Mountpoint" />
+                    </StackPanel>
+
+                    <!-- Left col, row 5: WinForms label5 "IP:" + tboxCasterIP (read-only resolved caster IP)
+                         -> CasterIp. -->
+                    <StackPanel Grid.Row="5" Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,8,0,0">
+                        <TextBlock Text="IP:" FontSize="15.75" VerticalAlignment="Center" />
+                        <TextBox x:Name="tboxCasterIP"
+                                 Text="{Binding CasterIp}"
+                                 IsReadOnly="True"
+                                 FontSize="15.75"
+                                 MinWidth="180"
+                                 TextAlignment="Center"
+                                 VerticalContentAlignment="Center"
+                                 AutomationProperties.Name="Resolved caster IP" />
+                    </StackPanel>
+
+                    <!-- Right col, row 5: WinForms label7 "Caster Port:" + nudCasterPort -> CasterPort. -->
+                    <StackPanel Grid.Row="5" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,8,0,0">
+                        <TextBlock Text="Caster Port:" FontSize="15.75" VerticalAlignment="Center" />
+                        <NumericUpDown x:Name="nudCasterPort"
+                                       Value="{Binding CasterPort}"
+                                       Minimum="1" Maximum="65535"
+                                       Increment="1"
+                                       FormatString="0"
+                                       ClipValueToMinMax="True"
+                                       Width="150"
+                                       FontSize="18" FontWeight="Bold"
+                                       AutomationProperties.Name="Caster port" />
+                    </StackPanel>
+
+                    <!-- Left col, row 6: WinForms btnGetIP "Verify URL or IP" -> FindIpCommand (DNS resolve). -->
+                    <Button x:Name="btnGetIP"
+                            Grid.Row="6" Grid.Column="0"
+                            Content="Verify URL or IP"
+                            Command="{Binding FindIpCommand}"
+                            Width="204" Height="52"
+                            MinHeight="44"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Margin="0,10,0,0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            ToolTip.Tip="Resolve the broadcaster URL/IP to a caster IP"
+                            AutomationProperties.Name="Verify URL or IP" />
+
+                    <!-- Right col, row 6: WinForms label6 "Default: 2101" hint under the caster port. -->
+                    <TextBlock Grid.Row="6" Grid.Column="2"
+                               Text="Default: 2101"
+                               VerticalAlignment="Top"
+                               Margin="0,12,0,0" />
+                </Grid>
+            </TabItem>
+
+            <!-- =====================================================================================
+                 TAB 2 — "Position" (WinForms tabPage2): GPS-forwarding routing (serial/UDP), the manual
+                 fix used to build the GGA the client sends to the caster, the GGA send interval, and a
+                 read-only view of the current live GPS fix.
+                 ===================================================================================== -->
+            <TabItem Header="Position">
+                <Grid Margin="10"
+                      ColumnDefinitions="*,16,*"
+                      RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+
+                    <!-- Right col header, row 0: WinForms label1 "Send To GPS Using:". -->
+                    <TextBlock Grid.Row="0" Grid.Column="2"
+                               Text="Send To GPS Using:"
+                               FontWeight="Bold" FontSize="15.75" />
+
+                    <!-- Right col, row 1: WinForms cboxToSerial + cboxToUDP routing checkboxes and
+                         nudSendToUDPPort. SendToSerial / SendToUdp are mutually exclusive inside the
+                         view-model setters (selecting one clears the other), reproducing the WinForms
+                         radio-style behaviour. label19 "0 = Off" hints the disable value. -->
+                    <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Vertical" Spacing="6" Margin="0,6,0,0">
+                        <CheckBox x:Name="cboxToSerial"
+                                  Content="Send corrections to serial (GPS) port"
+                                  IsChecked="{Binding SendToSerial}"
+                                  AutomationProperties.Name="Send corrections to serial port" />
+                        <CheckBox x:Name="cboxToUDP"
+                                  Content="Send corrections to UDP port"
+                                  IsChecked="{Binding SendToUdp}"
+                                  AutomationProperties.Name="Send corrections to UDP port" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="22,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="UDP Port:" VerticalAlignment="Center" />
+                            <NumericUpDown x:Name="nudSendToUDPPort"
+                                           Value="{Binding SendToUdpPort}"
+                                           Minimum="0" Maximum="65535"
+                                           Increment="1"
+                                           FormatString="0"
+                                           ClipValueToMinMax="True"
+                                           Width="150"
+                                           FontSize="18" FontWeight="Bold"
+                                           AutomationProperties.Name="Send to UDP port" />
+                            <TextBlock Text="0 = Off" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Right col, row 2: WinForms label15 "GGA Interval (secs)" + nudGGAInterval ->
+                         GgaInterval (how often the client re-sends its GGA to the caster). -->
+                    <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,18,0,0">
+                        <TextBlock Text="GGA Interval (secs)" FontSize="15.75" VerticalAlignment="Center" />
+                        <NumericUpDown x:Name="nudGGAInterval"
+                                       Value="{Binding GgaInterval}"
+                                       Minimum="0" Maximum="600"
+                                       Increment="1"
+                                       FormatString="0"
+                                       ClipValueToMinMax="True"
+                                       Width="150"
+                                       FontSize="18" FontWeight="Bold"
+                                       AutomationProperties.Name="GGA interval in seconds" />
+                    </StackPanel>
+
+                    <!-- Left col header, row 0: WinForms label17 "Manual Fix:". -->
+                    <TextBlock Grid.Row="0" Grid.Column="0"
+                               Text="Manual Fix:"
+                               FontWeight="Bold" FontSize="15.75" />
+
+                    <!-- Left col, row 1: WinForms label2 "Lat:" + nudLatitude and label8 "Lon:" +
+                         nudLongitude (7-decimal manual position). ManualLat / ManualLon are doubles;
+                         FormatString "0.0000000" reproduces DecimalPlaces=7, Increment 0.01 matches. -->
+                    <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Vertical" Spacing="8" Margin="0,6,0,0">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="Lat:" Width="42" VerticalAlignment="Center" />
+                            <NumericUpDown x:Name="nudLatitude"
+                                           Value="{Binding ManualLat}"
+                                           Minimum="-90" Maximum="90"
+                                           Increment="0.01"
+                                           FormatString="0.0000000"
+                                           ClipValueToMinMax="True"
+                                           Width="220"
+                                           FontSize="16"
+                                           AutomationProperties.Name="Manual latitude" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="Lon:" Width="42" VerticalAlignment="Center" />
+                            <NumericUpDown x:Name="nudLongitude"
+                                           Value="{Binding ManualLon}"
+                                           Minimum="-180" Maximum="180"
+                                           Increment="0.01"
+                                           FormatString="0.0000000"
+                                           ClipValueToMinMax="True"
+                                           Width="220"
+                                           FontSize="16"
+                                           AutomationProperties.Name="Manual longitude" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Left col, row 2: WinForms cboxGGAManual (combo "Use Manual Fix"/"Use GPS Fix")
+                         -> CheckBox bound IsGgaManual (the agent prompt specifies a GGA-manual toggle;
+                         the view-model exposes a bool, so a checkbox is the faithful, simpler mapping). -->
+                    <CheckBox x:Name="cboxGGAManual"
+                              Grid.Row="2" Grid.Column="0"
+                              Content="Use Manual Fix (instead of live GPS)"
+                              IsChecked="{Binding IsGgaManual}"
+                              Margin="0,18,0,0"
+                              AutomationProperties.Name="Use manual fix for GGA" />
+
+                    <!-- Left col header, row 3: WinForms label9 "Current GPS Fix:". -->
+                    <TextBlock Grid.Row="3" Grid.Column="0"
+                               Text="Current GPS Fix:"
+                               FontWeight="Bold" FontSize="15.75"
+                               Margin="0,18,0,0" />
+
+                    <!-- Left col, row 4: WinForms label11 "Lat:" + tboxCurrentLat and label16 "Lon:" +
+                         tboxCurrentLon (read-only live fix; the code-behind refreshes CurrentLatText /
+                         CurrentLonText on a timer via the view-model's UpdateCurrentFix()). -->
+                    <StackPanel Grid.Row="4" Grid.Column="0" Orientation="Vertical" Spacing="8" Margin="0,6,0,0">
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="Lat:" Width="42" VerticalAlignment="Center" />
+                            <TextBox x:Name="tboxCurrentLat"
+                                     Text="{Binding CurrentLatText, Mode=OneWay}"
+                                     IsReadOnly="True"
+                                     Background="Gainsboro"
+                                     Width="220"
+                                     TextAlignment="Center"
+                                     VerticalContentAlignment="Center"
+                                     AutomationProperties.Name="Current latitude" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="Lon:" Width="42" VerticalAlignment="Center" />
+                            <TextBox x:Name="tboxCurrentLon"
+                                     Text="{Binding CurrentLonText, Mode=OneWay}"
+                                     IsReadOnly="True"
+                                     Background="Gainsboro"
+                                     Width="220"
+                                     TextAlignment="Center"
+                                     VerticalContentAlignment="Center"
+                                     AutomationProperties.Name="Current longitude" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Right col, row 4: WinForms btnSetManualPosition "Send To Manual Fix" ->
+                         UseCurrentFixCommand (copies the live GPS fix into the manual lat/lon). -->
+                    <Button x:Name="btnSetManualPosition"
+                            Grid.Row="4" Grid.Column="2"
+                            Content="Send To Manual Fix"
+                            Command="{Binding UseCurrentFixCommand}"
+                            Width="235" Height="52"
+                            MinHeight="44"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Margin="0,6,0,0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            ToolTip.Tip="Copy the current GPS fix into the manual latitude/longitude"
+                            AutomationProperties.Name="Send current fix to manual fix" />
+                </Grid>
+            </TabItem>
+
+            <!-- =====================================================================================
+                 TAB 3 — "Advanced" (WinForms tabPage3): HTTP version, TCP-only toggle, and the RTCM
+                 forwarding packet (burst) size.
+                 ===================================================================================== -->
+            <TabItem Header="Advanced">
+                <StackPanel Margin="16" Orientation="Vertical" Spacing="18" HorizontalAlignment="Left">
+
+                    <!-- WinForms label20 "HTTP:" + cboxHTTP (combo "1.0"/"1.1") -> CheckBox bound IsHttp10
+                         (checked = HTTP/1.0 request style, unchecked = HTTP/1.1). -->
+                    <CheckBox x:Name="cboxHTTP"
+                              Content="Use HTTP 1.0 (uncheck for HTTP 1.1)"
+                              IsChecked="{Binding IsHttp10}"
+                              FontSize="15.75"
+                              AutomationProperties.Name="Use HTTP 1.0" />
+
+                    <!-- WinForms checkBoxusetcp "Only TCP:Port" -> CheckBox bound IsTcp. -->
+                    <CheckBox x:Name="checkBoxusetcp"
+                              Content="Only TCP : Port"
+                              IsChecked="{Binding IsTcp}"
+                              FontSize="15.75"
+                              AutomationProperties.Name="Use TCP only" />
+
+                    <!-- WinForms labelRtcmPort caption + comboboxPacketSize ("64"/"128"/"256") ->
+                         ComboBox whose SelectedItem two-way binds the string PacketSizeText. -->
+                    <StackPanel Orientation="Vertical" Spacing="6">
+                        <TextBlock x:Name="labelRtcmPort"
+                                   Text="UDP Send Packet Burst / Default 256 bytes"
+                                   FontSize="15.75" />
+                        <ComboBox x:Name="comboboxPacketSize"
+                                  SelectedItem="{Binding PacketSizeText}"
+                                  Width="160"
+                                  FontSize="16"
+                                  AutomationProperties.Name="RTCM packet burst size">
+                            <sys:String>64</sys:String>
+                            <sys:String>128</sys:String>
+                            <sys:String>256</sys:String>
+                        </ComboBox>
+                    </StackPanel>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>
