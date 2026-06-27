@@ -1,9 +1,8 @@
-// [XPLAT] migrated from net48/WinForms (Application.Run(new FormLoop()) + WinForms single-instance) — see MIGRATION_DOCS/TRANSITION_MAP.md
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using AgLibrary.Logging;
+using AgOpenGPS.Core.Platform;
 using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
 using System;
-using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
 using System.Threading;
@@ -12,18 +11,32 @@ namespace AgIO
 {
     internal static class Program
     {
-        private static Mutex _mutex;
-
-        // [XPLAT] Single-instance identity preserved byte-for-byte from the WinForms build so a mixed
-        // fleet (and the AgOpenGPS<->AgIO two-program contract) keeps the same guard name.
+        // [XPLAT] Single-instance identity preserved byte-for-byte from the WinForms build (was
+        // `new Mutex(true, "{8F6F0AC4-B9A1-55fd-A8CF-72F04E6BDE8F}", out mutexCreated)`) so a mixed
+        // fleet — and the AgOpenGPS<->AgIO two-program contract — keeps the identical guard name. The
+        // guard is now acquired through IPlatformServices.TryAcquireSingleInstance (a named Mutex on
+        // Windows; an exclusive lock-file on Linux/macOS) instead of a Windows-only named Mutex.
         private const string SingleInstanceName = "{8F6F0AC4-B9A1-55fd-A8CF-72F04E6BDE8F}";
+
+        // [XPLAT] Cross-platform single-instance guard handle returned by
+        // IPlatformServices.TryAcquireSingleInstance. Held in a static field for the whole process so it
+        // is not released/garbage-collected before exit, and disposed by ReleaseSingleInstance() on
+        // shutdown and before a Restart() relaunch. Replaces the former `private static Mutex _mutex;`.
+        private static IDisposable _instanceLock;
+
+        // [XPLAT] The single IPlatformServices instance created for this process. Exposed so the Avalonia
+        // App composition root builds its services against the SAME instance rather than calling
+        // PlatformServicesFactory.Create() a second time. The identical instance is also published to
+        // RegistrySettings.PlatformServices in Main (the slot the rest of AgIO actually reads).
+        internal static IPlatformServices PlatformServices { get; private set; }
 
         public static readonly string Version = Assembly.GetEntryAssembly().GetName().Version.ToString(3); // Major.Minor.Patch
 
         /// <summary>
         /// [XPLAT] Avalonia configuration used by both the runtime entry point and the XAML previewer.
-        /// Replaces the WinForms <c>Application.EnableVisualStyles()</c>/<c>SetCompatibleTextRenderingDefault</c>
-        /// setup. The Inter font is registered here so <c>App.axaml</c> needs no font include.
+        /// Replaces the WinForms <c>Application.EnableVisualStyles()</c> /
+        /// <c>Application.SetCompatibleTextRenderingDefault(false)</c> setup. The Inter font is registered
+        /// here so <c>App.axaml</c> needs no font include.
         /// </summary>
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
@@ -35,81 +48,115 @@ namespace AgIO
         /// The main entry point for the application.
         /// </summary>
         /// <remarks>
-        /// [XPLAT] Replaces <c>Application.Run(new FormLoop())</c> with the Avalonia classic-desktop
-        /// lifetime. The single-instance guard uses a .NET named <see cref="Mutex"/>, which the runtime
-        /// supports on Windows, Linux, and macOS, preserving the original GUID and "only one AgIO" semantics
-        /// without a Windows-only API. Culture is applied from the persisted profile before any UI or file
-        /// I/O so numeric formatting stays consistent across OS locales (AAP §0.6.5).
+        /// [XPLAT] Replaces the WinForms bootstrap (<c>Application.EnableVisualStyles()</c> /
+        /// <c>Application.Run(new FormLoop())</c>) with the Avalonia classic-desktop lifetime, and the
+        /// Windows-only named <see cref="Mutex"/> single-instance guard with the cross-platform
+        /// <see cref="IPlatformServices.TryAcquireSingleInstance"/> mechanism (a named Mutex on Windows;
+        /// an exclusive lock-file on Linux/macOS). The original single-instance GUID is preserved verbatim,
+        /// so the "only one AgIO" semantics and the AgOpenGPS&lt;-&gt;AgIO two-program contract are unchanged.
+        /// The per-user UI culture is applied from the persisted profile before any UI is shown.
         /// </remarks>
         [STAThread]
         private static void Main(string[] args)
         {
-            _mutex = new Mutex(true, SingleInstanceName, out bool mutexCreated);
+            // [XPLAT] Strategy + Factory (AAP §0.3.2): AgIO owns its per-OS IPlatformServices
+            // implementations in the AgIO.Services namespace — it does NOT reference the GPS project, so
+            // the two-program model is preserved. Register the per-OS factories, then let
+            // PlatformServicesFactory select the one matching the running OS. WindowsPlatformServices uses
+            // Microsoft.Win32.Registry and so exists only on the net8.0-windows target; its registration is
+            // fenced to the SDK-defined WINDOWS symbol. Register is null-tolerant, so on the plain net8.0
+            // build the Windows slot is simply left unregistered.
+            PlatformServicesFactory.Register(
+#if WINDOWS
+                windowsFactory: () => new AgIO.Services.WindowsPlatformServices(),
+#endif
+                linuxFactory: () => new AgIO.Services.LinuxPlatformServices(),
+                macFactory: () => new AgIO.Services.MacPlatformServices());
 
-            if (!mutexCreated)
+            IPlatformServices platform = PlatformServicesFactory.Create();
+
+            // [XPLAT] Publish the single shared instance. PlatformServices is the App-facing contract;
+            // RegistrySettings.PlatformServices is the slot RegistrySettings.Load() reads (to resolve the
+            // cross-platform config root via IPlatformServices.AppDataRoot) and the slot App's idempotent
+            // EnsurePlatformServices() checks — populating it here means App never calls Create() again.
+            PlatformServices = platform;
+            RegistrySettings.PlatformServices = platform;
+
+            // [XPLAT] Cross-platform single-instance guard (was `new Mutex(true, GUID, out created)`). The
+            // preserved GUID is the identifier; when another AgIO instance already holds the guard this
+            // launch exits quietly, matching the WinForms behaviour where the second instance never created
+            // a FormLoop. Console.Error is used (not the file logger) because logging is initialised by
+            // RegistrySettings.Load(), which has not run yet.
+            if (!platform.TryAcquireSingleInstance(SingleInstanceName, out IDisposable instanceLock))
             {
-                // [XPLAT] Another AgIO instance already owns the guard — exit quietly, matching the WinForms
-                // behaviour where the second instance never created a FormLoop.
-                Log.EventWriter("AgIO already running - second instance exiting");
+                Console.Error.WriteLine("AgIO is already running.");
                 return;
             }
 
+            _instanceLock = instanceLock;
+
             try
             {
-                //load the profile name and set profile directory
+                // load the profile name and set profile directory (now read from the cross-platform config
+                // root via IPlatformServices.AppDataRoot, which was wired up above).
                 RegistrySettings.Load();
 
                 Log.EventWriter("Program Started: " + DateTime.Now.ToString("f", CultureInfo.InvariantCulture));
                 Log.EventWriter("AgIO Version: " + Version);
 
-                var culture = new CultureInfo(RegistrySettings.culture);
+                // [XPLAT] Preserve the per-user UI culture from settings (was set on the WinForms thread).
+                CultureInfo culture = new CultureInfo(RegistrySettings.culture);
                 Thread.CurrentThread.CurrentCulture = culture;
                 Thread.CurrentThread.CurrentUICulture = culture;
-                CultureInfo.DefaultThreadCurrentCulture = culture;
-                CultureInfo.DefaultThreadCurrentUICulture = culture;
 
+                // [XPLAT] Data-integrity contract (AAP §0.6.5 — highest data-integrity risk): the two lines
+                // above set ONLY the per-user UI culture; they deliberately do NOT set
+                // CultureInfo.DefaultThreadCurrentCulture, which would change numeric formatting on every
+                // thread and could both corrupt data and break the localized UI. All numeric PGN/protocol/
+                // file I/O — the extracted comm services in Services/ (PGN-derived text, NMEA parsing, NTRIP
+                // GGA) and the settings XML in Properties/ — MUST use CultureInfo.InvariantCulture explicitly
+                // so a Linux/macOS locale with a comma decimal separator cannot corrupt it. Those
+                // double.Parse/ToString audits live in Services/ and Properties/; Program.cs only applies the
+                // UI culture and documents the split.
+
+                // [XPLAT] Avalonia equivalent of Application.Run(new FormLoop()). The AgIO main window, its
+                // view-model, and the extracted comm services are wired in
+                // App.OnFrameworkInitializationCompleted — not here.
                 BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
             }
             finally
             {
-                ReleaseMutex();
+                // [XPLAT] Release the single-instance guard on shutdown so the next launch can acquire it
+                // (and so the Linux/macOS lock-file is cleaned up). Idempotent: a no-op after Restart().
+                ReleaseSingleInstance();
             }
         }
 
         /// <summary>
         /// [XPLAT] Cross-platform replacement for the WinForms <c>Application.Restart()</c>. The original
-        /// released the single-instance Mutex before restarting so the relaunched instance would not fail the
-        /// guard; that ordering is preserved here. Because Avalonia has no <c>Application.Restart()</c>, the
-        /// current executable is relaunched as a new process and the running classic-desktop lifetime is then
-        /// shut down.
+        /// released and disposed the single-instance Mutex <em>before</em> calling
+        /// <c>Application.Restart()</c> so the relaunched instance would not fail the guard; that
+        /// release-before-relaunch ordering is preserved here. Avalonia has no <c>Application.Restart()</c>,
+        /// so the current executable is relaunched as a new process and the running classic-desktop lifetime
+        /// is then shut down. The public signature is unchanged because AgIO dialogs (FormEthernet, FormNtrip,
+        /// FormSerialPass, FormUDP) invoke <see cref="Restart"/> from their restart flows.
         /// </summary>
         public static void Restart()
         {
-            if (_mutex == null)
+            // [XPLAT] release the single-instance guard before relaunch (was Mutex.ReleaseMutex + Dispose,
+            // then Application.Restart). Releasing first lets the relaunched instance re-acquire the guard.
+            ReleaseSingleInstance();
+
+            string exePath = Environment.ProcessPath; // .NET 6+; cross-platform path to the current executable
+            if (!string.IsNullOrEmpty(exePath))
             {
-                return;
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exePath) { UseShellExecute = true });
             }
 
-            ReleaseMutex();
-
-            try
-            {
-                string exePath = Process.GetCurrentProcess().MainModule?.FileName;
-                if (!string.IsNullOrEmpty(exePath))
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = exePath,
-                        UseShellExecute = false,
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.EventWriter("Restart relaunch error: " + ex.Message);
-            }
-
-            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            // [XPLAT] request the Avalonia desktop lifetime to shut down the current instance (replaces the
+            // WinForms-only Application.Restart() teardown); fall back to a hard exit if there is no desktop
+            // lifetime (for example under the XAML previewer or a unit-test host).
+            if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
             {
                 desktop.Shutdown();
             }
@@ -119,15 +166,13 @@ namespace AgIO
             }
         }
 
-        // [XPLAT] Release + dispose the single-instance Mutex exactly once.
-        private static void ReleaseMutex()
+        // [XPLAT] Release + dispose the cross-platform single-instance guard exactly once. Idempotent, so it
+        // is safe to call from both Main's finally and Restart() (disposing the guard releases the named
+        // Mutex on Windows / the exclusive lock-file on Linux/macOS).
+        private static void ReleaseSingleInstance()
         {
-            if (_mutex != null)
-            {
-                try { _mutex.ReleaseMutex(); } catch (ApplicationException) { /* not owned on this thread */ }
-                _mutex.Dispose();
-                _mutex = null;
-            }
+            _instanceLock?.Dispose();
+            _instanceLock = null;
         }
     }
 }
