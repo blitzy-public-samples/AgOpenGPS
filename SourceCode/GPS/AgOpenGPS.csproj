@@ -298,6 +298,39 @@
          composition root (App.axaml.cs) wires the PgnDispatcher<->PositionService/SectionService late-bound
          cycle (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
     <Compile Remove="Services\SectionService.cs" />
+
+    <!-- [XPLAT] (3e) Extracted render-orchestration service that consumes gated domain types.
+         Services\RenderCoordinator.cs is the cross-platform extraction of the FormGPS OpenGL.Designer.cs
+         partial (the oglMain perspective/2D-ortho paint, the off-screen oglBack section/look-ahead
+         green-channel coverage scan, the oglZoom overlap calc, CalcFrustum, the field bounding-box math
+         and the ~24 Draw* HUD overlays — AAP §0.6.2). Its DI ctor injects the gated domain types CTool,
+         CTram, CBoundary, CYouTurn, CTrack, CPatches and CVehicle (all gated in (2) above), plus the
+         gated SectionService (3d) for the render->section seam (RenderBackBufferAndScan() calls
+         SectionService.BuildMachineByte() after the green-pixel coverage scan). It is therefore excluded
+         in lockstep to preserve the "no compiling consumer of an excluded file" invariant — exactly as
+         PgnDispatcher (3c) / SectionService (3d) / FormNudgeView / FormFieldISOXMLView (which also inject
+         the gated CTool/CTram/CTrack) are handled above. No compiling source constructs RenderCoordinator
+         (verified by reference scan — the composition root that wires it, App.axaml.cs, and the
+         AvaloniaGeoViewport host adapter in Controls\ are themselves still pending), so this is a clean cut.
+         The file itself is fully validated against its REAL dependencies — an authoritative un-gate-all build
+         (the only residual project errors are FormGPS-coupled CRecordedPath.cs, which this service does NOT
+         depend on — verified zero live CRecordedPath/recPath references) compiles RenderCoordinator.cs in the
+         Csc set with ZERO errors on both net8.0 and net8.0-windows. The tool.secColors System.Drawing.Color[]
+         -> AgOpenGPS.Core.Models.ColorRgba[] contract drift was reconciled in-file (.R/.G/.B -> .Red/.Green/.Blue,
+         byte-identical via the explicit Color->ColorRgba operator). A runnable reflection test is infeasible
+         in this in-progress repo (no clean linkable GPS assembly exists until the out-of-scope FormGPS->services
+         decoupling lands; excluding the broken CRecordedPath.cs instead triggers an Avalonia XAML
+         source-generator cascade), so Level-4 validation is the dual-TFM compile-proof against real
+         dependencies, matching the PgnDispatcher (3c) / SectionService (3d) validation pattern. Frozen render
+         behavior: immediate-mode/fixed-function GL preserved verbatim per the dominant GL-context FEASIBILITY
+         RISK; the oglBack 500x300 PackAlignment=1 green-channel scan with green tags patch 0 / tram 245 /
+         boundary 240 / headland 250, rpHeight clamp [8,290] and the goto control flow byte-exact; the
+         CalcFrustum 6-plane extraction and the maxFieldDistance clamp [100,5000] verbatim. Re-enabled
+         alongside CTool/CTram/CBoundary/CYouTurn/CTrack/CPatches/CVehicle + SectionService when they land and
+         the composition root (App.axaml.cs) injects the AvaloniaGeoViewport host and wires the PositionService
+         back-buffer-scan delegate + the OnFlagPicked/OnGuidanceLineExpired/OnHardwareMessageExpired events
+         (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Services\RenderCoordinator.cs" />
   </ItemGroup>
 
   <ItemGroup>
