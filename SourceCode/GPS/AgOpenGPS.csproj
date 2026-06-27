@@ -163,7 +163,16 @@
     <Compile Remove="Classes\CContour.cs" />
     <Compile Remove="Classes\CFieldData.cs" />
     <Compile Remove="Classes\CGuidance.cs" />
-    <Compile Remove="Classes\CISOBUS.cs" />
+    <!-- [XPLAT] Classes\CISOBUS.cs un-gated here: it has been decoupled from FormGPS (the
+         `private readonly FormGPS mf;` back-reference is gone) per AAP §0.6.1. The ISOBUS / machine-PGN
+         builder now takes the shared Core ApplicationModel (isJobStarted + Fields.CurrentFieldName, was
+         FormGPS.isJobStarted / FormGPS.currentFieldDirectory) plus an injected Action<byte[]> loopback-send
+         delegate (the composition root wires it to AgOpenGPS.Services.PgnDispatcher.SendPgnToLoop — frozen
+         PGN wire contract unchanged: same byte[] frame, same additive CRC, same 127.255.255.255:17777), and
+         projects its button state through bindable properties + an event instead of writing the WinForms
+         FormGPS.btnIsobusSectionControl. It depends only on the already-compiled Core + BCL, and its sole
+         consumer (the still-gated PgnDispatcher) is unaffected, so it compiles cleanly for BOTH net8.0 and
+         net8.0-windows. See MIGRATION_DOCS/TRANSITION_MAP.md. -->
     <Compile Remove="Classes\CPatches.cs" />
     <Compile Remove="Classes\CRecordedPath.cs" />
     <Compile Remove="Classes\CTool.cs" />

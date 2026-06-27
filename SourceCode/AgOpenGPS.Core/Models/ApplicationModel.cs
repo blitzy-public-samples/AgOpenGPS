@@ -43,10 +43,27 @@ namespace AgOpenGPS.Core
         //   avgSpeed                - smoothed vehicle speed in km/h (was FormGPS.avgSpeed, double).
         //   guidanceLineDistanceOff - signed cross-track distance in mm, rounded to a short
         //                             (was FormGPS.guidanceLineDistanceOff, short).
+        //   guidanceLineSteerAngle  - commanded steer angle in 0.01-degree units (was
+        //                             FormGPS.guidanceLineSteerAngle, short). Paired with
+        //                             guidanceLineDistanceOff and relocated together so the
+        //                             cross-platform guidance classes (CABLine/CABCurve/CGuidance/
+        //                             CYouTurn) and the PGN autosteer transmitter share one canonical
+        //                             autosteer output with no WinForms coupling. Scaling (degrees*100)
+        //                             is preserved so the wire value stays byte-for-byte identical.
         // See MIGRATION_DOCS/TRANSITION_MAP.md.
         public bool isBtnAutoSteerOn;
         public double avgSpeed;
         public short guidanceLineDistanceOff;
+        public short guidanceLineSteerAngle;
+
+        // [XPLAT] Monotonic elapsed-seconds clock relocated here from the WinForms host form (FormGPS,
+        // GUI.Designer.cs `public double secondsSinceStart`) so the portable, cross-platform guidance
+        // classes (e.g. CABLine/CABCurve AB-line refresh throttling) and the scan-loop read the SAME
+        // canonical time base live-by-reference with no WinForms coupling. The type (double) and meaning
+        // (seconds since program start, advanced by the fix/timer pipeline) are preserved exactly, so the
+        // 0.66 s AB-line rebuild debounce and any other time-gated guidance behavior stay identical.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public double secondsSinceStart;
 
         // [XPLAT] Section-master button tri-states relocated here from the WinForms host form
         // (FormGPS, Sections.Designer.cs) so portable cross-platform domain code — the CModuleComm
@@ -127,6 +144,17 @@ namespace AgOpenGPS.Core
         // selection stays byte-for-byte identical to the original. See MIGRATION_DOCS/TRANSITION_MAP.md.
         public GeoCoord SteerAxlePos { get; set; }
 
+        // [XPLAT] Guidance look-ahead reference position relocated here from the WinForms host form
+        // (FormGPS, Position.designer.cs `public vec2 guidanceLookPos`) so the portable, cross-platform
+        // AB-line and curve guidance classes (CABLine/CABCurve) read the SAME canonical look-ahead
+        // reference point live-by-reference with no WinForms coupling. It is stored as the portable Core
+        // GeoCoord (Easting/Northing) rather than the GPS-layer vec2 — exactly as SteerAxlePos /
+        // ToolPivotPosition above — because vec2 is a GPS type that must not leak into Core. The
+        // fix/position pipeline writes it, so the easting/northing values the reference-line distance math
+        // reads are preserved exactly and the "which AB line is the vehicle on" selection stays
+        // byte-for-byte identical. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public GeoCoord GuidanceLookPos { get; set; }
+
         // [XPLAT] Tool-pivot position relocated here from the WinForms host form (FormGPS,
         // Position.designer.cs: `public vec3 toolPivotPos`) so the portable, cross-platform headland
         // controller (the CBoundary/CHead partial — CheckHeadlandProximity and WhereAreToolLookOnPoints)
@@ -161,6 +189,29 @@ namespace AgOpenGPS.Core
         // introducing no new abstraction. See MIGRATION_DOCS/TRANSITION_MAP.md.
         public byte[] machinePgnEF = new byte[] { 0x80, 0x81, 0x7f, 0xEF, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0xCC };
         public int machinePgnEFHydLift = 7;
+
+        // [XPLAT] Section/applied-coverage day colour relocated here from the deleted WinForms host form
+        // (FormGPS, GUI.Designer.cs: `public Color sectionColorDay;`, loaded at startup from
+        // Properties.Settings.Default.setDisplay_colorSectionsDay.CheckColorFor255()) so the portable,
+        // cross-platform coverage builder (CPatches, which writes this colour's R/G/B bytes into the first
+        // vertex of every applied-area patch triangle-strip) and the Avalonia "Color Set" dialog
+        // (FormColorView.IColorSettingsState.SectionColorDay) read and write the SAME canonical colour
+        // live-by-reference, with no WinForms coupling. The type (System.Drawing.Color — already used by the
+        // Core ColorRgba conversions, so no new dependency) and the value are preserved exactly so the
+        // rendered/round-tripped coverage colour stays byte-for-byte identical (render + FieldRoundTripTests
+        // parity). The default Color.FromArgb(27, 151, 160) mirrors the settings default (Settings.cs) and the
+        // FormColor reset, providing a safe pre-load fallback; the settings loader overwrites it at startup
+        // exactly as the original did. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public System.Drawing.Color SectionColorDay { get; set; } = System.Drawing.Color.FromArgb(27, 151, 160);
+
+        // [XPLAT] Applied-patch tally relocated here from the deleted WinForms host form (FormGPS,
+        // Position.designer.cs: `public int patchCounter = 0;`, reset to 0 on new/closed field) so the
+        // portable, cross-platform coverage builder (CPatches.TurnMappingOn increments it per applied
+        // patch) and the field life-cycle logic read and write the SAME canonical counter
+        // live-by-reference, with no WinForms coupling — mirroring the sentenceCounter relocation above.
+        // The type (int) and default (0) are preserved exactly so the diagnostic tally stays identical.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public int patchCounter;
     }
 
     // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md

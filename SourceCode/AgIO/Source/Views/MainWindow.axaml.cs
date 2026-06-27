@@ -1,4 +1,4 @@
-// [XPLAT] migrated from net48/WinForms Forms/FormLoop (shell + composition + scan loop) — see MIGRATION_DOCS/TRANSITION_MAP.md
+// [XPLAT] migrated from net48/WinForms FormLoop.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.Diagnostics;
 using System.Globalization;
@@ -121,6 +121,43 @@ namespace AgIO.Views
         private void InitializeComponent()
         {
             AvaloniaXamlLoader.Load(this);
+        }
+
+        // ===========================================================================================
+        //  Window activation — cross-platform reimplementation of FormLoop.ShowAgIO (user32 P/Invoke)
+        // ===========================================================================================
+
+        /// <summary>
+        /// [XPLAT] Restores and raises the AgIO window to the foreground using only Avalonia window APIs,
+        /// replacing the Windows-only <c>FormLoop.ShowAgIO</c> (FormLoop.cs L681-711), which restored the
+        /// window with <c>ShowWindow(handle, SW_RESTORE)</c>, simulated an ALT key press via
+        /// <c>keybd_event</c>, and called <c>user32.dll SetForegroundWindow</c>.
+        /// </summary>
+        /// <remarks>
+        /// Invoked when AgOpenGPS asks AgIO to come forward. The Avalonia-only equivalent is:
+        /// un-minimize (so a tray/taskbar-minimized window becomes visible), <see cref="Window.Activate"/>
+        /// to request focus, then a brief <see cref="WindowBase.Topmost"/> true/false toggle to raise the
+        /// window above its peers without permanently pinning it on top — the portable stand-in for the
+        /// <c>SetForegroundWindow</c>/ALT-key foreground-stealing trick. The cross-process part (locating
+        /// the AgIO process and asking the OS to raise it) is handled inside <c>CommCoordinatorService</c>
+        /// under <c>#if WINDOWS</c>; this method handles only the local window once that request arrives.
+        /// No <c>user32.dll</c> P/Invoke, <c>System.Windows.Forms</c>, or <c>System.Drawing</c> is used,
+        /// so it compiles and runs identically on Windows, Linux, and macOS.
+        /// </remarks>
+        public void ActivateAndBringToFront()
+        {
+            // Un-minimize first so an iconified window is actually shown (parity with SW_RESTORE).
+            if (WindowState == WindowState.Minimized)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            // Request focus, then briefly pin on top to raise above other windows (the portable
+            // equivalent of SetForegroundWindow); immediately release Topmost so the window does not
+            // stay permanently above unrelated applications.
+            Activate();
+            Topmost = true;
+            Topmost = false;
         }
 
         // ===========================================================================================

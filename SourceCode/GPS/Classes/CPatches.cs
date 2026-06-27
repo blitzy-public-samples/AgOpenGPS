@@ -1,14 +1,48 @@
-﻿//Please, if you use this, share the improvements
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+//Please, if you use this, share the improvements
 
 using System;
 using System.Collections.Generic;
+using AgOpenGPS.Core;
 
 namespace AgOpenGPS
 {
     public class CPatches
     {
-        //copy of the mainform address
-        private readonly FormGPS mf;
+        // [XPLAT] Decoupled from the WinForms FormGPS host god-object (the former
+        // `private readonly FormGPS mf;` + `CPatches(FormGPS _f)`). The collaborators this class read
+        // through `mf` are now constructor-injected, and the shared cross-platform runtime state is read
+        // from the AgOpenGPS.Core ApplicationModel — mirroring the established
+        // CTool(ApplicationModel, ...) / CFieldData(ApplicationModel, ...) decoupling. No DI container and
+        // no new abstraction (AAP §0.7.1). No FormGPS reference remains, so the applied-area coverage
+        // builder is portable across Windows, Linux and macOS. The patch triangle-strip geometry, the
+        // per-patch RGB colour bytes and the Sections.txt coverage-save format are FROZEN — outputs are
+        // byte/value-identical (FieldRoundTripTests + render parity). Field-by-field decoupling map
+        // (was mf.X):
+        //   appModel      - shared AgOpenGPS.Core runtime model. Supplies the section day colour
+        //                   (SectionColorDay, was mf.sectionColorDay, System.Drawing.Color — its R/G/B
+        //                   bytes are written verbatim into the patch colour vertex) and the diagnostic
+        //                   applied-patch tally (patchCounter, was mf.patchCounter, int). Both are read/
+        //                   written live-by-reference; the settings loader and field life-cycle write them.
+        //   tool          - implement/tool config (was mf.tool): isMultiColoredSections / isSectionsNotZones
+        //                   gate the colour source, and secColors[j] (Core ColorRgba) supplies the per-
+        //                   section colour. ColorRgba's .Red/.Green/.Blue expose the SAME bytes the old
+        //                   System.Drawing.Color .R/.G/.B did, so the written colour vertex is unchanged.
+        //   section       - per-section state array (was mf.section): leftPoint/rightPoint world-space
+        //                   edges that become the triangle-strip vertices.
+        //   fd            - field data (was mf.fd): the worked-area accumulators (workedAreaTotal /
+        //                   workedAreaTotalUser) tallied per two-triangle step.
+        //   patchSaveList - shared coverage save-list (was mf.patchSaveList, List<List<vec3>>). It stays in
+        //                   the GPS layer and is injected live-by-reference because vec3 is a GPS type that
+        //                   must not leak into AgOpenGPS.Core (exactly as ApplicationModel keeps vehicle
+        //                   positions as Core GeoCoord rather than vec3); completed/cutoff patches are
+        //                   appended here and the saved Sections.txt format is frozen (SectionsFiles.Append).
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        private readonly ApplicationModel appModel;
+        private readonly CTool tool;
+        private readonly CSection[] section;
+        private readonly CFieldData fd;
+        private readonly List<List<vec3>> patchSaveList;
 
         //list of patch data individual triangles
         public List<vec3> triangleList = new List<vec3>();
@@ -26,11 +60,15 @@ namespace AgOpenGPS
         public int currentStartSectionNum, currentEndSectionNum;
         public int newStartSectionNum, newEndSectionNum;
 
-        //simple constructor, position is set in GPSWinForm_Load in FormGPS when creating new object
-        public CPatches(FormGPS _f)
+        //simple constructor, collaborators are injected by the composition root when creating the object
+        public CPatches(ApplicationModel appModel, CTool tool, CSection[] section, CFieldData fd, List<List<vec3>> patchSaveList)
         {
-            //constructor
-            mf = _f;
+            //constructor - collaborators injected (replaces the former FormGPS `mf` back-reference)
+            this.appModel = appModel;
+            this.tool = tool;
+            this.section = section;
+            this.fd = fd;
+            this.patchSaveList = patchSaveList;
             patchList.Capacity = 2048;
             //triangleList.Capacity =
         }
@@ -50,20 +88,20 @@ namespace AgOpenGPS
 
                 patchList.Add(triangleList);
 
-                if (!mf.tool.isMultiColoredSections)
+                if (!tool.isMultiColoredSections)
                 {
-                    triangleList.Add(new vec3(mf.sectionColorDay.R, mf.sectionColorDay.G, mf.sectionColorDay.B));
+                    triangleList.Add(new vec3(appModel.SectionColorDay.R, appModel.SectionColorDay.G, appModel.SectionColorDay.B));
                 }
                 else
                 {
-                    if (mf.tool.isSectionsNotZones)
-                        triangleList.Add(new vec3(mf.tool.secColors[j].R, mf.tool.secColors[j].G, mf.tool.secColors[j].B));
+                    if (tool.isSectionsNotZones)
+                        triangleList.Add(new vec3(tool.secColors[j].Red, tool.secColors[j].Green, tool.secColors[j].Blue));
                     else
-                        triangleList.Add(new vec3(mf.sectionColorDay.R, mf.sectionColorDay.G, mf.sectionColorDay.B));
+                        triangleList.Add(new vec3(appModel.SectionColorDay.R, appModel.SectionColorDay.G, appModel.SectionColorDay.B));
                 }
 
-                leftPoint = mf.section[currentStartSectionNum].leftPoint;
-                rightPoint = mf.section[currentEndSectionNum].rightPoint;
+                leftPoint = section[currentStartSectionNum].leftPoint;
+                rightPoint = section[currentEndSectionNum].rightPoint;
 
                 //left side of triangle
                 triangleList.Add(new vec3(leftPoint.easting, leftPoint.northing, 0));
@@ -71,7 +109,7 @@ namespace AgOpenGPS
                 //Right side of triangle
                 triangleList.Add(new vec3(rightPoint.easting, rightPoint.northing, 0));
 
-                mf.patchCounter++;
+                appModel.patchCounter++;
             }
         }
 
@@ -85,7 +123,7 @@ namespace AgOpenGPS
             if (triangleList.Count > 4)
             {
                 //save the triangle list in a patch list to add to saving file
-                mf.patchSaveList.Add(triangleList);
+                patchSaveList.Add(triangleList);
             }
             else
             {
@@ -99,8 +137,8 @@ namespace AgOpenGPS
 
         public void AddMappingPoint(int j)
         {
-            leftPoint = mf.section[currentStartSectionNum].leftPoint;
-            rightPoint = mf.section[currentEndSectionNum].rightPoint;
+            leftPoint = section[currentStartSectionNum].leftPoint;
+            rightPoint = section[currentEndSectionNum].rightPoint;
 
             //add two triangles for next step.
             //left side
@@ -132,8 +170,8 @@ namespace AgOpenGPS
                                   + (triangleList[c - 3].easting * (triangleList[c - 1].northing - triangleList[c - 2].northing)));
 
                     temp *= 0.5;
-                    mf.fd.workedAreaTotal += temp;
-                    mf.fd.workedAreaTotalUser += temp;
+                    fd.workedAreaTotal += temp;
+                    fd.workedAreaTotalUser += temp;
                 }
             }
 
@@ -142,17 +180,17 @@ namespace AgOpenGPS
                 numTriangles = 0;
 
                 //save the cutoff patch to be saved later
-                mf.patchSaveList.Add(triangleList);
+                patchSaveList.Add(triangleList);
 
                 triangleList = new List<vec3>(64);
 
                 patchList.Add(triangleList);
 
                 //Add Patch colour
-                if (!mf.tool.isMultiColoredSections)
-                    triangleList.Add(new vec3(mf.sectionColorDay.R, mf.sectionColorDay.G, mf.sectionColorDay.B));
+                if (!tool.isMultiColoredSections)
+                    triangleList.Add(new vec3(appModel.SectionColorDay.R, appModel.SectionColorDay.G, appModel.SectionColorDay.B));
                 else
-                    triangleList.Add(new vec3(mf.tool.secColors[j].R, mf.tool.secColors[j].G, mf.tool.secColors[j].B));
+                    triangleList.Add(new vec3(tool.secColors[j].Red, tool.secColors[j].Green, tool.secColors[j].Blue));
 
                 //add the points to List, yes its more points, but breaks up patches for culling
                 triangleList.Add(new vec3(leftPoint.easting, leftPoint.northing, 0));
