@@ -22,7 +22,7 @@ namespace AgOpenGPS.Updater
         /// shut down mid-update; it is unrelated to single-instance and is left unchanged.)
         /// </summary>
         [STAThread]
-        private static void Main(string[] args)
+        public static void Main(string[] args)
             => BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 
         /// <summary>

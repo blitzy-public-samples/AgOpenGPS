@@ -115,6 +115,17 @@ namespace AgOpenGPS.Core
         public GeoDir ToolPivotHeading { get; set; }
         public GeoDir TankHeading { get; set; }
         public bool isJobStarted;
+
+        // [XPLAT] Vehicle steer-axle position relocated here from the WinForms host form (FormGPS,
+        // Position.designer.cs) so the portable, cross-platform guidance code — the extracted track
+        // manager (CTrack.FindClosestRefTrack) and, as they are decoupled, the AB-line/curve guidance
+        // classes — reads the SAME canonical steer-axle position live-by-reference with no WinForms
+        // coupling. It is stored as the portable Core GeoCoord (Easting/Northing) rather than the
+        // GPS-layer vec3, exactly as the tool/tank headings above are stored as GeoDir, because vec3 is a
+        // GPS type that must not leak into Core. Only the easting/northing scalars that the guidance
+        // distance math reads are needed, and their numeric values are preserved exactly, so track
+        // selection stays byte-for-byte identical to the original. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public GeoCoord SteerAxlePos { get; set; }
     }
 
     // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md

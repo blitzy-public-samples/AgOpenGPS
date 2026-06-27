@@ -1,102 +1,63 @@
 // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
-using System;
-using System.IO;
 using Avalonia;
+using System;
+using System.Threading;
 
 namespace ModSim
 {
+    /// <summary>
+    /// Application entry point for the standalone ModSim module simulator.
+    /// </summary>
+    /// <remarks>
+    /// [XPLAT] Re-platformed from the net48 Windows Forms bootstrap to a cross-platform Avalonia
+    /// desktop entry point. The Windows Forms run loop (<c>Application.Run(new FormSim())</c>) is
+    /// replaced by the Avalonia classic-desktop lifetime (<see cref="BuildAvaloniaApp"/> +
+    /// <c>StartWithClassicDesktopLifetime</c>); the single main window is created by
+    /// <c>App.OnFrameworkInitializationCompleted</c> rather than constructed here. ModSim remains a
+    /// standalone module with no project reference to <c>AgOpenGPS.Core</c>, so it intentionally does
+    /// not use <c>IPlatformServices</c> and keeps its own local single-instance guard.
+    /// </remarks>
     internal static class Program
     {
-        // [XPLAT] Cross-platform single-instance guard. The named Mutex used by the WinForms build
-        // ("{8F6F0AC4-B9A1-66fd-A8CF-72F04E6BDE82}") does not have reliable system-wide semantics on
-        // Unix, so an advisory lockfile held open with FileShare.None for the lifetime of the process
-        // is used instead. The GUID is preserved to keep the original single-instance identity.
-        private const string SingleInstanceId = "8F6F0AC4-B9A1-66fd-A8CF-72F04E6BDE82";
-        private static FileStream _singleInstanceLock;
+        // [XPLAT] Local single-instance guard, retained verbatim from the WinForms build. Named system
+        // mutexes are supported cross-platform on .NET 8 (Windows, Linux, and macOS), so this stays as
+        // ModSim's standalone single-instance mechanism — no Core abstraction is introduced. The
+        // historical identity GUID is preserved so the single-instance identity is unchanged. The field
+        // is static and readonly so the mutex handle is held for the lifetime of the process.
+        private static readonly Mutex Mutex = new Mutex(true, "{8F6F0AC4-B9A1-66fd-A8CF-72F04E6BDE82}");
 
-        // Avalonia configuration, don't remove; also used by the visual designer.
+        /// <summary>
+        /// The main entry point for the application.
+        /// </summary>
+        /// <param name="args">Command-line arguments forwarded to the Avalonia desktop lifetime.</param>
+        /// <remarks>
+        /// [STAThread] is retained because Avalonia on Windows requires an STA thread for clipboard and
+        /// drag-and-drop interop; the attribute is ignored on Linux and macOS. Single-instance behavior
+        /// is preserved exactly: the application body runs only when this process acquires the mutex. A
+        /// second concurrent instance fails the <see cref="WaitHandle.WaitOne(TimeSpan, bool)"/> call,
+        /// falls through the gate, and exits silently with no window — identical to the original
+        /// WinForms behavior.
+        /// </remarks>
+        [STAThread]
+        private static void Main(string[] args)
+        {
+            if (Mutex.WaitOne(TimeSpan.Zero, true))
+            {
+                // [XPLAT] Replaces Application.EnableVisualStyles() / SetCompatibleTextRenderingDefault()
+                // / Application.Run(new FormSim()) with the Avalonia classic-desktop lifetime.
+                BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            }
+        }
+
+        /// <summary>
+        /// Builds and configures the Avalonia application. Declared <c>public static</c> so the Avalonia
+        /// XAML previewer / visual designer can discover and invoke it.
+        /// </summary>
+        /// <returns>A configured <see cref="AppBuilder"/> for the ModSim <see cref="App"/>.</returns>
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()
                 .WithInterFont()
                 .LogToTrace();
-
-        /// <summary>
-        /// The main entry point for the application.
-        /// </summary>
-        /// <remarks>
-        /// [XPLAT] Replaces the WinForms <c>Application.Run(new FormSim())</c> bootstrap with the
-        /// Avalonia classic-desktop lifetime, while preserving the original single-instance behavior.
-        /// </remarks>
-        [STAThread]
-        private static void Main(string[] args)
-        {
-            if (!TryAcquireSingleInstanceLock())
-            {
-                // Another instance already owns the lock; exit quietly, matching the WinForms behavior
-                // where Application.Run was skipped when the mutex could not be acquired.
-                return;
-            }
-
-            try
-            {
-                BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
-            }
-            finally
-            {
-                ReleaseSingleInstanceLock();
-            }
-        }
-
-        /// <summary>
-        /// Attempts to acquire the process-wide single-instance lock.
-        /// </summary>
-        /// <returns><c>true</c> if this process may run; <c>false</c> if another instance holds the lock.</returns>
-        private static bool TryAcquireSingleInstanceLock()
-        {
-            try
-            {
-                string lockPath = Path.Combine(Path.GetTempPath(), $"ModSim-{SingleInstanceId}.lock");
-
-                // FileShare.None ensures a second instance fails to open the same file with an IOException.
-                _singleInstanceLock = new FileStream(
-                    lockPath,
-                    FileMode.OpenOrCreate,
-                    FileAccess.ReadWrite,
-                    FileShare.None);
-
-                return true;
-            }
-            catch (IOException)
-            {
-                // The lock file is already held by another running instance.
-                return false;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // A permission problem on the temp directory should not prevent the simulator from
-                // starting; degrade gracefully by allowing the launch.
-                return true;
-            }
-        }
-
-        /// <summary>
-        /// Releases the single-instance lock on shutdown (best effort).
-        /// </summary>
-        private static void ReleaseSingleInstanceLock()
-        {
-            try
-            {
-                _singleInstanceLock?.Dispose();
-            }
-            catch (IOException)
-            {
-                // Best-effort cleanup; the OS releases the handle on process exit regardless.
-            }
-            finally
-            {
-                _singleInstanceLock = null;
-            }
-        }
     }
 }
