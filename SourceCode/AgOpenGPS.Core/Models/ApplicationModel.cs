@@ -144,6 +144,20 @@ namespace AgOpenGPS.Core
         // selection stays byte-for-byte identical to the original. See MIGRATION_DOCS/TRANSITION_MAP.md.
         public GeoCoord SteerAxlePos { get; set; }
 
+        // [XPLAT] Vehicle pivot-axle position relocated here from the WinForms host form (FormGPS,
+        // Position.designer.cs `public vec3 pivotAxlePos`) so the portable, cross-platform boundary
+        // controller (the CBoundary/CFence partial — DrawFenceLines, which draws the in-progress
+        // recorded boundary relative to the live pivot) reads the SAME canonical pivot-axle point
+        // live-by-reference with no WinForms coupling. It is stored as the portable Core GeoCoord
+        // (Easting/Northing) rather than the GPS-layer vec3 — exactly as SteerAxlePos above — because
+        // vec3 is a GPS type that must not leak into Core; the heading half of the old vec3 is the fix
+        // heading, already exposed as FixHeading (the original set pivotAxlePos.heading = fixHeading, so
+        // the [0, 2pi) GeoDir normalization is rotation-neutral for the Sin/Cos draw math). The
+        // fix/position pipeline writes it (mirroring SteerAxlePos), so the easting/northing values stay
+        // identical per fix and the rendered boundary geometry is unchanged (render parity).
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public GeoCoord PivotAxlePos { get; set; }
+
         // [XPLAT] Guidance look-ahead reference position relocated here from the WinForms host form
         // (FormGPS, Position.designer.cs `public vec2 guidanceLookPos`) so the portable, cross-platform
         // AB-line and curve guidance classes (CABLine/CABCurve) read the SAME canonical look-ahead

@@ -220,6 +220,23 @@
          land and the composition root (App.axaml.cs) wires the PgnDispatcher<->PositionService/SectionService
          late-bound cycle (AAP §0.6.1). -->
     <Compile Remove="Services\PgnDispatcher.cs" />
+
+    <!-- [XPLAT] (3d) Extracted section/zone state machine + machine-byte (PGN) assembler that consumes gated
+         domain types. Services\SectionService.cs is the cross-platform extraction of the FormGPS
+         Sections.Designer.cs partial (AAP §0.6.1); its DI ctor is signature-correct against the REAL
+         collaborators (CSection/CModuleComm/CSound + the Core ApplicationModel already compile), but it also
+         injects CTool (mf.tool), CTram (mf.tram) and CTrack (mf.trk) — all gated in (2) above — plus the
+         still-gated PgnDispatcher (3c) for the shared p_254/p_239/p_229 PGN instances. It is therefore excluded
+         in lockstep to preserve the "no compiling consumer of an excluded file" invariant — exactly as
+         PgnDispatcher (3c) / FormNudgeView / FormFieldISOXMLView (which also inject CTrack/CTool) are handled
+         above. No compiling source constructs SectionService (verified by reference scan — only doc comments in
+         PgnDispatcher reference it), so this is a clean cut. The file itself is fully validated (frozen behavior:
+         byte-exact BuildMachineByte for both sections-not-zones and zones modes, PGN 0xFE/0xEF/0xE5 bytes,
+         MidpointRounding.AwayFromZero geometry, isJobStarted-gated DoRemoteSwitches) under both net8.0 and
+         net8.0-windows. Re-enabled alongside CTool/CTram/CTrack + PgnDispatcher when they land and the
+         composition root (App.axaml.cs) wires the PgnDispatcher<->PositionService/SectionService late-bound
+         cycle (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Services\SectionService.cs" />
   </ItemGroup>
 
   <ItemGroup>
