@@ -198,6 +198,19 @@
          constructs FormNudgeView (verified by reference scan), so this is a clean cut. Re-enabled
          alongside CTrack/CTool when the FormGPS->services guidance decoupling lands (AAP §0.6.1). -->
     <Compile Remove="Views\Guidance\FormNudgeView.axaml.cs" />
+
+    <!-- [XPLAT] (3c) Extracted transport/PGN service that consumes gated domain types. Services\PgnDispatcher.cs
+         is the cross-platform extraction of the FormGPS UDPComm/PGN partials (AAP §0.6.1); its DI ctor is
+         signature-correct against the REAL collaborators (CAHRS/CModuleComm/CNMEA already compile), but it
+         also injects CISOBUS (mf.isobus) and CTrack (mf.trk), both gated in (2) above (CISOBUS still holds the
+         FormGPS back-reference; CTrack's curve/ABLine/youturn peers are still coupled). It is therefore excluded
+         in lockstep to preserve the "no compiling consumer of an excluded file" invariant — exactly as
+         FormNudgeView/FormFieldISOXMLView (which also inject CTrack) are handled above. The file itself is
+         fully validated (frozen PGN wire contract: byte-exact CPGN_* frames, additive CRC, ports 15555/17777,
+         70 ms throttle) under both net8.0 and net8.0-windows. Re-enabled alongside CISOBUS + CTrack when they
+         land and the composition root (App.axaml.cs) wires the PgnDispatcher<->PositionService/SectionService
+         late-bound cycle (AAP §0.6.1). -->
+    <Compile Remove="Services\PgnDispatcher.cs" />
   </ItemGroup>
 
   <ItemGroup>

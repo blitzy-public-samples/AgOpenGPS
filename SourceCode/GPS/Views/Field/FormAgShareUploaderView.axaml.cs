@@ -527,7 +527,7 @@ namespace AgOpenGPS.Views
             }
 
             // Use existing upload logic
-            await uploader.UploadAsync(snapshot, null);
+            await uploader.UploadAsync(snapshot);
         }
 
         /// <summary>

@@ -1,4 +1,6 @@
-﻿using OpenTK.Graphics.OpenGL;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core;
+using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
 
@@ -6,7 +8,28 @@ namespace AgOpenGPS
 {
     public class CTram
     {
-        private readonly FormGPS mf;
+        // [XPLAT] Decoupled from the WinForms FormGPS host god-object (the former
+        // `private readonly FormGPS mf;` + `CTram(FormGPS _f)`). The collaborators this class used to
+        // read through `mf` are now constructor-injected and used live-by-reference, mirroring the
+        // established CTool(...) / CVehicle(ApplicationModel, ...) decoupling. No FormGPS reference
+        // remains, so the class is portable across Windows, Linux and macOS. The tramline geometry
+        // (spacing / offset / passes), the boundary-track "Build Around" algorithm and the GL tram
+        // draw (vertex order and values) are FROZEN — outputs are unchanged. Field decoupling map
+        // (was mf.X):
+        //   self (was mf.tram)      - the FormGPS field `CTram tram` referred back to this very
+        //                             instance, so mf.tram.displayMode is now simply displayMode.
+        //   _bnd   (was mf.bnd)     - field boundary; bndList[0].fenceLine supplies the source ring
+        //                             the inner/outer boundary tracks are offset from.
+        //   _tool  (was mf.tool)    - implement/tool config; tool.width drives the outer/inner parity
+        //                             in IsTramOuterOrInner. Cyclic peer: CTool late-wires this CTram
+        //                             via CTool.SetTram after construction (CTram's ctor reads
+        //                             tool.width, so this CTram is created AFTER CTool).
+        //   _camera (was mf.camera) - render camera (AgOpenGPS.Core.Camera); read-only camSetDistance
+        //                             selects the GL line-width level-of-detail in DrawTram.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        private readonly CBoundary _bnd;
+        private readonly CTool _tool;
+        private readonly Camera _camera;
 
         public List<vec2> tramBndOuterArr = new List<vec2>();
         public List<vec2> tramBndInnerArr = new List<vec2>();
@@ -32,10 +55,16 @@ namespace AgOpenGPS
 
         internal int controlByte;
 
-        public CTram(FormGPS _f)
+        // [XPLAT] Was CTram(FormGPS _f). The field boundary, tool and render camera are injected here;
+        // the cyclic CTool peer late-wires this instance via CTool.SetTram. Every settings read below
+        // is preserved verbatim from the net48 original, so the tram width / passes / alpha and the
+        // outer-or-inner parity are unchanged (frozen).
+        public CTram(CBoundary bnd, CTool tool, Camera camera)
         {
             //constructor
-            mf = _f;
+            _bnd = bnd;
+            _tool = tool;
+            _camera = camera;
 
             tramWidth = Properties.Settings.Default.setTram_tramWidth;
             //halfTramWidth = (Math.Round((Properties.Settings.Default.setTram_tramWidth) / 2.0, 3));
@@ -52,18 +81,18 @@ namespace AgOpenGPS
 
         public void IsTramOuterOrInner()
         {
-            isOuter = ((int)(tramWidth / mf.tool.width + 0.5)) % 2 == 0;
+            isOuter = ((int)(tramWidth / _tool.width + 0.5)) % 2 == 0;
             if (Properties.ToolSettings.Default.setTool_isTramOuterInverted) isOuter = !isOuter;
         }
 
         public void DrawTram()
         {
-            if (mf.camera.camSetDistance > -500) GL.LineWidth(10);
+            if (_camera.camSetDistance > -500) GL.LineWidth(10);
             else GL.LineWidth(6);
 
             GL.Color4(0, 0, 0, alpha);
 
-            if (mf.tram.displayMode == 1 || mf.tram.displayMode == 2)
+            if (displayMode == 1 || displayMode == 2)
             {
                 if (tramList.Count > 0)
                 {
@@ -77,7 +106,7 @@ namespace AgOpenGPS
                 }
             }
 
-            if (mf.tram.displayMode == 1 || mf.tram.displayMode == 3)
+            if (displayMode == 1 || displayMode == 3)
             {
                 if (tramBndOuterArr.Count > 0)
                 {
@@ -90,12 +119,12 @@ namespace AgOpenGPS
                 }
             }
 
-            if (mf.camera.camSetDistance > -500) GL.LineWidth(4);
+            if (_camera.camSetDistance > -500) GL.LineWidth(4);
             else GL.LineWidth(2);
 
             GL.Color4(0.930f, 0.72f, 0.73530f, alpha);
 
-            if (mf.tram.displayMode == 1 || mf.tram.displayMode == 2)
+            if (displayMode == 1 || displayMode == 2)
             {
                 if (tramList.Count > 0)
                 {
@@ -109,7 +138,7 @@ namespace AgOpenGPS
                 }
             }
 
-            if (mf.tram.displayMode == 1 || mf.tram.displayMode == 3)
+            if (displayMode == 1 || displayMode == 3)
             {
                 if (tramBndOuterArr.Count > 0)
                 {
@@ -125,7 +154,7 @@ namespace AgOpenGPS
 
         public void BuildTramBnd()
         {
-            bool isBndExist = mf.bnd.bndList.Count != 0;
+            bool isBndExist = _bnd.bndList.Count != 0;
 
             if (isBndExist)
             {
@@ -153,7 +182,7 @@ namespace AgOpenGPS
         {
             List<vec2> newTrack = new List<vec2>();
 
-            int ptCount = mf.bnd.bndList[0].fenceLine.Count;
+            int ptCount = _bnd.bndList[0].fenceLine.Count;
             if (ptCount < 2) return newTrack;
 
             // Identical to the headland "Build Around" algorithm (btnBndLoop_Click):
@@ -171,11 +200,11 @@ namespace AgOpenGPS
 
             for (int i = 0; i < ptCount; i++)
             {
-                double heading = mf.bnd.bndList[0].fenceLine[i].heading;
+                double heading = _bnd.bndList[0].fenceLine[i].heading;
 
                 vec3 pt = new vec3(
-                    mf.bnd.bndList[0].fenceLine[i].easting - (Math.Sin(glm.PIBy2 + heading) * distance),
-                    mf.bnd.bndList[0].fenceLine[i].northing - (Math.Cos(glm.PIBy2 + heading) * distance),
+                    _bnd.bndList[0].fenceLine[i].easting - (Math.Sin(glm.PIBy2 + heading) * distance),
+                    _bnd.bndList[0].fenceLine[i].northing - (Math.Cos(glm.PIBy2 + heading) * distance),
                     heading);
 
                 bool add = true;
@@ -184,8 +213,8 @@ namespace AgOpenGPS
                 {
                     double check = glm.DistanceSquared(
                         pt.northing, pt.easting,
-                        mf.bnd.bndList[0].fenceLine[j].northing,
-                        mf.bnd.bndList[0].fenceLine[j].easting);
+                        _bnd.bndList[0].fenceLine[j].northing,
+                        _bnd.bndList[0].fenceLine[j].easting);
 
                     if (check < distSq)
                     {

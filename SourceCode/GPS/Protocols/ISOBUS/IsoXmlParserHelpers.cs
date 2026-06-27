@@ -1,4 +1,5 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Xml;
@@ -250,7 +251,7 @@ namespace AgOpenGPS.Protocols.ISOBUS
                 mode = TrackMode.Curve,
                 ptA = ptA,
                 ptB = ptB,
-                name = string.IsNullOrWhiteSpace(name) ? "Curve_" + DateTime.Now.ToString("HHmmss") : name
+                name = string.IsNullOrWhiteSpace(name) ? "Curve_" + DateTime.Now.ToString("HHmmss", CultureInfo.InvariantCulture) : name
             };
 
             // Copy processed curve points

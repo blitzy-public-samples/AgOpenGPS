@@ -126,6 +126,41 @@ namespace AgOpenGPS.Core
         // distance math reads are needed, and their numeric values are preserved exactly, so track
         // selection stays byte-for-byte identical to the original. See MIGRATION_DOCS/TRANSITION_MAP.md.
         public GeoCoord SteerAxlePos { get; set; }
+
+        // [XPLAT] Tool-pivot position relocated here from the WinForms host form (FormGPS,
+        // Position.designer.cs: `public vec3 toolPivotPos`) so the portable, cross-platform headland
+        // controller (the CBoundary/CHead partial — CheckHeadlandProximity and WhereAreToolLookOnPoints)
+        // reads the SAME canonical tool-pivot point live-by-reference with no WinForms coupling. It is
+        // stored as the portable Core GeoCoord (Easting/Northing) rather than the GPS-layer vec3 —
+        // exactly as SteerAxlePos above — because vec3 is a GPS type that must not leak into Core; the
+        // heading half of the old vec3 is already exposed as ToolPivotHeading. The fix/position pipeline
+        // writes it, so the values stay identical per fix and the headland geometry/gating is unchanged
+        // (the CHead consumer recomposes the original vec3 from this position plus ToolPivotHeading).
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public GeoCoord ToolPivotPosition { get; set; }
+
+        // [XPLAT] Per-fix scan-loop flags relocated here from the WinForms host form (FormGPS:
+        // Position.designer.cs `isReverse`, GUI.Designer.cs `isHeadlandDistanceOn`) so the portable,
+        // cross-platform headland controller (CHead) reads them live-by-reference with no WinForms
+        // coupling. Names, types and the false default are preserved exactly from the originals so the
+        // hydraulic-lift gating (only acts when moving forward: !isReverse) and the headland-distance
+        // proximity-alarm gating (isHeadlandDistanceOn) stay behavior-identical. The fix/position
+        // pipeline and the settings loader write them. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public bool isReverse;
+        public bool isHeadlandDistanceOn;
+
+        // [XPLAT] Machine-data PGN 0xEF (239) frame buffer relocated here from the deleted WinForms host
+        // (FormGPS, PGN.Designer.cs: `public CPGN_EF p_239`) so the portable, cross-platform headland
+        // controller (CHead.SetHydPosition) writes the hydraulic-lift command byte into this live buffer
+        // and the cross-platform PGN dispatcher transmits it — exactly as before, with no WinForms
+        // coupling. The frame bytes (the 0x80 0x81 0x7F header, the 0xEF id, the length and trailing
+        // 0xCC) and the hydLift byte index (7) are preserved verbatim from CPGN_EF so the machine-byte
+        // semantics stay byte-for-byte identical (the AgIO loopback dispatcher and the ModSim simulator
+        // both read the hydLift state from byte index 7 of this frame). The byte[]-plus-named-index shape
+        // mirrors the existing PGN-buffer convention in CModuleComm (e.g. `ss` + `swHeader`/`swMain`...),
+        // introducing no new abstraction. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public byte[] machinePgnEF = new byte[] { 0x80, 0x81, 0x7f, 0xEF, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0xCC };
+        public int machinePgnEFHydLift = 7;
     }
 
     // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md

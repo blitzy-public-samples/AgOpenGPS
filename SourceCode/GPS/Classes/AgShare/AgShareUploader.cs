@@ -1,3 +1,4 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 // This file centralizes all coordinate conversion previously handled in CNMEA
 // Now uses LocalPlane, Wgs84, GeoCoord, and related structs (C# 7.1 compatible)
 
@@ -22,17 +23,18 @@ namespace AgOpenGPS
             _client = client;
         }
 
-        // [XPLAT] Removed the static CreateSnapshot(FormGPS gps) factory — see MIGRATION_DOCS/TRANSITION_MAP.md.
-        // It reached through the WinForms FormGPS god-object (gps.currentFieldDirectory / gps.bnd.bndList /
-        // gps.trk.gArr / gps.AppModel.LocalPlane / gps.displayFieldName), none of which survive the Avalonia
-        // migration, and it had zero callers. Field snapshots are now assembled by the caller from the field
-        // directory (see FormAgShareUploaderView.LoadFieldSnapshot), so this FormGPS-coupled overload is dropped.
+        // [XPLAT] AgShare field-snapshot assembly is performed by the upload view
+        // (FormAgShareUploaderView.LoadFieldSnapshot). The canonical cross-platform factory
+        // CreateSnapshot(ApplicationModel, CTrack, CBoundary, string, string) — see MIGRATION_DOCS/TRANSITION_MAP.md —
+        // is intentionally not declared here yet: although CTrack and CBoundary are themselves decoupled, both remain
+        // excluded from the net8.0 build (Classes\CTrack.cs / CBoundary.cs are <Compile Remove>'d in AgOpenGPS.csproj
+        // until their guidance-pipeline cascade lands), so naming those types in a signature here would not compile.
+        // The factory has no callers, so deferring it is behaviour-neutral; re-add it once those classes are un-gated.
 
         // Upload snapshot to AgShare using boundary with holes
-        // [XPLAT] The trailing FormGPS gps parameter is replaced with an unused object gps = null — see
-        // MIGRATION_DOCS/TRANSITION_MAP.md. The method body never referenced gps; the parameter is retained
-        // (now optional/typeless) purely so the behaviour-frozen call sites keep their exact shape.
-        public async Task UploadAsync(FieldSnapshot snapshot, object gps = null)
+        // [XPLAT] decoupled from the WinForms shell — the unused trailing UI-shell parameter is removed; the body
+        // operates only on the snapshot and _client and is behaviour-frozen. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public async Task UploadAsync(FieldSnapshot snapshot)
         {
             try
             {

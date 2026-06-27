@@ -23,7 +23,7 @@ namespace GPS_Out
         /// here — multiple-instance behaviour is preserved exactly.
         /// </remarks>
         [STAThread]
-        private static void Main(string[] args)
+        public static void Main(string[] args)
             => BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 }
