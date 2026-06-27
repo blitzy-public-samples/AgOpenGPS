@@ -407,6 +407,43 @@
          (App.axaml.cs) constructs the coordinator, injects this host, and the MainView hosts its GL control
          (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
     <Compile Remove="Controls\AvaloniaGeoViewport.cs" />
+
+    <!-- [XPLAT] (3g) Extracted field load/save/create/export ORCHESTRATOR that consumes gated domain types.
+         Services\FieldIoService.cs is the cross-platform extraction of the FormGPS Forms\SaveOpen.Designer.cs
+         partial (AAP §0.4.1 "Logic-extraction services", §0.6.1) — FileOpenField()'s full field-load order,
+         every FileSave*/FileCreate*/FileLoad* delegator, the KML exports and the ISOXMLv3/v4 exports. It is a
+         PURE ORCHESTRATOR: it owns NO byte-level field format — every field-file read/write is delegated VERBATIM
+         to the frozen AgOpenGPS.IO handlers (FieldPlaneFiles/SectionsFiles/ContourFiles/FlagsFiles/BoundaryFiles/
+         HeadlandFiles/HeadlinesFiles/TramFiles/RecPathFiles/TrackFiles/ElevationFiles — the format owners, asserted
+         by FieldRoundTripTests load->save byte-compare) and ISOXML is delegated to Protocols\ISOBUS\ISO11783_TaskFile.
+         Its DI ctor is signature-correct against the REAL collaborators (CNMEA/CHeadLine/CFlag + the Core
+         ApplicationCore/WorldGrid/BingMapStreamer/AgShareClient already compile), but it also injects the gated
+         domain types CFieldData, CBoundary (the CBoundary/CFence/CHead/CTurn partial set), CContour, CPatches,
+         CRecordedPath, CTrack, CTram and CABLine — all gated in (2) above — plus the gated ISO11783_TaskFile (3).
+         It is therefore excluded in lockstep to preserve the "no compiling consumer of an excluded file" invariant —
+         exactly as PgnDispatcher (3c) / SectionService (3d) / RenderCoordinator (3e) / PositionService (3f) (which
+         also inject the gated CTrack/CBoundary/CTram) are handled above. Unlike those four it is fully INDEPENDENT
+         of the other extracted services at compile time (AAP §0.6.4 "Key insight"): its one render-layer seam,
+         CalculateMinMax, is taken as an injected Action recalcFieldBounds delegate (the composition root wires it to
+         RenderCoordinator.CalculateMinMax), so there is NO hard reference to RenderCoordinator/PositionService.
+         No compiling source constructs FieldIoService (verified by reference scan — the composition root that
+         wires its pickFieldFile / onJobNew / recalcFieldBounds delegates + OnFieldOpened/OnTramModeChanged/
+         OnRecPathLoaded events, App.axaml.cs, is itself still pending; the only other mentions are doc comments in
+         the sibling RenderCoordinator), so this is a clean cut. The file itself is fully validated against its REAL
+         dependencies — an authoritative un-gate build (un-gating the (2) domain Classes + the (3) ISO11783_TaskFile,
+         leaving the other Services + Views gated) compiles Services\FieldIoService.cs in the Csc set with ZERO errors
+         AND ZERO warnings on BOTH net8.0 and net8.0-windows, in BOTH Debug and Release (Release enforces
+         TreatWarningsAsErrors). Frozen behavior preserved VERBATIM (AAP §0.2.2/§0.7.1): field-file formats are owned
+         by the delegated AgOpenGPS.IO handlers (byte-identical); the Sections.txt shoelace worked-area triple-product
+         is ported verbatim; the FileOpenField load order is identical to source; KML lat/lon text uses
+         CultureInfo.InvariantCulture and Path.Combine throughout (no localization/separator drift); ISOXML name/limit
+         semantics stay owned by ISO11783_TaskFile.Export; and AgShare auto-load stays gated by
+         AgShareEnabled+AgShareAutoLoad (default off — security posture frozen, AAP §0.7.2). No WinForms/System.Drawing/
+         AgOpenGPS.Forms import, OpenFileDialog, or FormGPS/mf reference remains (former view touches became injected
+         delegates/events). Re-enabled alongside CFieldData/CBoundary/CContour/CPatches/CRecordedPath/CTrack/CTram/
+         CABLine + ISO11783_TaskFile when they land and the composition root (App.axaml.cs) wires the field-IO
+         delegates/events (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Services\FieldIoService.cs" />
   </ItemGroup>
 
   <ItemGroup>
