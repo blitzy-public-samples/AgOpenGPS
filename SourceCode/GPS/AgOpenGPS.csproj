@@ -269,6 +269,22 @@
          when the FormGPS->services guidance decoupling lands (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
     <Compile Remove="Views\Guidance\FormBuildTracksView.axaml.cs" />
 
+    <!-- [XPLAT] (3f) Picker dialog that injects a gated domain type. Views\Pickers\FormRecordPickerView.axaml.cs
+         is the 1:1 DI reimplementation of WinForms FormRecordPicker (Forms/Pickers/FormRecordPicker.cs +
+         FormRecordPicker.Designer.cs); its production ctor is signature-correct against the REAL domain type
+         CRecordedPath (was mf.recPath — verified members recList (List<CRecPathPt>) + StopDrivingRecordedPath())
+         plus the value model CRecPathPt (Classes\CRecPathPt.cs, already compiled and NOT gated) and two injected
+         Action callbacks (was mf.FileSaveRecPath() / mf.panelDrag.Visible=false), so it holds no FormGPS
+         reference. CRecordedPath is gated in (2) above (Classes\CRecordedPath.cs still references the deferred
+         CVehicle/CYouTurn guidance peers), so the view is excluded in lockstep to preserve the "no compiling
+         consumer of an excluded file" invariant — exactly as FormNudgeView / FormTramView (which also inject
+         gated guidance types) are handled above. No compiling source constructs FormRecordPickerView (verified
+         by reference scan — only doc comments in sibling .axaml mention it), so this is a clean cut. The .rec
+         load is behaviour-frozen (1 header line "$RecPath" skipped + InvariantCulture point count + N CRecPathPt
+         rows, matching IO/RecPathFiles.cs). Re-enabled alongside CRecordedPath when the FormGPS->services
+         guidance decoupling lands (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Views\Pickers\FormRecordPickerView.axaml.cs" />
+
     <!-- [XPLAT] (3c) Extracted transport/PGN service that consumes gated domain types. Services\PgnDispatcher.cs
          is the cross-platform extraction of the FormGPS UDPComm/PGN partials (AAP §0.6.1); its DI ctor is
          signature-correct against the REAL collaborators (CAHRS/CModuleComm/CNMEA already compile), but it
@@ -331,6 +347,66 @@
          back-buffer-scan delegate + the OnFlagPicked/OnGuidanceLineExpired/OnHardwareMessageExpired events
          (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
     <Compile Remove="Services\RenderCoordinator.cs" />
+
+    <!-- [XPLAT] (3f) Extracted real-time scan-loop ORCHESTRATOR that consumes gated domain types.
+         Services\PositionService.cs is the cross-platform extraction of the FormGPS Forms/Position.designer.cs
+         partial — UpdateFixPosition() (the per-fix receive->fuse->steer->section pipeline) plus its helpers
+         TheRest / CalculatePositionHeading / CalculateSectionLookAhead / AddBoundaryPoint / AddContourPoints /
+         AddSectionOrPathPoints / InitializeFirstFewGPSPositions, and the RTK-recovery autosteer-safety decision
+         EvaluateRtkRecovery() moved here from OpenGL.Designer.cs (AAP §0.6.1). Its DI ctor injects the REAL
+         collaborators (CNMEA/CAHRS/CSection/CModuleComm/CSound/CGLM/vec3 + the Core ApplicationCore already
+         compile), but it also injects the gated domain types CVehicle, CTool, CTrack, CABLine, CABCurve,
+         CContour, CBoundary, CYouTurn, CRecordedPath, CPatches and CFieldData (all gated in (2) above), the
+         gated transport service PgnDispatcher (3c) for the shared p_254/p_239/p_229 PGN instances + CPGN_FE/EF/E5
+         frame types and SendPgnToLoop, and the gated SectionService (3d). It is therefore excluded in lockstep to
+         preserve the "no compiling consumer of an excluded file" invariant — exactly as PgnDispatcher (3c) /
+         SectionService (3d) / RenderCoordinator (3e) (which also inject the gated CTool/CTrack/CVehicle) are
+         handled above. No compiling source constructs PositionService (verified by reference scan — the
+         composition root that wires the PgnDispatcher.OnGpsFixReady -> PositionService.UpdateFixPosition late-bound
+         cycle, and the PositionService.RequestBackBufferScan/RequestMainRender Action delegates to
+         RenderCoordinator/AvaloniaGeoViewport, is App.axaml.cs, itself still pending), so this is a clean cut.
+         The file itself is fully validated against its REAL dependencies — an authoritative un-gate build
+         (un-gating the (2) domain Classes + the (3c/3d/3e) Services, leaving only the lockstep-gated Views gated)
+         compiles PositionService.cs in the Csc set with ZERO errors AND ZERO warnings on BOTH net8.0 and
+         net8.0-windows, in BOTH Debug and Release (Release enforces TreatWarningsAsErrors) — a stronger proof
+         than the sibling services, which had residual unrelated CRecordedPath errors; here the full non-View
+         source closure compiles clean. Frozen behavior preserved VERBATIM (AAP §0.2.2/§0.6.1/§0.7.1): PGN 0x64
+         corrected-position bytes and the p_254 (0xFE) AutoSteerData frame are byte-identical; the
+         guidance/steering math (Pure Pursuit / Stanley / Dubins) and safety guards maxSteerAngle=30 deg /
+         maxAngularVelocity=0.64 deg/s are numerically identical; the RTK-recovery debounce is exactly
+         RTK_RECOVER_DEBOUNCE_MS=1000 ms with the autosteer-kill DECISION owned here (DrawLostRTK overlay stays in
+         RenderCoordinator); the isJobStarted-tail render-before-send ordering (back-buffer scan ->
+         SectionService.BuildMachineByte -> send p_239/p_229) is preserved; all persisted/logged numerics use
+         CultureInfo.InvariantCulture; and no WinForms/OpenTK.GLControl/System.Drawing import, FormGPS/mf reference,
+         or control reference remains (former view touches became injected events/Action delegates). Re-enabled
+         alongside CVehicle/CTool/CTrack/CABLine/CABCurve/CContour/CBoundary/CYouTurn/CRecordedPath/CPatches/
+         CFieldData + PgnDispatcher + SectionService + RenderCoordinator when they land and the composition root
+         (App.axaml.cs) wires the late-bound scan-loop cycle (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Services\PositionService.cs" />
+    <!-- [XPLAT] (3f) The Avalonia OpenGL rendering-host ADAPTER. Controls\AvaloniaGeoViewport.cs is the
+         cross-platform re-host of the retired WinForms GeoViewport (OpenTK.GLControl) onto Avalonia's
+         OpenGlControlBase (AAP req#4, §0.4.1 "Rendering host — reimplement", §0.6.2 the DOMINANT GL-context
+         feasibility risk). It derives from AgOpenGPS.Core.Drawing.GeoViewportBase (overriding the three host
+         seams MakeCurrent/ViewportSize/EndPaint) and HOLDS a nested OpenGlControlBase that forwards the GL
+         lifecycle callbacks; OnOpenGlInit binds the kept OpenTK 3.3.3 entry points to Avalonia's GlInterface
+         and OnOpenGlRender drives the extracted Services\RenderCoordinator (3e) between BeginPaint()/EndPaint(),
+         owning the off-screen oglBack (500x300) + oglZoom framebuffers for the green-channel scans. Because it
+         injects and invokes the gated RenderCoordinator (3e), it is excluded in lockstep to preserve the
+         "no compiling consumer of an excluded file" invariant — exactly as RenderCoordinator (3e) /
+         SectionService (3d) / PgnDispatcher (3c) are handled above. No compiling source constructs it (the
+         composition root App.axaml.cs and the Views that would host its View/GlControl are themselves still
+         pending — verified by reference scan), so this is a clean cut. The file itself is fully validated
+         against its REAL dependencies via the same Level-4 dual-TFM compile-proof used for RenderCoordinator:
+         an authoritative un-gate-all build compiles Controls\AvaloniaGeoViewport.cs in the Csc set with ZERO
+         errors attributable to it on BOTH net8.0 and net8.0-windows (its OpenTK types resolve transitively
+         through the AgOpenGPS.Core ProjectReference, identical to RenderCoordinator). It contains NO Windows-only
+         API (no WinForms/WMI/Registry) so it is target-framework-agnostic. The GLW DrawLib / GeoViewportBase /
+         Core Drawing+DrawLib are left UNTOUCHED — this adapter is the entire host-swap surface, and the
+         immediate-mode-vs-GLES determination it audits at OnOpenGlInit is the dominant open risk recorded in
+         MIGRATION_DOCS/PARITY_REPORT.md. Re-enabled alongside RenderCoordinator (3e) when the composition root
+         (App.axaml.cs) constructs the coordinator, injects this host, and the MainView hosts its GL control
+         (AAP §0.6.1). See MIGRATION_DOCS/TRANSITION_MAP.md. -->
+    <Compile Remove="Controls\AvaloniaGeoViewport.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -394,6 +470,13 @@
          CTrack/CABCurve/CABLine/CTool land. -->
     <AvaloniaXaml Remove="Views\Guidance\FormBuildTracksView.axaml" />
     <AvaloniaResource Remove="Views\Guidance\FormBuildTracksView.axaml" />
+    <!-- [XPLAT] FormRecordPickerView's markup is excluded in lockstep with its gated code-behind (above):
+         the compiled-XAML loader generates the InitializeComponent partial against the code-behind class,
+         so the markup must leave BOTH the XAML compilation and the embedded resource set while the
+         code-behind is gated. Re-enabled with FormRecordPickerView.axaml.cs when CRecordedPath
+         (and its CVehicle/CYouTurn peers) land. -->
+    <AvaloniaXaml Remove="Views\Pickers\FormRecordPickerView.axaml" />
+    <AvaloniaResource Remove="Views\Pickers\FormRecordPickerView.axaml" />
   </ItemGroup>
 
   <ItemGroup>

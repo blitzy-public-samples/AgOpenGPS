@@ -1,9 +1,12 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+// [XPLAT] Dropped the unused `using AgOpenGPS.Core.Models;` (no Core.Models type is referenced here;
+//         CRecPathPt lives in namespace AgOpenGPS, FileIoUtils in AgOpenGPS.IO). The RecPath.txt
+//         read/write format is a behaviour-frozen contract and is preserved byte-for-byte.
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using AgOpenGPS.Core.Models;
 
 namespace AgOpenGPS.IO
 {
