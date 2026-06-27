@@ -240,9 +240,12 @@
                     <Border Grid.Row="0" Grid.Column="1" Classes="cell">
                         <TextBlock x:Name="lblIMU_IP" Classes="modIp" Text="{Binding ImuIpText}" />
                     </Border>
+                    <!-- [XPLAT] F9 a11y: colour-fill status light conveys state by colour only (no text);
+                         AutomationProperties.Name gives screen readers a spoken label for the indicator. -->
                     <Border Grid.Row="0" Grid.Column="2"
                             x:Name="lblBtnIMU"
                             Classes="cell"
+                            AutomationProperties.Name="IMU module status light"
                             Background="{Binding ImuBrush}" />
 
                     <!-- Row 1 — Steer (WinForms label15 / lblSteerIP / lblBtnSteer). -->
@@ -255,6 +258,7 @@
                     <Border Grid.Row="1" Grid.Column="2"
                             x:Name="lblBtnSteer"
                             Classes="cell"
+                            AutomationProperties.Name="Steer module status light"
                             Background="{Binding SteerBrush}" />
 
                     <!-- Row 2 — GPS (WinForms label17 / lblGPSIP / lblBtnGPS). -->
@@ -267,6 +271,7 @@
                     <Border Grid.Row="2" Grid.Column="2"
                             x:Name="lblBtnGPS"
                             Classes="cell"
+                            AutomationProperties.Name="GPS module status light"
                             Background="{Binding GpsBrush}" />
 
                     <!-- Row 3 — Machine (WinForms label16 / lblMachineIP / lblBtnMachine). -->
@@ -279,6 +284,7 @@
                     <Border Grid.Row="3" Grid.Column="2"
                             x:Name="lblBtnMachine"
                             Classes="cell"
+                            AutomationProperties.Name="Machine module status light"
                             Background="{Binding MachineBrush}" />
                 </Grid>
             </Border>

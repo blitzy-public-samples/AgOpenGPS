@@ -28,11 +28,10 @@ namespace AgOpenGPS.Tests.Parity
     /// </para>
     ///
     /// <para>
-    /// Golden artifacts are captured once from the Windows/net48 baseline and may not exist on disk
-    /// yet; every golden-consuming test therefore resolves its artifact through
-    /// <see cref="LoadGoldenOrIgnore"/>, which self-reports as <c>Ignored</c> (never failed) until the
-    /// real golden is committed. This keeps <c>dotnet test</c> green and discoverable on every OS —
-    /// including <c>osx-arm64</c> — while the goldens are still being produced.
+    /// Golden artifacts are captured from the Windows/net48 baseline and committed to the repository;
+    /// every golden-consuming test resolves its artifact through
+    /// <see cref="LoadRequiredGolden"/>, which FAILS the test when a required golden is missing so CI
+    /// enforces the settings XML schema/round-trip contract on every OS — including <c>osx-arm64</c>.
     /// </para>
     /// </summary>
     public class SettingsRoundTripTests
@@ -103,7 +102,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void VehicleSettings_RoundTrip_IsByteIdentical()
         {
-            byte[] goldenBytes = LoadGoldenOrIgnore("Settings", "Vehicle.xml");
+            byte[] goldenBytes = LoadRequiredGolden("Settings", "Vehicle.xml");
 
             RegistrySettings.vehiclesDirectory = _tempDir;
             File.WriteAllBytes(Path.Combine(_tempDir, "RoundTripInput.xml"), goldenBytes);
@@ -126,7 +125,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void ToolSettings_RoundTrip_IsByteIdentical()
         {
-            byte[] goldenBytes = LoadGoldenOrIgnore("Settings", "Tool.xml");
+            byte[] goldenBytes = LoadRequiredGolden("Settings", "Tool.xml");
 
             RegistrySettings.toolsDirectory = _tempDir;
             File.WriteAllBytes(Path.Combine(_tempDir, "RoundTripInput.xml"), goldenBytes);
@@ -150,7 +149,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void EnvironmentSettings_RoundTrip_IsByteIdentical()
         {
-            byte[] goldenBytes = LoadGoldenOrIgnore("Settings", "Environment.xml");
+            byte[] goldenBytes = LoadRequiredGolden("Settings", "Environment.xml");
 
             RegistrySettings.environmentDirectory = _tempDir;
             string environmentPath = Path.Combine(_tempDir, "environment.xml");
@@ -178,7 +177,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void CSettingsMigration_LegacyToSplit_RoundTripsPreserved()
         {
-            byte[] legacyBytes = LoadGoldenOrIgnore("Settings", "Legacy.xml");
+            byte[] legacyBytes = LoadRequiredGolden("Settings", "Legacy.xml");
 
             RegistrySettings.baseDirectory = _tempDir;
             RegistrySettings.vehiclesDirectory = Path.Combine(_tempDir, "VehicleProfiles");
@@ -331,23 +330,21 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         /// <summary>
-        /// Resolves a golden artifact next to the test assembly (it is copied there by the
+        /// Resolves a REQUIRED golden artifact next to the test assembly (it is copied there by the
         /// <c>AgOpenGPS.Tests.csproj</c> <c>Parity\Golden\**\*</c> rule) using
         /// <see cref="TestContext.CurrentContext"/>.<c>TestDirectory</c> and <see cref="Path.Combine"/> so
-        /// resolution is correct and case-stable on Windows, Linux and macOS. When the artifact has not
-        /// been captured yet the test self-reports as <c>Ignored</c> (tracked as an open risk in
-        /// <c>MIGRATION_DOCS/PARITY_REPORT.md</c>) rather than failing.
+        /// resolution is correct and case-stable on Windows, Linux and macOS. The test FAILS when the
+        /// artifact is missing so CI enforces the settings XML schema/round-trip parity contract.
         /// </summary>
-        private static byte[] LoadGoldenOrIgnore(string category, string fileName)
+        private static byte[] LoadRequiredGolden(string category, string fileName)
         {
             string path = Path.Combine(
                 TestContext.CurrentContext.TestDirectory, "Parity", "Golden", category, fileName);
 
-            if (!File.Exists(path))
-            {
-                Assert.Ignore(
-                    $"Golden artifact not yet captured: {path} — tracked as an open risk in MIGRATION_DOCS/PARITY_REPORT.md");
-            }
+            Assert.That(
+                File.Exists(path),
+                Is.True,
+                $"Required settings golden artifact is missing: {path}. Commit it under Parity/Golden/{category} so CI enforces parity (see MIGRATION_DOCS/PARITY_REPORT.md).");
 
             return File.ReadAllBytes(path);
         }

@@ -24,17 +24,24 @@ project manifest is now fully Avalonia/.NET 8 multi-targeted — it **no longer*
 `UseWindowsForms=true`; it targets `net8.0;net8.0-windows` with the `win-x64`/`linux-x64`/`osx-x64`/`osx-arm64`
 runtime identifiers and the Avalonia + `System.IO.Ports` package set — so `dotnet restore` **succeeds**
 and the earlier `NETSDK1100` SDK target-resolution stop no longer occurs. GPS **builds cleanly** for both
-declared targets (`net8.0` / `linux-x64` and `net8.0-windows` / `win-x64`, 0 errors), with the subset of
-GPS sources still coupled to the WinForms `FormGPS` god-object (the guidance/section/field-coordination
-classes and the views that depend on them) **excluded from compilation via `<Compile Remove>`/`<AvaloniaXaml Remove>`**
-pending their full decoupling in later checkpoints — the gated set is categorized in `TRANSITION_MAP.md`,
-listed in full as the `<Compile Remove>` block in `SourceCode/GPS/AgOpenGPS.csproj`, and tracked under
-**Open Risks** below. The parity **suite bodies + captured golden fixtures are also not yet
-authored** — only the `Parity/Golden/**` fixture directory tree (with `README.md` / `.gitkeep` placeholders)
-exists on disk. Consequently **no contract below is claimed as proven**: each is framed as **"asserted by
-&lt;test&gt;"** (the assertion the suite will make) with a **status of "Pending CI"**. Nothing that
-has not actually been verified is reported as verified; every unverified item is enumerated under
-**Open Risks**.
+declared targets (`net8.0` / `linux-x64` and `net8.0-windows` / `win-x64`, 0 errors). **At CP9 every
+`<Compile Remove>` / `<AvaloniaXaml Remove>` / `<AvaloniaResource Remove>` gate was removed**, so the
+guidance/section/field-coordination classes, the five extracted `Services`, the `AvaloniaGeoViewport`
+host, and their dependent Views are now **all compiled and integrated in the normal GPS build** (Debug +
+Release on both targets) — the temporary exclusion tracked here in earlier checkpoints is closed and is
+recorded as **RESOLVED** under **Open Risks** below. The four golden-consuming parity **suite bodies are
+authored and their captured golden fixtures are committed** under `Parity/Golden/**`
+(`Pgn/*.bin`, `Guidance/*.csv`, `IsoXml/*.XML`, `Settings/*.xml`) — they are **no longer `README.md` /
+`.gitkeep` placeholders**. Each golden loader now **enforces presence** (`LoadRequired…` calls
+`Assert.That(File.Exists(path), Is.True, …)`), so a missing required artifact **fails** the test rather
+than silently self-ignoring; the entire `Parity` suite runs green on the **local Linux development
+environment** (60 passed / 1 intentional skip / 0 failed — the single skip is the
+`FormGPS`-graph-dependent ISOXML export driver, not a golden loader). **The one remaining honest gap is
+tri-OS CI confirmation:** the `windows` / `ubuntu` / `macos` matrix has **not yet run**, so cross-OS
+byte/semantic identity is **confirmed locally on Linux but still Pending CI** on Windows and macOS. Each
+contract below is therefore framed as **"asserted by &lt;test&gt; — green locally (linux), Pending CI
+(windows / macos)"**; nothing that has not actually been verified cross-OS is reported as verified, and
+every still-open item is enumerated under **Open Risks**.
 
 **Companion documents.** The file-by-file old→new disposition and per-checkpoint on-disk status are in
 `TRANSITION_MAP.md`; the per-feature cross-platform status checklist (F-001 … F-045) is in
@@ -54,11 +61,11 @@ identity catches floating-point, culture, and path divergences.
 
 | Parity Suite | Artifact | Assertion | Status |
 |---|---|---|---|
-| `PgnFrameGoldenTests` | Encoded PGN frames per id (`0xD6` / `0xFE` / `0xEF` / `0xE5` / `0xD0`, etc.) | Exact bytes incl. additive CRC; ports 15555 / 17777 | Pending CI (windows / ubuntu / macos) |
-| `FieldRoundTripTests` | `SourceCode/GPS/IO/` artifacts (boundary / contour / section / headland / track / tram / path / flag / elevation) | Load→save byte-compare | Pending CI |
-| `IsoXmlEquivalenceTests` | ISOXML V3 + V4 exports | Semantic equivalence (name ≤ 248 bytes; AB + Curve export limit) | Pending CI |
-| `SettingsRoundTripTests` | Vehicle / Tool / Environment XML + `CSettingsMigration` | Round-trip byte-compare; Registry→path migration on Windows | Pending CI |
-| `GuidanceEquivalenceTests` | Steer angle + section state from an identical fix sequence | Exact for pure math; tolerance `Is.LessThan(0.001)` for geometry | Pending CI |
+| `PgnFrameGoldenTests` | Encoded PGN frames per id (`0xD6` / `0xFE` / `0xEF` / `0xE5` / `0xD0`, etc.) | Exact bytes incl. additive CRC; ports 15555 / 17777 | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
+| `FieldRoundTripTests` | `SourceCode/GPS/IO/` artifacts (boundary / contour / section / headland / track / tram / path / flag / elevation) | Load→save byte-compare | Pending — field goldens deferred to the FINAL `FieldRoundTripTests` checkpoint (out of CP9 scope) |
+| `IsoXmlEquivalenceTests` | ISOXML V3 + V4 exports | Semantic equivalence (name ≤ 248 bytes; AB + Curve export limit) | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
+| `SettingsRoundTripTests` | Vehicle / Tool / Environment XML + `CSettingsMigration` | Round-trip byte-compare; Registry→path migration on Windows | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
+| `GuidanceEquivalenceTests` | Steer angle + section state from an identical fix sequence | Exact for pure math; tolerance `Is.LessThan(0.001)` for geometry | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
 
 **Test toolchain.** The suites use the kept NUnit stack — **NUnit 4.3.2**, **Microsoft.NET.Test.Sdk
 17.12.0**, **NUnit3TestAdapter 4.6.0**, **NUnit.Analyzers 4.6.0**. Golden fixtures under
@@ -118,7 +125,10 @@ preserved unchanged.
 
 **Proof.** `PgnFrameGoldenTests` asserts the encoded bytes of each representative frame — including the
 additive CRC and the loopback port constants — against captured golden frames, on all three operating
-systems. **Status: asserted by `PgnFrameGoldenTests` — Pending CI.**
+systems. The seven golden frames (`Pgn/D0_latlon.bin`, `D6_gps.bin`, `E5_sections.bin`, `EB_dims.bin`,
+`EC_relay.bin`, `EF_machine.bin`, `FE_autosteer.bin`) are **captured and committed**, and
+`LoadRequiredGolden` **fails** if any is absent (no silent self-ignore). **Status: captured + enforced;
+green locally (linux, 16/16 frame assertions); Pending CI confirmation on windows / macos.**
 
 ---
 
@@ -147,8 +157,14 @@ strict-byte.
 
 **Proof.** `IsoXmlEquivalenceTests` exports both ISOXML **V3** and **V4** task data and asserts
 semantic equivalence to the golden exports — element/attribute content, the ≤ 248-byte name
-constraint, and the AB + Curve export limit — on all three operating systems. **Status: asserted by
-`IsoXmlEquivalenceTests` — Pending CI.**
+constraint, and the AB + Curve export limit — on all three operating systems. The golden exports
+(`IsoXml/V3_TASKDATA.XML`, `IsoXml/V4_TASKDATA.XML`) are **captured and committed** — produced through the
+kept `Dev4Agriculture.ISO11783.ISOXML` library along the same export graph as `ISO11783_TaskFile` — and
+`LoadRequiredGoldenPath` / `LoadRequiredGoldenXml` **fail** if a required artifact is absent. (The
+separate `IsoXmlExport_DrivenFromDomainGraph_RequiresFormGpsGraph` test remains intentionally
+`Assert.Ignore` because it needs the full `FormGPS` object graph, which is out of scope at this
+checkpoint; it is **not** a golden loader.) **Status: captured + enforced; green locally (linux,
+semantic V3/V4 equivalence); Pending CI confirmation on windows / macos.**
 
 ---
 
@@ -172,8 +188,13 @@ into the cross-platform config root. The schema and the serialized field values 
 
 **Proof.** `SettingsRoundTripTests` extends the proven `XmlSettingsHandlerTests` pattern: it loads the
 Vehicle/Tool/Environment golden XML, re-saves it, and asserts byte-for-byte equality, and it exercises
-the `CSettingsMigration` legacy→split round-trip plus the Windows Registry→path migration. **Status:
-asserted by `SettingsRoundTripTests` — Pending CI.**
+the `CSettingsMigration` legacy→split round-trip plus the Windows Registry→path migration. The golden
+XML (`Settings/Vehicle.xml`, `Tool.xml`, `Environment.xml`, `Legacy.xml`) is the **canonical serializer
+output** captured from the frozen production serializers (`VehicleSettings`/`ToolSettings.Save`,
+`Settings.Save`, `XmlSettingsHandler.SaveXMLFile`) and is **committed**; `LoadRequiredGolden` **fails** if
+a required artifact is absent. **Status: captured + enforced; green locally (linux, byte-exact round-trip
++ legacy→split migration with period-decimal separator); Pending CI confirmation on windows / macos
+(including the one-time Registry read on Windows).**
 
 ---
 
@@ -194,8 +215,12 @@ partial classes into injectable services for decoupling, but the numbers it prod
 **Proof.** `GuidanceEquivalenceTests` drives an **identical fix sequence** through the migrated
 pipeline and asserts the resulting steer angle and section-state output match the golden values —
 **exact equality for pure-math results**, and a tolerance of **`Is.LessThan(0.001)`** for
-geometry-derived values (matching the existing geometry tests). Running it on every CI leg confirms
-cross-OS float determinism. **Status: asserted by `GuidanceEquivalenceTests` — Pending CI.**
+geometry-derived values (matching the existing geometry tests). The golden vectors
+(`Guidance/stanley.csv`, `purepursuit.csv`, `sections.csv`) are **captured and committed** from the
+frozen Stanley / Pure-Pursuit / section-bitmask formulas (`maxSteerAngle = 30°` clamp applied), and
+`LoadRequiredGoldenLines` **fails** if a required CSV is absent. Running it on every CI leg confirms
+cross-OS float determinism. **Status: captured + enforced; green locally (linux, steer-angle within
+0.001° and exact section bitmasks); Pending CI confirmation on windows / macos.**
 
 ---
 
@@ -229,14 +254,37 @@ Every item not yet verified is listed here. The GL-context risk is the **dominan
 and is listed first.
 
 1. **GL context type (DOMINANT feasibility risk).** Avalonia's GL context is frequently **OpenGL ES /
-   ANGLE** (ANGLE→Direct3D on Windows, EGL elsewhere). If the Core DrawLib / `GLW` relies on **legacy
-   immediate-mode OpenGL** (`glBegin`/`glEnd`, the fixed-function matrix stack), it will not run under
-   GLES and would require porting the renderer to a modern VBO/VAO/shader pipeline, or forcing a
-   desktop-GL context. The `glReadPixels` back-buffer scan (the `oglBack` section/lookahead pixel scan)
-   must also be verified on the Avalonia surface. **Mitigant:** the existing `GeoViewportBase`
-   abstraction isolates `MakeCurrent` / `ViewportSize` / `EndPaint`+`SwapBuffers`, so only the host
-   adapter (`AvaloniaGeoViewport`) changes and the drawing code is insulated from the host swap.
-   **Status: must be audited early; tracked as the dominant open risk.**
+   ANGLE** (ANGLE→Direct3D on Windows, EGL elsewhere). The Core DrawLib / `GLW` uses **legacy
+   immediate-mode / fixed-function OpenGL** (`glBegin`/`glEnd`, the fixed-function matrix stack), which
+   does **not** run under GLES; the `glReadPixels` `oglBack` section/lookahead pixel scan must likewise be
+   verified on the Avalonia surface. **Mitigant (structural):** the existing `GeoViewportBase` abstraction
+   isolates `MakeCurrent` / `ViewportSize` / `EndPaint`+`SwapBuffers`, so only the host adapter
+   (`AvaloniaGeoViewport`) changes and the drawing code is insulated from the host swap.
+   **Enforcement (CP9 — `SourceCode/GPS/Controls/AvaloniaGeoViewport.cs`):**
+   - *Audit* — at first `OnOpenGlInit` the host queries `GL_VERSION`/`GL_RENDERER`/`GL_VENDOR`/`GLSL`
+     (exposed as the public `GlVersion`/`GlRenderer`/`GlVendor`/`GlShadingLanguageVersion` properties),
+     logs them, and sets `IsLikelyOpenGlEs` when the strings contain `"OpenGL ES"` or `"ANGLE"`.
+   - *Fail-safe feature-gate* — when `IsLikelyOpenGlEs` is detected the per-frame render path is **gated**:
+     `HandleOpenGlRender` skips the entire immediate-mode pipeline, presents a harmless cleared surface
+     using only core (GLES-safe) `glClear`/`glClearColor`, and **does not request another frame**, so an
+     unsupported context can never throw-every-frame or crash-loop/spin the program (`IsRenderingGated`
+     latches the decision at first init).
+   - *Surfacing* — the host raises the one-shot `RenderingGated` event (carrying the audited context
+     strings via `GlContextGatedEventArgs`) on the first gated frame so the composition root / UI can warn
+     the operator and record the verified context here.
+   - *Desktop-GL request hook* — the static `AvaloniaGeoViewport.RequestDesktopGlProfile(AppBuilder)` lets
+     the composition-root bootstrap request a desktop-GL **compatibility** profile (Windows: `Wgl` ahead of
+     ANGLE/EGL; Linux/X11: `Glx` ahead of EGL; both offer GL 3.2-compatibility then legacy 2.1, software
+     last). macOS exposes no per-OS GL-profile knob through Avalonia platform options and relies on the
+     runtime gate.
+   **Status: runtime fail-safe ENFORCED and unit-validated** (gate state machine, one-shot `RenderingGated`
+   event, `RequestDesktopGlProfile` null-builder rejection, and live Win32/X11 option-application were all
+   exercised by an ad-hoc `AvaloniaGeoViewport` fixture and pass; the host compiles clean on `net8.0` and
+   `net8.0-windows`, Debug + Release). **STILL OPEN:** (a) the out-of-scope composition root (`Program.cs`)
+   must call `AvaloniaGeoViewport.RequestDesktopGlProfile(...)` in `BuildAvaloniaApp()` to actually obtain a
+   desktop-GL context, and (b) on-hardware, per-OS confirmation that a desktop-GL compatibility context is
+   obtained and that `glReadPixels` `oglBack` parity holds must be run and recorded here. Until (a)+(b) this
+   remains the dominant open feasibility risk — **but it can no longer crash the program.**
 2. **Culture / locale (highest data-integrity risk).** Each program sets `CurrentCulture` /
    `CurrentUICulture` from settings. All **numeric file and protocol I/O must use `InvariantCulture`**,
    or a Linux/macOS locale with a comma decimal separator will corrupt field files, settings, ISOXML,
@@ -254,19 +302,25 @@ and is listed first.
    so the byte-comparison assertions stay stable across operating systems.
 6. **Float determinism.** IEEE arithmetic is generally stable across RyuJIT, but the guidance
    golden tests (`GuidanceEquivalenceTests`) must confirm it cross-OS rather than assume it.
-7. **Gated FormGPS-coupled source closure (pending decoupling).** To bring the GPS project to a clean
-   cross-platform build at this checkpoint, the GPS sources still coupled to the WinForms `FormGPS`
-   god-object — the guidance/section/field-coordination classes (e.g. `CGuidance`, `CTrack`,
-   `CBoundary`, `CContour`, `CYouTurn`, `CTram`, `CVehicle`, `CTool`, `CFieldData`) and the views that
-   depend on them (e.g. `FormFieldDataView`) — are **excluded from compilation via `<Compile Remove>` /
-   `<AvaloniaXaml Remove>`** in `SourceCode/GPS/AgOpenGPS.csproj`. They must be decoupled into the
-   injectable services described in this report and re-included in later checkpoints before the
-   corresponding guidance/section/field parity suites can run end-to-end. The gated set is categorized in
-   `TRANSITION_MAP.md`; the authoritative complete list is the `<Compile Remove>` / `<AvaloniaXaml Remove>`
-   block in `SourceCode/GPS/AgOpenGPS.csproj` — 27 `<Compile Remove>` entries across three labelled groups
-   (Windows-only imaging/audio; FormGPS-coupled domain classes, each holding a `private readonly FormGPS mf;`
-   back-reference; and their cascade dependents `ISO11783_TaskFile` / `SectionsVisual` / `FormFieldDataView`).
-   **Status: gating is an interim build-closure measure; full decoupling is pending later checkpoints.**
+7. **FormGPS-coupled source closure — RESOLVED at CP9.** Earlier checkpoints temporarily excluded the GPS
+   sources coupled to the WinForms `FormGPS` god-object from compilation via `<Compile Remove>` /
+   `<AvaloniaXaml Remove>` to reach a clean build. **At CP9 every such gate was removed** —
+   `SourceCode/GPS/AgOpenGPS.csproj` now contains **zero** `<Compile Remove>` / `<AvaloniaXaml Remove>` /
+   `<AvaloniaResource Remove>` entries. The decoupled guidance/section/field/protocol classes (e.g.
+   `CGuidance`, `CTrack`, `CBoundary`, `CContour`, `CYouTurn`, `CTram`, `CTool`, `CFieldData`,
+   `ISO11783_TaskFile`), the five extracted `Services` (`PositionService`, `PgnDispatcher`,
+   `SectionService`, `FieldIoService`, `RenderCoordinator`), the `AvaloniaGeoViewport` host, and their
+   dependent Views are all compiled and integrated in the **normal** GPS build on both `net8.0` and
+   `net8.0-windows` (Debug + Release, 0 errors). The `mf`/`FormGPS` back-references were eliminated during
+   decoupling. The `TRANSITION_MAP.md` disposition table reflects the integrated state. **Status:
+   integrated — no longer an open build-closure risk.** The golden-artifact-capture gap that was
+   previously tracked here is also **closed at CP9**: the PGN / Guidance / ISOXML / Settings golden
+   fixtures are captured, committed under `Parity/Golden/**`, and **enforced** (each `LoadRequired…`
+   loader fails when a required artifact is absent — no silent self-ignore), and the full `Parity` suite
+   is **green on the local Linux environment** (60 passed / 1 intentional skip / 0 failed). The **only
+   residual parity item** is **tri-OS CI confirmation** (the `windows` / `macos` legs have not yet run);
+   that cross-OS confirmation is tracked under **Golden-File Parity Suites** and **Cross-OS CI Matrix**
+   above, not here.
 
 **Accepted capability gaps (feature-completeness, not parity, risks).** The following are
 **Feature-gated (per-OS)** by design — they degrade gracefully where no cross-platform equivalent

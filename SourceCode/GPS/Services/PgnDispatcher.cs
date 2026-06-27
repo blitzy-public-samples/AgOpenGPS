@@ -761,20 +761,29 @@ namespace AgOpenGPS.Services
             if (data.Length > 4 && data[0] == 0x80 && data[1] == 0x81)
             {
                 int Length = Math.Max((data[4]) + 5, 5);
-                if (data.Length > Length)
-                {
-                    byte CK_A = 0;
-                    for (int j = 2; j < Length; j++)
-                    {
-                        CK_A += data[j];
-                    }
 
-                    if (data[Length] != (byte)CK_A)
-                    {
-                        return;
-                    }
+                // [XPLAT] CP9 F2 (CWE-20): EXACT envelope validation. The net48 source accepted any
+                // `data.Length > Length` (the declared frame plus arbitrary trailing bytes): a truncated frame
+                // that declared a large payload was rejected, but an oversized/padded frame was processed. We now
+                // require the datagram to be EXACTLY the declared size — header(5) + declared payload(data[4]) +
+                // one trailing CRC byte = Length + 1 — so both truncated AND oversized/padded frames are rejected
+                // before any fixed-offset read. ReceiveAppData sizes localMsg to the exact datagram length, so a
+                // conformant AgIO frame always satisfies this; well-formed behavior is unchanged and only malformed
+                // frames are dropped. Rejection is silent (no throw, no log-flood) exactly as the source CRC path.
+                if (data.Length != Length + 1)
+                {
+                    return;
                 }
-                else
+
+                // Additive checksum (CK_A) over bytes [2 .. Length-1], compared to the trailing CRC at data[Length].
+                // data.Length == Length + 1 guarantees data[Length] (the last byte) exists for this compare.
+                byte CK_A = 0;
+                for (int j = 2; j < Length; j++)
+                {
+                    CK_A += data[j];
+                }
+
+                if (data[Length] != (byte)CK_A)
                 {
                     return;
                 }
@@ -783,6 +792,15 @@ namespace AgOpenGPS.Services
                 {
                     case 0xD6:
                         {
+                            // [XPLAT] CP9 F2: per-PGN read-safety guard. This case reads fixed offsets up to
+                            // BitConverter.ToInt16(data, 54) (bytes 54-55), so the frame must be at least 56 bytes.
+                            // The exact envelope above guarantees data.Length == data[4] + 6, but a frame that
+                            // declared a short payload (small data[4]) with a valid additive CRC would still reach
+                            // these reads; this guard rejects it before any out-of-bounds access. A conformant 0xD6
+                            // GPS frame is 57 bytes (data[4] = 0x33 = 51), so well-formed behavior is unchanged.
+                            if (data.Length < 56)
+                                break;
+
                             if (udpWatch.ElapsedMilliseconds < udpWatchLimit)
                             {
                                 missedSentenceCount++;
@@ -921,6 +939,10 @@ namespace AgOpenGPS.Services
                         }
                     case 0xD4: //imu disconnect pgn
                         {
+                            // [XPLAT] CP9 F2: read-safety guard — this case reads data[5], so require >= 6 bytes
+                            // before the access (defense-in-depth atop the exact envelope; conformant frames pass).
+                            if (data.Length < 6)
+                                break;
                             if (data[5] == 1)
                             {
                                 _ahrs.imuHeading = 99999;
@@ -973,6 +995,12 @@ namespace AgOpenGPS.Services
                     case 0xF0: // ISOBUS heartbeat
                         {
                             int length = data[4];
+                            // [XPLAT] CP9 F2: declared-payload guard — the copy reads bytes [5 .. 5+length-1], so
+                            // require the buffer to actually contain them before Array.Copy. The exact envelope
+                            // already implies this for conformant frames; the explicit local bound hardens against
+                            // any future envelope change and documents the read range.
+                            if (data.Length < 5 + length)
+                                break;
                             byte[] pgnData = new byte[length];
                             Array.Copy(data, 5, pgnData, 0, length);
                             _isobus.DeserializeHeartbeat(pgnData);
@@ -992,10 +1020,18 @@ namespace AgOpenGPS.Services
                             //{ 0x80, 0x81, 0x7f, 221, number bytes, seconds to display, mystery byte, 98,99,100,101, CRC };
                             if (data.Length < 9) break;
 
+                            // [XPLAT] CP9 F2: bound the UTF-8 slice explicitly. The message length is data[4] - 2;
+                            // reject a frame whose declared message would be negative or run past the buffer BEFORE
+                            // calling GetString (which would otherwise throw ArgumentOutOfRangeException). The exact
+                            // envelope + the >= 9 guard already imply a valid slice for conformant frames, so the
+                            // decoded bytes — and thus well-formed behavior — are unchanged.
+                            int hwMsgLen = data[4] - 2;
+                            if (hwMsgLen < 0 || 7 + hwMsgLen > data.Length) break;
+
                             // [XPLAT] was the WinForms lblHardwareMessage label (text/visibility/color set inline).
                             // Decode the UTF-8 message exactly as the net48 source and raise it; the Avalonia view
                             // subscriber owns display/visibility/coloring/duration (formerly data[5]/data[6]).
-                            string hardwareMessage = System.Text.Encoding.UTF8.GetString(data, 7, data[4] - 2);
+                            string hardwareMessage = System.Text.Encoding.UTF8.GetString(data, 7, hwMsgLen);
                             Log.EventWriter(hardwareMessage);
                             OnHardwareMessage?.Invoke(hardwareMessage);
                             break;
@@ -1003,7 +1039,12 @@ namespace AgOpenGPS.Services
                     case 222: // 0xDE
                         {
                             //{ 0x80, 0x81, 0x7f, 222, number bytes, mask, command CRC };
-                            if (data.Length < 6) break;
+                            // [XPLAT] CP9 F2: off-by-one fix — this case reads BOTH data[5] (mask) and data[6]
+                            // (command), so the frame must be at least 7 bytes. The net48 source guarded
+                            // `data.Length < 6`, which still permitted a 6-byte frame to read data[6] out of
+                            // bounds. A conformant 0xDE frame carries mask + command (data[4] >= 2 -> length >= 8),
+                            // so well-formed behavior is unchanged.
+                            if (data.Length < 7) break;
                             if (((data[5] & 1) == 1)) //mask bit #0 set and command bit #0 nudge line to the 0 = left 1 = right
                             {
                                 double dist = Properties.ToolSettings.Default.setAS_snapDistance * 0.01;

@@ -326,7 +326,21 @@ namespace AgOpenGPS.Views
             try
             {
                 iso = new XmlDocument { PreserveWhitespace = false };
-                iso.Load(xmlFilename);
+                // [XPLAT] CP9 F4 (CWE-611 XXE hardening): the user-selected ISOXML TASKDATA was loaded directly via
+                // XmlDocument.Load, which honors DTDs and external entities. Load through a hardened XmlReader that
+                // PROHIBITS DTD processing (blocking DOCTYPE-based XXE and entity-expansion / billion-laughs) and nulls
+                // the XmlResolver (blocking external entity/resource resolution). ISO 11783 TASKDATA is XSD-defined
+                // with no DTD/DOCTYPE, so a well-formed file parses to an identical DOM; only hostile XML is rejected.
+                XmlReaderSettings isoReaderSettings = new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                    MaxCharactersInDocument = 256L * 1024L * 1024L // generous 256M-char bound; never trips real TASKDATA
+                };
+                using (XmlReader isoReader = XmlReader.Create(xmlFilename, isoReaderSettings))
+                {
+                    iso.Load(isoReader);
+                }
                 pfd = iso.GetElementsByTagName("PFD");
 
                 BuildFieldTree();

@@ -486,7 +486,7 @@ public partial class FormBuildTracksView : Window
         selectedItem = originalLine;
 
         // restore window location
-        System.Drawing.Point loc = Settings.Default.setWindow_buildTracksLocation;
+        System.Drawing.Point loc = Properties.Settings.Default.setWindow_buildTracksLocation;
         Position = new PixelPoint(loc.X, loc.Y);
 
         // [XPLAT] the eight `nud*.Controls[0].Enabled = false` lines (suppress in-place text entry) have no
@@ -522,8 +522,8 @@ public partial class FormBuildTracksView : Window
             return;
         }
 
-        Settings.Default.setWindow_buildTracksLocation = new System.Drawing.Point(Position.X, Position.Y);
-        Settings.Default.Save();
+        Properties.Settings.Default.setWindow_buildTracksLocation = new System.Drawing.Point(Position.X, Position.Y);
+        Properties.Settings.Default.Save();
         setTwoSecondCounter?.Invoke(100);
         panelUpdateRightAndBottom?.Invoke();
 
@@ -1500,7 +1500,21 @@ public partial class FormBuildTracksView : Window
 
         try
         {
-            doc.Load(fileAndDirectory);
+            // [XPLAT] CP9 F3 (CWE-611 XXE hardening): the net48 original loaded user-selected KML directly via
+            // XmlDocument.Load, which honors DTDs and external entities. Load through a hardened XmlReader that
+            // PROHIBITS DTD processing (blocking DOCTYPE-based XXE and entity-expansion / billion-laughs) and nulls
+            // the XmlResolver (blocking external entity/resource resolution). KML carries no DTD/DOCTYPE — it is
+            // XSD-namespaced — so a well-formed track file parses to an identical DOM; only hostile XML is rejected.
+            XmlReaderSettings kmlReaderSettings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                MaxCharactersInDocument = 256L * 1024L * 1024L // generous 256M-char bound; never trips legitimate fields
+            };
+            using (XmlReader kmlReader = XmlReader.Create(fileAndDirectory, kmlReaderSettings))
+            {
+                doc.Load(kmlReader);
+            }
             string trackName = Path.GetFileName(fileAndDirectory);
             trackName = trackName.Substring(0, trackName.Length - 4);
 

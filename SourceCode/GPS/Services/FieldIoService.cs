@@ -40,6 +40,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;            // [XPLAT] SemaphoreSlim — serialize field open/close (CP9 race fix)
 using System.Threading.Tasks;
 using System.Xml;
 using AgLibrary.Logging;
@@ -184,11 +185,92 @@ namespace AgOpenGPS.Services
         public List<List<vec3>> contourSaveList = new List<List<vec3>>();
 
         /// <summary>
-        /// [XPLAT] The active field's directory name (folder under the fields root), formerly the FormGPS
-        /// <c>currentFieldDirectory</c> member. Mutable state set by <see cref="FileOpenField"/> and read by every
-        /// save/create/export method.
+        /// [XPLAT] CP9 concurrency fix (F1): serializes field open/close so the previous job's
+        /// close-save can never race a concurrent or subsequent open. <see cref="FileOpenField"/> holds this
+        /// gate while it awaits the close-save and then mutates <see cref="currentFieldDirectory"/>, and the public
+        /// <see cref="FileSaveEverythingBeforeClosingField"/> wrapper holds it for standalone close-saves. The
+        /// gate-free <c>FileSaveEverythingBeforeClosingFieldCore</c> is what runs inside the gate to avoid
+        /// (non-reentrant) self-deadlock.
         /// </summary>
-        public string currentFieldDirectory { get; set; } = string.Empty;
+        private readonly SemaphoreSlim _fieldIoGate = new SemaphoreSlim(1, 1);
+
+        /// <summary>
+        /// [XPLAT] The active field's directory name (folder under the fields root), formerly the FormGPS
+        /// <c>currentFieldDirectory</c> member. Set by <see cref="FileOpenField"/> (and, for new-field creation,
+        /// by the composition-root delegate the views are wired through) and read by every save/create/export
+        /// method.
+        /// <para>
+        /// [XPLAT] CP9 security (path-traversal guard): the setter is now <b>validated</b> — it accepts only a
+        /// single safe folder <em>leaf</em> name (or the empty "no field" state). Any value containing a path
+        /// separator, a rooted path, a <c>.</c>/<c>..</c> traversal segment, or an invalid file-name character is
+        /// rejected, so every <c>Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory, …)</c> in the
+        /// save/export methods is guaranteed to stay under the fields root on every OS. <see cref="GetFieldDir"/>
+        /// additionally re-verifies containment with <see cref="Path.GetFullPath(string)"/> as defense-in-depth.
+        /// </para>
+        /// </summary>
+        public string currentFieldDirectory
+        {
+            get => _currentFieldDirectory;
+            set => _currentFieldDirectory = SanitizeFieldDirectoryName(value);
+        }
+        private string _currentFieldDirectory = string.Empty;
+
+        /// <summary>
+        /// [XPLAT] CP9 path-traversal guard. Validates that a field directory name is a single safe leaf segment
+        /// before it can become active state. Empty/null is allowed (the "no field open" state). Throws
+        /// <see cref="ArgumentException"/> for separators, rooted paths, <c>.</c>/<c>..</c> segments, or invalid
+        /// file-name characters — fail-closed so a malicious or malformed name can never escape the fields root.
+        /// </summary>
+        private static string SanitizeFieldDirectoryName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return string.Empty;
+            }
+
+            bool unsafeName =
+                name.IndexOf('/') >= 0
+                || name.IndexOf('\\') >= 0
+                || name.IndexOf(Path.DirectorySeparatorChar) >= 0
+                || name.IndexOf(Path.AltDirectorySeparatorChar) >= 0
+                || Path.IsPathRooted(name)
+                || name == "."
+                || name == ".."
+                || Path.GetFileName(name) != name
+                || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0;
+
+            if (unsafeName)
+            {
+                Log.EventWriter("FieldIoService: rejected unsafe field directory name '" + name +
+                    "' (CP9 path-traversal guard)");
+                throw new ArgumentException(
+                    "Invalid field directory name: must be a single folder name with no path separators or traversal segments.",
+                    nameof(currentFieldDirectory));
+            }
+
+            return name;
+        }
+
+        /// <summary>
+        /// [XPLAT] CP9 defense-in-depth containment check: returns true only when <paramref name="candidate"/>
+        /// canonically resolves to, or under, <paramref name="root"/>. Used by <see cref="GetFieldDir"/> to refuse
+        /// any resolved field path that escapes the fields root, complementing the validated
+        /// <see cref="currentFieldDirectory"/> setter.
+        /// </summary>
+        private static bool IsPathUnderRoot(string root, string candidate)
+        {
+            if (string.IsNullOrEmpty(root))
+            {
+                return false;
+            }
+
+            string fullRoot = Path.GetFullPath(root)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string fullCandidate = Path.GetFullPath(candidate);
+
+            return fullCandidate.Equals(fullRoot, StringComparison.Ordinal)
+                || fullCandidate.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        }
 
         // ---- Wrapper properties keeping the ported bodies verbatim -----------------------------------
 
@@ -281,9 +363,22 @@ namespace AgOpenGPS.Services
         }
 
         // Returns field directory; creates it when ensureExists is true.
+        // [XPLAT] CP9 security (F8): although the currentFieldDirectory setter already rejects unsafe names, this
+        // method re-verifies — as defense-in-depth — that the resolved directory canonically stays under the fields
+        // root before any save/export uses it or it is created. A combined path that escaped the root (e.g. via a
+        // future code path or a symlinked fields root) is refused fail-closed rather than written outside the root.
         private string GetFieldDir(bool ensureExists = false)
         {
             var dir = Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory);
+
+            if (!IsPathUnderRoot(RegistrySettings.fieldsDirectory, dir))
+            {
+                Log.EventWriter("FieldIoService: resolved field directory '" + dir +
+                    "' escapes the fields root '" + RegistrySettings.fieldsDirectory + "' (CP9 containment guard)");
+                throw new InvalidOperationException(
+                    "Resolved field directory escapes the configured fields root.");
+            }
+
             if (ensureExists && !string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             {
                 Directory.CreateDirectory(dir);
@@ -292,11 +387,44 @@ namespace AgOpenGPS.Services
         }
 
         // Open a field with required precheck and per-file loaders.
+        // [XPLAT] CP9 CRITICAL race fix (F1): the public entry serializes the entire open behind the field-IO
+        // gate (so it cannot interleave with another open or a standalone close-save) and always releases in
+        // finally, then delegates to the gate-free FileOpenFieldGated core.
         public async Task FileOpenField(string openType)
+        {
+            await _fieldIoGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await FileOpenFieldGated(openType).ConfigureAwait(false);
+            }
+            finally
+            {
+                _fieldIoGate.Release();
+            }
+        }
+
+        // [XPLAT] CP9: the field-open orchestration body — runs while the caller holds _fieldIoGate.
+        private async Task FileOpenFieldGated(string openType)
         {
             if (isJobStarted)
             {
-                _ = FileSaveEverythingBeforeClosingField();
+                // [XPLAT] CP9 F1: was `_ = FileSaveEverythingBeforeClosingField();` (fire-and-forget). That raced
+                // the `currentFieldDirectory = …` reassignment below — the async save read the mutated directory
+                // and wrote the OLD job's boundary/sections/contour/tracks/KML/ISOXML into the NEWLY-opened
+                // field's folder (data corruption), and any exception was lost. We now AWAIT the gate-free
+                // close-save CORE (the public wrapper would re-enter the non-reentrant gate and deadlock), so
+                // currentFieldDirectory is the immutable save context for the close-save. Exceptions are logged
+                // and surfaced DETERMINISTICALLY (never silently dropped as the fire-and-forget did) but do not
+                // abort opening the next field.
+                try
+                {
+                    await FileSaveEverythingBeforeClosingFieldCore().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Log.EventWriter("FileOpenField: close-save of the previous field failed: " + ex);
+                    reportFileProblem("Field Save", ex.Message, true);
+                }
             }
 
             // Resolve Field.txt path
@@ -326,7 +454,7 @@ namespace AgOpenGPS.Services
             // If AgShare is active and this field has a cloud ID, fetch the latest version first
             await TryLoadFromAgShareAsync(fileAndDirectory);
 
-            // Set current field directory
+            // Set current field directory (validated leaf name — see the currentFieldDirectory setter)
             currentFieldDirectory = new DirectoryInfo(Path.GetDirectoryName(fileAndDirectory)).Name;
             var dir = GetFieldDir(false);
 
@@ -1255,7 +1383,28 @@ namespace AgOpenGPS.Services
         // reset, and the WinForms close (JobClose/panel disable/title) — are owned by the other services and the view;
         // they are surfaced as the optional onBeforeCloseField / onAfterCloseField hooks the composition root attaches,
         // so this orchestrator stays independent of those services.
+        // [XPLAT] CP9 F1: public close-save entry. Standalone callers (the view's injected close-field delegate)
+        // come through here, where the field-IO gate serializes the save against any concurrent open/close so the
+        // batch always runs against a stable currentFieldDirectory and never interleaves with FileOpenField. The
+        // gate is always released in finally. FileOpenFieldGated must NOT call this (it already holds the
+        // non-reentrant gate); it calls FileSaveEverythingBeforeClosingFieldCore directly.
         public async Task FileSaveEverythingBeforeClosingField()
+        {
+            await _fieldIoGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await FileSaveEverythingBeforeClosingFieldCore().ConfigureAwait(false);
+            }
+            finally
+            {
+                _fieldIoGate.Release();
+            }
+        }
+
+        // [XPLAT] CP9 F1: gate-free close-save core. Behavior is frozen — the FileSave*/Export* batch (each
+        // delegated to a frozen IO handler / exporter) and its per-operation try/catch + Log.EventWriter are
+        // reproduced verbatim. Callers MUST hold _fieldIoGate (the public wrapper above, or FileOpenFieldGated).
+        private async Task FileSaveEverythingBeforeClosingFieldCore()
         {
             onBeforeCloseField?.Invoke();
 

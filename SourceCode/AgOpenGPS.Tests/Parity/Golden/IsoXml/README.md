@@ -17,7 +17,7 @@ Resolved by the fixture via `Path.Combine(TestContext.CurrentContext.TestDirecto
 
 A versioned `TASKDATA.XML` pair is acceptable **as long as the fixture and these goldens agree** on the names.
 
-> **These files are not yet present.** Real exports are captured from the running Windows/net48 baseline (see *Capturing the goldens*). Until they exist, `IsoXmlEquivalenceTests` calls `Assert.Ignore(...)` — the **guarded-golden** strategy — so the suite stays green and discoverable on `windows` / `ubuntu` / `macos` (including `osx-arm64`). Each not-yet-captured artifact is tracked as an open risk in `MIGRATION_DOCS/PARITY_REPORT.md`.
+> **These files are captured and committed.** `V3_TASKDATA.XML` and `V4_TASKDATA.XML` are present in this folder. `IsoXmlEquivalenceTests` resolves each through `LoadRequiredGoldenXml(...)`, which **FAILS** the test when a required golden is missing — the **enforced-golden** strategy — so CI enforces ISOXML parity on `windows` / `ubuntu` / `macos` (including `osx-arm64`). The one exception is `IsoXmlExport_DrivenFromDomainGraph_RequiresFormGpsGraph`, which stays intentionally **Ignored** because it needs the FormGPS-assembled object graph (the committed goldens prove the export instead). Residual cross-OS verification status is recorded in `MIGRATION_DOCS/PARITY_REPORT.md`.
 
 ## Comparison mode — SEMANTIC (not byte)
 
@@ -35,7 +35,7 @@ ISOXML serializers may legitimately differ in insignificant whitespace and attri
 
 ## How the fixture resolves these files
 
-Each artifact is resolved at runtime via `Path.Combine(TestContext.CurrentContext.TestDirectory, "Parity", "Golden", "IsoXml", "<file>")` (case-sensitive `IsoXml`). Until a golden exists on disk, the corresponding test calls `Assert.Ignore(...)` and reports **Ignored** — so `dotnet test` stays **green and discoverable** on every OS while goldens are still being captured.
+Each artifact is resolved at runtime via `Path.Combine(TestContext.CurrentContext.TestDirectory, "Parity", "Golden", "IsoXml", "<file>")` (case-sensitive `IsoXml`). When a required golden is missing the corresponding test **FAILS** (via `LoadRequiredGoldenXml`/`LoadRequiredGoldenPath`) so CI enforces parity on every OS; the goldens are copied next to the test assembly by the `AgOpenGPS.Tests.csproj` `Parity\Golden\**\*` (`PreserveNewest`) rule and pinned byte-stable by `.gitattributes`.
 
 ## Capturing the goldens
 

@@ -140,8 +140,11 @@
                         </Button>
 
                         <!-- Port light: Border carries DayColour bg (code-behind); Image source set in code. -->
+                        <!-- [XPLAT] F9 a11y: port connection state is shown by colour/icon only (no text);
+                             AutomationProperties.Name labels the indicator for screen readers. -->
                         <Border x:Name="PortIndicator1Bg" Canvas.Left="453" Canvas.Top="54"
-                                Width="41" Height="37">
+                                Width="41" Height="37"
+                                AutomationProperties.Name="Port connection status">
                             <Image x:Name="PortIndicator1" Stretch="Uniform" />
                         </Border>
                     </Canvas>

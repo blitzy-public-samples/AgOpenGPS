@@ -1,0 +1,8 @@
+# Pure Pursuit steer-angle parity golden (captured from frozen documented formula; InvariantCulture).
+error,wheelbase,lookahead,expectedSteerAngleDeg
+0,3.3,5,0
+0.1,3.3,5,7.507186963194456
+-0.1,3.3,5,-7.507186963194456
+0.2,3.3,8,9.30814194508636
+0.5,3.3,3,30
+1.5707963267948966,3.3,0.5,30

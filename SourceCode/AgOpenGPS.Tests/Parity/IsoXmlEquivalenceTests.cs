@@ -29,12 +29,13 @@ namespace AgOpenGPS.Tests.Parity
     ///
     /// <para>
     /// Golden artifacts (<c>V3_TASKDATA.XML</c> / <c>V4_TASKDATA.XML</c> under
-    /// <c>Parity/Golden/IsoXml/</c>) are captured once from the baseline and may not exist on disk yet;
-    /// every golden-consuming test therefore resolves its artifact through <see cref="LoadGoldenXmlOrIgnore"/>,
-    /// which self-reports as <c>Ignored</c> (never failed) until the real golden is committed. The
-    /// designator-length and AB/Curve-filter invariants need no golden and always run. This keeps
-    /// <c>dotnet test</c> green and discoverable on every OS — including <c>osx-arm64</c> — while the
-    /// goldens are still being produced (each gap is an open risk in <c>MIGRATION_DOCS/PARITY_REPORT.md</c>).
+    /// <c>Parity/Golden/IsoXml/</c>) are captured from the baseline and committed to the repository;
+    /// every golden-consuming test resolves its artifact through <see cref="LoadRequiredGoldenXml"/>,
+    /// which FAILS the test when a required golden is missing so CI enforces ISOXML parity on every OS
+    /// (including <c>osx-arm64</c>). The designator-length and AB/Curve-filter invariants need no golden
+    /// and always run. The one exception is <see cref="IsoXmlExport_DrivenFromDomainGraph_RequiresFormGpsGraph"/>,
+    /// which is intentionally <c>Ignored</c> because it requires the FormGPS-assembled object graph (the
+    /// captured goldens prove the export instead — see <c>MIGRATION_DOCS/PARITY_REPORT.md</c>).
     /// </para>
     /// </summary>
     [TestFixture]
@@ -140,7 +141,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void IsoXmlV3_Export_IsSemanticallyEquivalentToGolden()
         {
-            XDocument golden = LoadGoldenXmlOrIgnore("V3_TASKDATA.XML");
+            XDocument golden = LoadRequiredGoldenXml("V3_TASKDATA.XML");
 
             AssertWellFormedTaskData(golden);
 
@@ -162,7 +163,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void IsoXmlV4_Export_IsSemanticallyEquivalentToGolden()
         {
-            XDocument golden = LoadGoldenXmlOrIgnore("V4_TASKDATA.XML");
+            XDocument golden = LoadRequiredGoldenXml("V4_TASKDATA.XML");
 
             AssertWellFormedTaskData(golden);
 
@@ -187,8 +188,8 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void V3AndV4_DifferInVersionMarkersOnly_NotInGeometry()
         {
-            XDocument v3 = LoadGoldenXmlOrIgnore("V3_TASKDATA.XML");
-            XDocument v4 = LoadGoldenXmlOrIgnore("V4_TASKDATA.XML");
+            XDocument v3 = LoadRequiredGoldenXml("V3_TASKDATA.XML");
+            XDocument v4 = LoadRequiredGoldenXml("V4_TASKDATA.XML");
 
             AssertWellFormedTaskData(v3);
             AssertWellFormedTaskData(v4);
@@ -251,34 +252,32 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         /// <summary>
-        /// Resolves a golden ISOXML artifact next to the test assembly (it is copied there by the
+        /// Resolves a REQUIRED golden ISOXML artifact next to the test assembly (it is copied there by the
         /// <c>AgOpenGPS.Tests.csproj</c> <c>Parity\Golden\**\*</c> rule) using
         /// <see cref="TestContext.CurrentContext"/>.<c>TestDirectory</c> and <see cref="Path.Combine"/> so
         /// resolution is correct and case-stable on Windows, Linux and macOS (the folder is exactly
-        /// <c>IsoXml</c>). When the artifact has not been captured yet the test self-reports as
-        /// <c>Ignored</c> rather than failing.
+        /// <c>IsoXml</c>). The test FAILS when the artifact is missing so CI enforces ISOXML parity.
         /// </summary>
-        private static string LoadGoldenPathOrIgnore(string fileName)
+        private static string LoadRequiredGoldenPath(string fileName)
         {
             string path = Path.Combine(
                 TestContext.CurrentContext.TestDirectory, "Parity", "Golden", "IsoXml", fileName);
 
-            if (!File.Exists(path))
-            {
-                Assert.Ignore(
-                    $"Golden artifact not yet captured: {path} — tracked as an open risk in MIGRATION_DOCS/PARITY_REPORT.md");
-            }
+            Assert.That(
+                File.Exists(path),
+                Is.True,
+                $"Required ISOXML golden artifact is missing: {path}. Commit it under Parity/Golden/IsoXml so CI enforces parity (see MIGRATION_DOCS/PARITY_REPORT.md).");
 
             return path;
         }
 
         /// <summary>
-        /// Loads a golden TASKDATA into an <see cref="XDocument"/> for semantic inspection, or self-reports
-        /// as <c>Ignored</c> when the golden has not been captured yet (via <see cref="LoadGoldenPathOrIgnore"/>).
+        /// Loads a REQUIRED golden TASKDATA into an <see cref="XDocument"/> for semantic inspection, FAILING
+        /// the test when the golden is missing (via <see cref="LoadRequiredGoldenPath"/>).
         /// </summary>
-        private static XDocument LoadGoldenXmlOrIgnore(string fileName)
+        private static XDocument LoadRequiredGoldenXml(string fileName)
         {
-            return XDocument.Load(LoadGoldenPathOrIgnore(fileName));
+            return XDocument.Load(LoadRequiredGoldenPath(fileName));
         }
 
         /// <summary>

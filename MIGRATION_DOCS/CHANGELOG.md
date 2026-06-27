@@ -58,6 +58,24 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 
 _Date: (in progress)_
 
+> **[XPLAT] CP9 code-review resolution — real-time pipeline integration + security hardening + GL-host
+> feasibility + parity goldens.** This pass resolves the CP9 review findings; each change is detailed
+> under its migration area below. **Build integration (F5):** the entire Checkpoint-6 source-gating block
+> was **removed** from `SourceCode/GPS/AgOpenGPS.csproj` — there are now **zero** `<Compile Remove>` /
+> `<AvaloniaXaml Remove>` / `<AvaloniaResource Remove>` entries. All previously-gated CP9 crown-jewel
+> files (the 16 guidance/domain classes, `ISO11783_TaskFile`, `SectionsVisual`, the 11 lockstep-gated
+> Field/Guidance/Pickers views, the five extracted real-time services `PgnDispatcher`/`SectionService`/
+> `RenderCoordinator`/`PositionService`/`FieldIoService`, and the `AvaloniaGeoViewport` GL-host adapter)
+> now compile in the **normal GPS build** on both `net8.0` and `net8.0-windows`, in Debug **and** Release
+> (`TreatWarningsAsErrors`), with **0 errors and 0 new warnings**. The single blocker uncovered when
+> un-gating was a namespace collision in four guidance views (`namespace AgOpenGPS.Views` made the
+> unqualified `Settings.Default` bind to the sibling `AgOpenGPS.Views.Settings` namespace); it was fixed
+> by qualifying all 17 sites to `Properties.Settings.Default`, matching the established codebase
+> convention. The full `AgOpenGPS.sln` builds clean and `AgOpenGPS.Tests` now compiles and runs for the
+> first time (it references GPS). The only residual warnings are 8 pre-existing `AVLN3001` runtime-loader
+> notices in unmodified, never-gated views (present in the pre-CP9 baseline; not promoted by
+> `TreatWarningsAsErrors`). See `TRANSITION_MAP.md` CP9 banner.
+
 > **Code-review resolution — Windows-coupled classes (Settings/Audio) + tri-OS CI checkpoint.**
 > The following review findings were resolved in this pass; each change is detailed under its
 > migration area below. **Build/CI:** added `<EnableWindowsTargeting>true</EnableWindowsTargeting>`

@@ -184,7 +184,7 @@ public partial class FormQuickABView : Window
         base.OnOpened(e);
 
         // [XPLAT] Settings.setWindow_QuickABLocation is a System.Drawing.Point; map to PixelPoint.
-        System.Drawing.Point loc = Settings.Default.setWindow_QuickABLocation;
+        System.Drawing.Point loc = Properties.Settings.Default.setWindow_QuickABLocation;
         Position = new PixelPoint(loc.X, loc.Y);
 
         // [XPLAT] nudHeading.Value = 0 (the source nudHeading.Controls[0].Enabled = false has no
@@ -203,8 +203,8 @@ public partial class FormQuickABView : Window
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         PixelPoint pos = Position;
-        Settings.Default.setWindow_QuickABLocation = new System.Drawing.Point(pos.X, pos.Y);
-        Settings.Default.Save();
+        Properties.Settings.Default.setWindow_QuickABLocation = new System.Drawing.Point(pos.X, pos.Y);
+        Properties.Settings.Default.Save();
 
         setTwoSecondCounter?.Invoke(100);            // [XPLAT] mf.twoSecondCounter = 100
         panelUpdateRightAndBottom?.Invoke();         // [XPLAT] mf.PanelUpdateRightAndBottom()

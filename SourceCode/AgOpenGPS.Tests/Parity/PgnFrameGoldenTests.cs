@@ -40,10 +40,10 @@
 //       so the proof stays faithful to the relocated production code without depending on it at
 //       compile time.
 //
-//   (2) GOLDEN byte-compare (guarded): canonical frames captured from the Windows/net48 baseline as
-//       Parity/Golden/Pgn/*.bin. Until a given artifact is captured, the test self-reports Ignored
-//       (open risk tracked in MIGRATION_DOCS/PARITY_REPORT.md), so `dotnet test` stays green and
-//       discoverable on every OS. Frames that have a deterministic, natural canonical input
+//   (2) GOLDEN byte-compare (enforced): canonical frames captured from the Windows/net48 baseline as
+//       Parity/Golden/Pgn/*.bin, committed to the repository. A required artifact that is missing
+//       FAILS the test so CI enforces the byte contract on every OS (see MIGRATION_DOCS/PARITY_REPORT.md).
+//       Frames that have a deterministic, natural canonical input
 //       (D0 via a lat/lon, E5 via "all 64 sections on") are byte-compared through the documented
 //       encoder; frames whose payload is runtime-telemetry-dependent (FE/EF), inbound-only with no
 //       encoder (D6), or settings-coupled (EB/EC) are validated against the self-consistent frozen
@@ -298,7 +298,7 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         // =================================================================================================
-        // Phase D (golden byte-compare / envelope) — guarded; Ignored until the *.bin is captured.
+        // Phase D (golden byte-compare / envelope) — enforced; a missing required *.bin FAILS the test.
         // =================================================================================================
 
         /// <summary>
@@ -309,7 +309,7 @@ namespace AgOpenGPS.Tests.Parity
         public void Pgn_D0_LatLon_MatchesGolden()
         {
             byte[] frame = BuildCanonicalD0();
-            byte[] golden = LoadGoldenOrIgnore("D0_latlon.bin");
+            byte[] golden = LoadRequiredGolden("D0_latlon.bin");
 
             Assert.That(frame, Is.EqualTo(golden),
                 $"0xD0 frame must be byte-identical to the net48 baseline (incl. additive CRC). actual={Hex(frame)}");
@@ -323,7 +323,7 @@ namespace AgOpenGPS.Tests.Parity
         public void Pgn_E5_SectionControlExtended_MatchesGolden()
         {
             byte[] frame = BuildCanonicalE5();
-            byte[] golden = LoadGoldenOrIgnore("E5_sections.bin");
+            byte[] golden = LoadRequiredGolden("E5_sections.bin");
 
             Assert.That(frame, Is.EqualTo(golden),
                 $"0xE5 frame must be byte-identical to the net48 baseline (incl. additive CRC). actual={Hex(frame)}");
@@ -337,7 +337,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void Pgn_FE_AutoSteer_MatchesGolden()
         {
-            byte[] golden = LoadGoldenOrIgnore("FE_autosteer.bin");
+            byte[] golden = LoadRequiredGolden("FE_autosteer.bin");
             AssertEnvelopeContract(golden, AutoSteerPgn);
         }
 
@@ -348,7 +348,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void Pgn_EF_MachineData_MatchesGolden()
         {
-            byte[] golden = LoadGoldenOrIgnore("EF_machine.bin");
+            byte[] golden = LoadRequiredGolden("EF_machine.bin");
             AssertEnvelopeContract(golden, MachinePgn);
         }
 
@@ -361,7 +361,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void Pgn_D6_GpsPosition_MatchesGolden()
         {
-            byte[] golden = LoadGoldenOrIgnore("D6_gps.bin");
+            byte[] golden = LoadRequiredGolden("D6_gps.bin");
             AssertEnvelopeContract(golden, GpsPositionPgn);
         }
 
@@ -373,7 +373,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void Pgn_EB_SectionDimensions_MatchesGolden()
         {
-            byte[] golden = LoadGoldenOrIgnore("EB_dims.bin");
+            byte[] golden = LoadRequiredGolden("EB_dims.bin");
             AssertEnvelopeContract(golden, SectionDimsPgn);
         }
 
@@ -384,7 +384,7 @@ namespace AgOpenGPS.Tests.Parity
         [Test]
         public void Pgn_EC_RelayConfig_MatchesGolden()
         {
-            byte[] golden = LoadGoldenOrIgnore("EC_relay.bin");
+            byte[] golden = LoadRequiredGolden("EC_relay.bin");
             AssertEnvelopeContract(golden, RelayConfigPgn);
         }
 
@@ -535,22 +535,23 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         /// <summary>
-        /// Loads a captured golden PGN frame as raw bytes, or self-reports as <c>Ignored</c> when the artifact
-        /// has not been captured yet. Resolution is cross-OS and case-stable via
+        /// Loads a REQUIRED captured golden PGN frame as raw bytes, FAILING the test when the artifact is
+        /// missing so CI enforces byte-contract parity (the goldens are committed under
+        /// <c>Parity/Golden/Pgn</c> and copied to the test output by the <c>AgOpenGPS.Tests.csproj</c>
+        /// <c>Parity\Golden\**\*</c> rule). Resolution is cross-OS and case-stable via
         /// <see cref="TestContext.CurrentContext"/>.<c>TestDirectory</c> + <see cref="Path.Combine"/> (the
         /// category folder is exactly <c>Pgn</c>); callers read with <see cref="File.ReadAllBytes"/> so
         /// end-of-line/encoding drift can never mask a difference in these binary frames.
         /// </summary>
-        private static byte[] LoadGoldenOrIgnore(string fileName)
+        private static byte[] LoadRequiredGolden(string fileName)
         {
             string path = Path.Combine(
                 TestContext.CurrentContext.TestDirectory, "Parity", "Golden", "Pgn", fileName);
 
-            if (!File.Exists(path))
-            {
-                Assert.Ignore(
-                    $"Golden artifact not yet captured: {path} — tracked as an open risk in MIGRATION_DOCS/PARITY_REPORT.md");
-            }
+            Assert.That(
+                File.Exists(path),
+                Is.True,
+                $"Required PGN golden artifact is missing: {path}. Commit it under Parity/Golden/Pgn so CI enforces byte-contract parity (see MIGRATION_DOCS/PARITY_REPORT.md).");
 
             return File.ReadAllBytes(path);
         }

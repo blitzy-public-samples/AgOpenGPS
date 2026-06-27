@@ -128,21 +128,22 @@ The documented algorithm formulas the goldens encode
   steerAngle = atan2(2 * wheelbase * sin(error), lookahead)
   ```
 
-## Guarded-golden strategy
+## Enforced-golden strategy
 
-Until the real CSVs are captured, `GuidanceEquivalenceTests` resolves each path and, if the file is
-missing, calls **`Assert.Ignore(...)`** with a message of the form:
+The three CSV goldens (`stanley.csv`, `purepursuit.csv`, `sections.csv`) are **captured and committed**
+to this folder. `GuidanceEquivalenceTests` resolves each path through `LoadRequiredGoldenLines(...)`,
+which **FAILS** the test when a required CSV is missing:
 
 ```
-Golden artifact not yet captured: <path> — tracked as an open risk in MIGRATION_DOCS/PARITY_REPORT.md
+Required guidance golden artifact is missing: <path>. Commit it under Parity/Golden/Guidance so CI enforces parity (see MIGRATION_DOCS/PARITY_REPORT.md).
 ```
 
-The suite therefore stays **green and discoverable** with `dotnet test` on `windows` / `ubuntu` /
-`macos` (including `osx-arm64`) while goldens are still being produced. **Ignored** is the expected
-state for any not-yet-captured artifact; the test flips to an enforced numeric assertion the moment
-its CSV is committed. Every not-yet-captured artifact is tracked as an **open risk** in
-[`MIGRATION_DOCS/PARITY_REPORT.md`](../../../../../MIGRATION_DOCS/PARITY_REPORT.md). The `.gitkeep`
-beside this README keeps the folder under version control before any CSV exists.
+CI therefore **enforces** guidance parity with `dotnet test` on `windows` / `ubuntu` / `macos`
+(including `osx-arm64`): a missing or mismatching golden is a hard failure, not a skip. The CSVs are
+pinned byte-stable across operating systems by the root `.gitattributes` rule
+`SourceCode/AgOpenGPS.Tests/Parity/** -text`, and copied next to the test assembly by the
+`AgOpenGPS.Tests.csproj` `Parity\Golden\**\*` (`PreserveNewest`) rule. The `.gitkeep`
+beside this README keeps the folder under version control.
 
 ## Capturing the goldens
 

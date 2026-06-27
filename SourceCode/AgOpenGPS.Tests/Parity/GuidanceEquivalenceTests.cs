@@ -37,10 +37,10 @@
 //       glm.toDegrees (CGLM.cs) — the very function CGuidance.DoSteerAngleCalc calls — which IS a
 //       cleanly-callable public static utility.
 //
-//   (2) GOLDEN numeric compare (guarded): fix-sequence inputs + expected outputs captured from the
-//       Windows/net48 baseline as Parity/Golden/Guidance/*.csv. Until a given artifact is captured,
-//       the consuming test self-reports Ignored (open risk tracked in
-//       MIGRATION_DOCS/PARITY_REPORT.md), so `dotnet test` stays green and discoverable on every OS.
+//   (2) GOLDEN numeric compare (enforced): fix-sequence inputs + expected outputs captured from the
+//       Windows/net48 baseline as Parity/Golden/Guidance/*.csv, committed to the repository. A required
+//       artifact that is missing FAILS the consuming test so CI enforces guidance parity on every OS
+//       (see MIGRATION_DOCS/PARITY_REPORT.md).
 //
 // ---------------------------------------------------------------------------------------------
 // GOLDEN CSV SCHEMA (documented so the capture step produces matching files)
@@ -86,7 +86,7 @@ namespace AgOpenGPS.Tests.Parity
     /// Numeric behavioral-parity tests for the guidance/steering mathematics (Stanley, Pure Pursuit),
     /// the steering safety guards (max steer angle, max angular velocity), and section on/off bitmask
     /// control. Floating-point outputs are compared within a 0.001 tolerance; section-state math is
-    /// asserted exactly. Golden-consuming tests self-report <c>Ignored</c> until their CSV is captured.
+    /// asserted exactly. Golden-consuming tests FAIL when a required CSV is missing (CI-enforced parity).
     /// </summary>
     [TestFixture]
     public class GuidanceEquivalenceTests
@@ -124,20 +124,20 @@ namespace AgOpenGPS.Tests.Parity
         // ===========================================================================================
 
         /// <summary>
-        /// Resolves a guidance golden next to the test assembly and returns its lines, or self-reports
-        /// the test as <c>Ignored</c> when the artifact has not been captured yet. The path is always
-        /// built with <see cref="Path.Combine"/> and the case-sensitive "Guidance" category segment.
+        /// Resolves a REQUIRED guidance golden next to the test assembly and returns its lines, FAILING the
+        /// test when the artifact is missing so CI enforces guidance parity (the goldens are committed under
+        /// <c>Parity/Golden/Guidance</c> and copied to the test output by the <c>Parity\Golden\**\*</c> rule).
+        /// The path is always built with <see cref="Path.Combine"/> and the case-sensitive "Guidance" segment.
         /// </summary>
-        private static string[] LoadGoldenLinesOrIgnore(string fileName)
+        private static string[] LoadRequiredGoldenLines(string fileName)
         {
             var path = Path.Combine(
                 TestContext.CurrentContext.TestDirectory, "Parity", "Golden", "Guidance", fileName);
 
-            if (!File.Exists(path))
-            {
-                Assert.Ignore(
-                    $"Golden artifact not yet captured: {path} — tracked as an open risk in MIGRATION_DOCS/PARITY_REPORT.md");
-            }
+            Assert.That(
+                File.Exists(path),
+                Is.True,
+                $"Required guidance golden artifact is missing: {path}. Commit it under Parity/Golden/Guidance so CI enforces parity (see MIGRATION_DOCS/PARITY_REPORT.md).");
 
             // Reading as text is acceptable for THIS suite: the goldens are interpreted numerically
             // (parsed with InvariantCulture), not byte-compared like the PGN/Settings goldens.
@@ -315,12 +315,12 @@ namespace AgOpenGPS.Tests.Parity
 
         /// <summary>
         /// Asserts the reproduced documented Stanley steer angle matches the baseline expected column
-        /// of <c>stanley.csv</c> within 0.001° for every row. Self-reports Ignored until captured.
+        /// of <c>stanley.csv</c> within 0.001° for every row. FAILS when the required CSV is missing.
         /// </summary>
         [Test]
         public void Stanley_SteerAngle_MatchesGolden()
         {
-            string[] lines = LoadGoldenLinesOrIgnore("stanley.csv");
+            string[] lines = LoadRequiredGoldenLines("stanley.csv");
 
             int rowCount = 0;
             foreach (string[] row in EnumerateDataRows(lines))
@@ -356,12 +356,12 @@ namespace AgOpenGPS.Tests.Parity
 
         /// <summary>
         /// Asserts the reproduced documented Pure Pursuit steer angle matches the baseline expected
-        /// column of <c>purepursuit.csv</c> within 0.001° for every row. Self-reports Ignored until captured.
+        /// column of <c>purepursuit.csv</c> within 0.001° for every row. FAILS when the required CSV is missing.
         /// </summary>
         [Test]
         public void PurePursuit_SteerAngle_MatchesGolden()
         {
-            string[] lines = LoadGoldenLinesOrIgnore("purepursuit.csv");
+            string[] lines = LoadRequiredGoldenLines("purepursuit.csv");
 
             int rowCount = 0;
             foreach (string[] row in EnumerateDataRows(lines))
@@ -488,13 +488,13 @@ namespace AgOpenGPS.Tests.Parity
 
         /// <summary>
         /// Asserts the reproduced section on/off bitmask matches the baseline expected column of
-        /// <c>sections.csv</c> EXACTLY (integer math, no tolerance) for every row. Self-reports Ignored
-        /// until captured. Bitmasks are 64-bit to cover the up-to-64 same-width section capability.
+        /// <c>sections.csv</c> EXACTLY (integer math, no tolerance) for every row. FAILS when the required
+        /// CSV is missing. Bitmasks are 64-bit to cover the up-to-64 same-width section capability.
         /// </summary>
         [Test]
         public void SectionState_MatchesGolden_Exact()
         {
-            string[] lines = LoadGoldenLinesOrIgnore("sections.csv");
+            string[] lines = LoadRequiredGoldenLines("sections.csv");
 
             int rowCount = 0;
             foreach (string[] row in EnumerateDataRows(lines))

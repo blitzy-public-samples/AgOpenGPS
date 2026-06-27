@@ -1,0 +1,11 @@
+# Section on/off bitmask parity golden (EXACT integer math; hex, InvariantCulture).
+sectionCount,coverageBitmaskHex,expectedOnBitmaskHex
+16,FFFF,FFFF
+8,FFFF,FF
+1,1,1
+1,0,0
+0,FFFF,0
+64,FFFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFF
+63,FFFFFFFFFFFFFFFF,7FFFFFFFFFFFFFFF
+4,F3,3
+12,1ABC,ABC

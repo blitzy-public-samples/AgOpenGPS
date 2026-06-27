@@ -73,6 +73,36 @@ the settings XML schema, guidance mathematics) are to be proven in a `PARITY_REP
 > has already been **retired**. The Avalonia package line on disk is **11.3.18** (the AAP's recommended
 > 11.3.x line).
 
+> **[XPLAT] CP9 UPDATE — SOURCE GATING REMOVED; CROWN-JEWEL PIPELINE INTEGRATED (supersedes the CP5
+> gating narrative immediately above).** The CP5 interim build-closure gating block has been **deleted**
+> from `SourceCode/GPS/AgOpenGPS.csproj`: there are now **zero** `<Compile Remove>` / `<AvaloniaXaml Remove>` /
+> `<AvaloniaResource Remove>` entries. The `FormGPS`→services decoupling is **complete** — none of the
+> previously-gated files retains a live `FormGPS mf` back-reference (every former touch is an injected
+> collaborator, `Action` delegate, or bindable property/event; the only residual `mf`/`FormGPS` tokens are
+> `// [XPLAT]` provenance comments). The following are now **compiled into the normal GPS build** on BOTH
+> `net8.0` (linux-x64/osx-x64/osx-arm64) and `net8.0-windows` (win-x64), in BOTH Debug AND Release
+> (`TreatWarningsAsErrors`): the 16 guidance/domain classes (`CABCurve`, `CABLine`, `CBoundary`, `CFence`,
+> `CHead`, `CTurn`, `CContour`, `CFieldData`, `CGuidance`, `CPatches`, `CRecordedPath`, `CTool`, `CTrack`,
+> `CTram`, `CVehicle`, `CYouTurn`); the cascade dependents `Protocols/ISOBUS/ISO11783_TaskFile.cs` and
+> `Visuals/SectionsVisual.cs`; the 11 lockstep-gated views (`Views/Field/{FormFieldDataView,
+> FormFieldKMLView,FormFieldISOXMLView,FormBoundaryPlayerView}`, `Views/Guidance/{FormNudgeView,
+> FormQuickABView,FormRefNudgeView,FormSmoothABView,FormTramView,FormBuildTracksView}`,
+> `Views/Pickers/FormRecordPickerView`); the five extracted real-time services
+> `Services/{PgnDispatcher,SectionService,RenderCoordinator,PositionService,FieldIoService}.cs`; and the
+> Avalonia OpenGL rendering-host adapter `Controls/AvaloniaGeoViewport.cs`. (`CISOBUS` and
+> `AgShare/AgShareUploader` were already un-gated pre-CP9.) **Build evidence:** GPS compiles with **0
+> errors and 0 new warnings** in all four TFM×configuration combinations; the only residual warnings are
+> **8 pre-existing `AVLN3001` runtime-loader notices** in unmodified, never-gated views
+> (`FormEnterFlagView`, `FormFlagsView`, `FormAgShareSettingsView`, `FormInputDialogView`, `FormKeyboard`,
+> `FormNumeric`, `FormConfigView`, `FormCorrectionView`) — they are present in the pre-CP9 gated baseline
+> too, are not promoted by `TreatWarningsAsErrors` (Avalonia XAML notices, not C# warnings), and are
+> out-of-scope for this checkpoint. The full `AgOpenGPS.sln` builds clean, and **`AgOpenGPS.Tests` now
+> compiles and runs** for the first time (it references GPS): 45 passing + 18 parity tests pending their
+> golden artifacts (tracked under R6 in `PARITY_REPORT.md`). Consequently every `Deferred — CP9` /
+> `Scaffolded` / "gated" note below that refers to these specific Services, the `AvaloniaGeoViewport`
+> adapter, the domain classes, or the ISOXML exporter is **now superseded** — those artifacts are on disk
+> and build-verified; their remaining gap is tri-OS CI + golden parity evidence, not compilation.
+
 ---
 
 ## Legend

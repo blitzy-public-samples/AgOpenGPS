@@ -183,7 +183,7 @@ public partial class FormNudgeView : Window
         // [XPLAT] Source line 41: Location = setWindow_formNudgeLocation. Settings persists a
         // System.Drawing.Point; convert to Avalonia PixelPoint (fully qualified to avoid clashing with
         // Avalonia.Point, which `using Avalonia;` brings into scope).
-        System.Drawing.Point loc = Settings.Default.setWindow_formNudgeLocation;
+        System.Drawing.Point loc = Properties.Settings.Default.setWindow_formNudgeLocation;
         Position = new PixelPoint(loc.X, loc.Y);
 
         UpdateMoveLabel();   // source line 42
@@ -391,8 +391,8 @@ public partial class FormNudgeView : Window
     {
         // [XPLAT] Avalonia PixelPoint -> System.Drawing.Point in the settings store (source line 56).
         PixelPoint pos = Position;
-        Settings.Default.setWindow_formNudgeLocation = new System.Drawing.Point(pos.X, pos.Y);
-        Settings.Default.Save();
+        Properties.Settings.Default.setWindow_formNudgeLocation = new System.Drawing.Point(pos.X, pos.Y);
+        Properties.Settings.Default.Save();
 
         // Source line 60: save the entire track list.
         saveTracks();   // [XPLAT] was mf.FileSaveTracks()

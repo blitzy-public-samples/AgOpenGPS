@@ -67,13 +67,13 @@ Assert.That(savedBytes, Is.EqualTo(goldenBytes)); // element-wise byte compariso
 
 It uses `File.ReadAllBytes` (never `File.ReadAllText`) so end-of-line / encoding drift can never mask a regression.
 
-**Guarded-golden strategy.** Until a given `*.xml` exists on disk, the corresponding test calls `Assert.Ignore(...)` and self-reports as **Ignored** (not **Failed**) — so `dotnet test` stays **green and discoverable** on every OS (including `osx-arm64`) while the real goldens are still being captured. The fixture's ignore message takes the form:
+**Enforced-golden strategy.** The four `*.xml` goldens (`Vehicle.xml`, `Tool.xml`, `Environment.xml`, `Legacy.xml`) are **captured and committed** to this folder. Each test resolves its artifact through `LoadRequiredGolden(...)`, which **FAILS** (never skips) when a required golden is missing — so CI **enforces** the settings XML schema / round-trip contract on every OS (including `osx-arm64`). The fixture's failure message takes the form:
 
 ```
-Golden artifact not yet captured: <path> — tracked as an open risk in MIGRATION_DOCS/PARITY_REPORT.md
+Required settings golden artifact is missing: <path>. Commit it under Parity/Golden/Settings so CI enforces parity (see MIGRATION_DOCS/PARITY_REPORT.md).
 ```
 
-**Ignored** is therefore the expected state for any not-yet-captured golden; each gap is tracked as an open risk in [`MIGRATION_DOCS/PARITY_REPORT.md`](../../../../../MIGRATION_DOCS/PARITY_REPORT.md), and a test flips from Ignored to an enforced byte assertion automatically the moment its golden is committed.
+A missing or mismatching golden is a hard failure, not a skip. The XMLs are pinned byte-stable across operating systems by the root `.gitattributes` rules (`Parity/** -text` and `AgOpenGPS.Tests/**/*.xml -text`); the residual cross-OS verification status is recorded in [`MIGRATION_DOCS/PARITY_REPORT.md`](../../../../../MIGRATION_DOCS/PARITY_REPORT.md).
 
 ## Capturing the goldens
 

@@ -1,0 +1,9 @@
+# Stanley steer-angle parity golden (captured from frozen documented formula; InvariantCulture).
+distanceError,headingErrorRad,speed,distanceGain,headingGain,expectedSteerAngleDeg
+0,0,5,1,1,-0
+0.5,0.1,5,1,1,-11.440171088807878
+-0.5,-0.1,5,1,1,11.440171088807878
+0.2,0.05,2,1.2,0.8,-9.134604593154235
+1,0.3,3,2,1.5,-30
+100,1.5,1,10,5,-30
+-100,-1.5,1,10,5,30

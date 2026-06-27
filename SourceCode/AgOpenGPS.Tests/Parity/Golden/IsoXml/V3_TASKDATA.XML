@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ISO11783_TaskData VersionMajor="3" VersionMinor="3" ManagementSoftwareManufacturer="AgOpenGPS" ManagementSoftwareVersion="GoldenBaseline" TaskControllerManufacturer="unknown" TaskControllerVersion="unknown" DataTransferOrigin="1">
+  <PFD A="PFD1" C="GoldenField" D="1000">
+    <PLN A="1">
+      <LSG A="1">
+        <PNT A="2" C="45.0000000" D="-93.0000000" />
+        <PNT A="2" C="45.0010000" D="-93.0000000" />
+        <PNT A="2" C="45.0010000" D="-92.9990000" />
+        <PNT A="2" C="45.0000000" D="-92.9990000" />
+      </LSG>
+    </PLN>
+    <PLN A="8">
+      <LSG A="1">
+        <PNT A="2" C="45.0002000" D="-92.9998000" />
+        <PNT A="2" C="45.0008000" D="-92.9998000" />
+        <PNT A="2" C="45.0008000" D="-92.9992000" />
+        <PNT A="2" C="45.0002000" D="-92.9992000" />
+      </LSG>
+    </PLN>
+    <LSG A="5" B="AB1">
+      <PNT A="2" C="45.0001000" D="-92.9995000" />
+      <PNT A="2" C="45.0009000" D="-92.9995000" />
+    </LSG>
+  </PFD>
+</ISO11783_TaskData>

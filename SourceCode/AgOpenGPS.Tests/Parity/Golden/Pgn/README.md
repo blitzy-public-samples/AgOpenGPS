@@ -90,13 +90,13 @@ Assert.That(actualFrame, Is.EqualTo(goldenBytes)); // element-wise byte comparis
 
 It **never** uses `File.ReadAllText` (which would risk end-of-line / encoding drift on the binary frames).
 
-**Guarded-golden strategy.** Until a given `*.bin` exists on disk, the corresponding test calls `Assert.Ignore(...)` and self-reports **Ignored** — so `dotnet test` stays **green and discoverable** on all OSes while goldens are still being captured. The fixture's ignore message takes the form:
+**Enforced-golden strategy.** The seven `*.bin` goldens (`D0_latlon`, `E5_sections`, `FE_autosteer`, `EF_machine`, `D6_gps`, `EB_dims`, `EC_relay`) are **captured and committed** to this folder. Each test resolves its frame through `LoadRequiredGolden(...)`, which **FAILS** when a required `*.bin` is missing — so CI **enforces** the byte contract on all OSes. The fixture's failure message takes the form:
 
 ```
-Golden artifact not yet captured: <path> — tracked as an open risk in MIGRATION_DOCS/PARITY_REPORT.md
+Required PGN golden artifact is missing: <path>. Commit it under Parity/Golden/Pgn so CI enforces byte-contract parity (see MIGRATION_DOCS/PARITY_REPORT.md).
 ```
 
-**Ignored** is therefore the expected state for any not-yet-captured artifact; it becomes a hard byte-comparison the moment the `*.bin` is committed.
+A missing or mismatching frame is a hard failure, not a skip. The binary frames are pinned byte-stable across operating systems by the root `.gitattributes` rule `SourceCode/AgOpenGPS.Tests/Parity/** -text`.
 
 ## Capturing the goldens
 

@@ -39,9 +39,15 @@
 // Avalonia frequently supplies a GLES/ANGLE context. This adapter therefore AUDITS the GL context
 // at first init (Version/Renderer/Vendor/GLSL are logged via AgLibrary and exposed as properties)
 // so the immediate-mode-vs-GLES determination is captured for MIGRATION_DOCS/PARITY_REPORT.md.
-// Forcing a desktop-GL (compatibility) profile is configured in Program.BuildAvaloniaApp() (owned by
-// the Program.cs agent) via the per-OS Avalonia platform options; this host assumes a desktop-GL
-// context is current and never "fixes" the renderer here.
+// ENFORCEMENT (F6): forcing a desktop-GL (compatibility) profile is OFFERED to the composition root via
+// the static RequestDesktopGlProfile(AppBuilder) hook below (call it in Program.BuildAvaloniaApp() — that
+// file is owned by the Program.cs agent, so this host only provides the hook, never edits the bootstrap).
+// INDEPENDENTLY, this host now FAILS SAFE at runtime: if the audited context is still GLES/ANGLE it
+// FEATURE-GATES the immediate-mode pipeline — it skips the fixed-function GLW draw entirely, presents a
+// harmless cleared surface using only core (GLES-safe) GL calls, raises the one-shot RenderingGated event
+// (surfacing the decision + audited context strings to the composition root / PARITY_REPORT tooling), and
+// stops requesting frames so a GLES context can never crash-loop or spin the program. The renderer itself
+// (GLW / Core Drawing + DrawLib) is still never "fixed" here — only gated.
 //
 // DEPENDENCY DIRECTION: Controls -> Services. This adapter references the behavior-frozen
 // RenderCoordinator (its sole depends_on_files entry) and the Core GeoViewportBase abstraction only;
@@ -54,6 +60,7 @@ using AgLibrary.Logging;
 using AgOpenGPS.Core.Drawing;
 using AgOpenGPS.Core.Models;
 using AgOpenGPS.Services;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
@@ -157,6 +164,75 @@ namespace AgOpenGPS.Controls
         /// feasibility risk recorded in MIGRATION_DOCS/PARITY_REPORT.md.
         /// </summary>
         public bool IsLikelyOpenGlEs { get; private set; }
+
+        /// <summary>
+        /// [XPLAT] F6 (AAP §0.6.2 dominant risk): true once the immediate-mode render path has been
+        /// FEATURE-GATED because the audited context is OpenGL ES / ANGLE (see <see cref="IsLikelyOpenGlEs"/>).
+        /// While gated the host skips the fixed-function GLW draw, presents a cleared surface, and stops
+        /// continuous re-rendering, so a GLES context can never crash-loop the program. Latched at first init;
+        /// prevent it by forcing a desktop-GL profile via <see cref="RequestDesktopGlProfile"/> in the
+        /// composition root.
+        /// </summary>
+        public bool IsRenderingGated { get; private set; }
+
+        /// <summary>
+        /// [XPLAT] F6: raised exactly once, on the UI thread inside the first gated render, when the host gates
+        /// the immediate-mode pipeline because a GLES/ANGLE context was supplied. The composition root / UI
+        /// subscribes to surface the dominant feasibility risk (AAP §0.6.2) to the operator and to record the
+        /// verified context strings in MIGRATION_DOCS/PARITY_REPORT.md. Carries the audited GL strings so
+        /// subscribers never touch the GL context off the render thread.
+        /// </summary>
+        public event EventHandler<GlContextGatedEventArgs> RenderingGated;
+
+        /// <summary>
+        /// [XPLAT] F6 (AAP §0.6.2): requests a DESKTOP OpenGL (compatibility) profile from Avalonia so the
+        /// immediate-mode / fixed-function GLW DrawLib has the context it requires, instead of the GLES/ANGLE
+        /// context Avalonia may otherwise select. Intended to be called from the composition root's Avalonia
+        /// bootstrap, for example:
+        /// <code>AvaloniaGeoViewport.RequestDesktopGlProfile(AppBuilder.Configure&lt;App&gt;().UsePlatformDetect())</code>.
+        /// On Windows it prefers the WGL backend (native desktop GL) over the default ANGLE/EGL (GLES) and
+        /// requests compatibility <see cref="GlVersion"/>s; on Linux/X11 it prefers GLX (native desktop GL)
+        /// over EGL with the same compatibility versions; both fall back to software rendering if no desktop-GL
+        /// context can be created. macOS exposes no per-OS GL-profile knob through Avalonia platform options and
+        /// relies on the runtime feature-gate (<see cref="IsRenderingGated"/>). The host still audits the
+        /// obtained context and gates if it is nonetheless GLES, so this hook is a best-effort request, not a
+        /// guarantee. Returns the same builder for fluent chaining.
+        /// </summary>
+        /// <param name="builder">The Avalonia <see cref="AppBuilder"/> being configured. Must not be null.</param>
+        /// <returns>The same <paramref name="builder"/> instance, for fluent chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="builder"/> is null.</exception>
+        public static AppBuilder RequestDesktopGlProfile(AppBuilder builder)
+        {
+            if (builder == null)
+            {
+                throw new ArgumentNullException(nameof(builder));
+            }
+
+            // Compatibility (NOT core) profiles: the GLW DrawLib uses fixed-function / immediate-mode GL, which
+            // exists only in a desktop compatibility context. Offer 3.2-compatibility first, then legacy 2.1.
+            // A GlVersion[] satisfies the IList<GlVersion> profile-list properties without an extra using.
+            GlVersion[] compatibilityProfiles =
+            {
+                new GlVersion(GlProfileType.OpenGL, 3, 2, true),
+                new GlVersion(GlProfileType.OpenGL, 2, 1),
+            };
+
+            // Windows: prefer WGL (native desktop GL) over the default ANGLE/EGL (GLES); software last.
+            builder = builder.With(new Win32PlatformOptions
+            {
+                RenderingMode = new[] { Win32RenderingMode.Wgl, Win32RenderingMode.Software },
+                WglProfiles = compatibilityProfiles,
+            });
+
+            // Linux/X11: prefer GLX (native desktop GL) over EGL (commonly GLES); software last.
+            builder = builder.With(new X11PlatformOptions
+            {
+                RenderingMode = new[] { X11RenderingMode.Glx, X11RenderingMode.Software },
+                GlProfiles = compatibilityProfiles,
+            });
+
+            return builder;
+        }
 
         /// <summary>
         /// [XPLAT] Creates the adapter without a render coordinator (assign one later via the
@@ -320,6 +396,13 @@ namespace AgOpenGPS.Controls
         // One-time guard so a GLES/immediate-mode render failure logs once instead of every frame.
         private bool _renderErrorLogged;
 
+        // [XPLAT] F6 (AAP §0.6.2 dominant risk): when the audited context is GLES/ANGLE the immediate-mode
+        // GLW DrawLib cannot run, so the per-frame draw is FEATURE-GATED (skipped) rather than allowed to throw
+        // on every frame and spin the render loop. _renderingGated latches the decision at first init;
+        // _gateNotified makes the public RenderingGated event fire exactly once.
+        private bool _renderingGated;
+        private bool _gateNotified;
+
         /// <summary>
         /// [XPLAT] Binds the kept OpenTK 3.3.3 GL entry points to Avalonia's GL context exactly once for the
         /// process. Returns <c>true</c> on success. On failure (the single least-certain integration point of
@@ -408,9 +491,16 @@ namespace AgOpenGPS.Controls
 
             if (IsLikelyOpenGlEs)
             {
+                // [XPLAT] F6: latch the feature-gate. From here the per-frame render path skips the
+                // immediate-mode GLW pipeline (see HandleOpenGlRender) so the unsupported context cannot crash
+                // the program; the RenderingGated event fires once on the first gated render.
+                _renderingGated = true;
+                IsRenderingGated = true;
                 Log.EventWriter("AvaloniaGeoViewport: WARNING — GLES/ANGLE context detected. The immediate-mode "
-                    + "GLW DrawLib requires a desktop-GL (compatibility) profile; request one in "
-                    + "Program.BuildAvaloniaApp() (Program.cs agent). Dominant open risk — see PARITY_REPORT.md.");
+                    + "GLW DrawLib requires a desktop-GL (compatibility) profile. The per-frame render path is now "
+                    + "FEATURE-GATED (immediate-mode draw skipped, surface cleared, render loop quiesced) so the "
+                    + "program cannot crash-loop; call AvaloniaGeoViewport.RequestDesktopGlProfile(appBuilder) in "
+                    + "the composition root to obtain a desktop-GL context. Dominant open risk — see PARITY_REPORT.md.");
             }
         }
 
@@ -485,6 +575,34 @@ namespace AgOpenGPS.Controls
                 return;
             }
 
+            // [XPLAT] F6 dominant-risk FEATURE GATE (AAP §0.6.2): a GLES/ANGLE context cannot run the
+            // immediate-mode / fixed-function GLW DrawLib. Rather than letting RenderCoordinator.Render()
+            // throw on EVERY frame (and spinning the render loop), skip the entire fixed-function pipeline,
+            // present a harmless cleared surface using ONLY core (GLES-safe) GL calls — glClear/glClearColor
+            // exist in every GL & GLES profile — notify once, and DO NOT request another frame so the gated
+            // surface stays quiescent until a resize/explicit request. RequestDesktopGlProfile() in the
+            // composition root forces a desktop-GL context to avoid this gate entirely.
+            if (_renderingGated)
+            {
+                try
+                {
+                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, fb);
+                    GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                    GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+                }
+                catch (Exception ex)
+                {
+                    if (!_renderErrorLogged)
+                    {
+                        _renderErrorLogged = true;
+                        Log.EventWriter("AvaloniaGeoViewport: gated safe-clear failed (logged once): " + ex.Message);
+                    }
+                }
+
+                NotifyRenderingGatedOnce();
+                return;
+            }
+
             GetCurrentPixelSize(out int width, out int height);
             bool sizeChanged = width != _appliedPixelWidth || height != _appliedPixelHeight;
 
@@ -554,6 +672,30 @@ namespace AgOpenGPS.Controls
             // the display refresh; the <=70 ms scan-loop cadence (AAP §0.1.1, §0.6.1) is owned by the
             // PositionService-driven RequestBackBufferScan(), independent of this redraw request.
             _glHost.RequestNextFrameRendering();
+        }
+
+        /// <summary>
+        /// [XPLAT] F6: raises <see cref="RenderingGated"/> exactly once (subsequent calls are no-ops). Invoked
+        /// from the first gated render — which runs on the UI thread — so the composition root learns the
+        /// immediate-mode path was disabled because a GLES/ANGLE context was supplied (AAP §0.6.2). The audited
+        /// context strings are passed so subscribers need not touch the GL context off the render thread.
+        /// </summary>
+        private void NotifyRenderingGatedOnce()
+        {
+            if (_gateNotified)
+            {
+                return;
+            }
+            _gateNotified = true;
+
+            Log.EventWriter("AvaloniaGeoViewport: render path FEATURE-GATED (GLES/ANGLE context); immediate-mode "
+                + "GLW draw skipped, surface cleared, RenderingGated raised. See PARITY_REPORT.md.");
+
+            EventHandler<GlContextGatedEventArgs> handler = RenderingGated;
+            if (handler != null)
+            {
+                handler(this, new GlContextGatedEventArgs(GlVersion, GlRenderer, GlVendor, GlShadingLanguageVersion));
+            }
         }
 
         /// <summary>
@@ -822,6 +964,35 @@ namespace AgOpenGPS.Controls
             {
                 Dispatcher.UIThread.Post(() => _glHost.RequestNextFrameRendering());
             }
+        }
+
+        /// <summary>
+        /// [XPLAT] F6 payload for <see cref="RenderingGated"/>: the audited GL context strings captured at first
+        /// init, surfaced so the composition root can record the verified result (AAP §0.6.2 / PARITY_REPORT.md)
+        /// without re-querying the context off the render thread.
+        /// </summary>
+        public sealed class GlContextGatedEventArgs : EventArgs
+        {
+            /// <summary>Creates the payload with the captured audit strings (nulls are normalized to empty).</summary>
+            public GlContextGatedEventArgs(string version, string renderer, string vendor, string shadingLanguageVersion)
+            {
+                GlVersion = version ?? string.Empty;
+                GlRenderer = renderer ?? string.Empty;
+                GlVendor = vendor ?? string.Empty;
+                GlShadingLanguageVersion = shadingLanguageVersion ?? string.Empty;
+            }
+
+            /// <summary>The <c>GL_VERSION</c> string of the gated context.</summary>
+            public string GlVersion { get; }
+
+            /// <summary>The <c>GL_RENDERER</c> string of the gated context.</summary>
+            public string GlRenderer { get; }
+
+            /// <summary>The <c>GL_VENDOR</c> string of the gated context.</summary>
+            public string GlVendor { get; }
+
+            /// <summary>The <c>GL_SHADING_LANGUAGE_VERSION</c> string of the gated context.</summary>
+            public string GlShadingLanguageVersion { get; }
         }
 
         // ============================================================================================

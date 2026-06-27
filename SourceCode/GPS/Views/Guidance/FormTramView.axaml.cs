@@ -199,16 +199,16 @@ public partial class FormTramView : Window
         isLoading = false;
         lblAplha.Text = ((int)tbarTramAlpha.Value).ToString(CultureInfo.InvariantCulture) + "%";
 
-        if (Settings.Default.setTram_passes < 1)
+        if (Properties.Settings.Default.setTram_passes < 1)
         {
-            Settings.Default.setTram_passes = 1;
-            Settings.Default.Save();
+            Properties.Settings.Default.setTram_passes = 1;
+            Properties.Settings.Default.Save();
         }
 
         // [XPLAT] Seed the passes display WITHOUT a rebuild — the WinForms code wired ValueChanged AFTER
         // assigning nudPasses.Value, so the initial seed never ran nudPasses_ValueChanged. tram.passes is
         // therefore left untouched here (set only on user interaction via SetPassesFromUser).
-        passesValue = Settings.Default.setTram_passes;
+        passesValue = Properties.Settings.Default.setTram_passes;
         nudPasses.Content = passesValue.ToString(CultureInfo.InvariantCulture);
 
         // [XPLAT] InvariantCulture (parity + cross-platform numeric I/O) — was .ToString("N2").
@@ -335,8 +335,8 @@ public partial class FormTramView : Window
         passesValue = Math.Max(1, Math.Min(999, v));
         nudPasses.Content = passesValue.ToString(CultureInfo.InvariantCulture);
         tram.passes = passesValue;
-        Settings.Default.setTram_passes = tram.passes;
-        Settings.Default.Save();
+        Properties.Settings.Default.setTram_passes = tram.passes;
+        Properties.Settings.Default.Save();
         MoveBuildTramLine(0);
     }
 
@@ -508,8 +508,8 @@ public partial class FormTramView : Window
         panelUpdateRightAndBottom();      // [XPLAT] was mf.PanelUpdateRightAndBottom()
         fixTramModeButton();              // [XPLAT] was mf.FixTramModeButton()
 
-        Settings.Default.setTram_alpha = tram.alpha;
-        Settings.Default.Save();
+        Properties.Settings.Default.setTram_alpha = tram.alpha;
+        Properties.Settings.Default.Save();
 
         base.OnClosing(e);
     }
