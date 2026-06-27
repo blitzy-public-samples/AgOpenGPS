@@ -1,0 +1,379 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Advanced Tram Lines builder/cutter (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Guidance/FormTramLine`
+    (source: FormTramLine.cs + FormTramLine.Designer.cs). Per AAP §0.3.3 this is a faithful
+    re-platform of the currently rendered Windows Forms surface, never a redesign: every size,
+    cell, font and colour below is taken verbatim from FormTramLine.Designer.cs (WinForms pixels
+    map 1:1 to Avalonia device-independent pixels at 96 dpi; point font sizes are converted
+    pt × 96 / 72 → DIP: 14.25 → 19, 15.75 → 21, 18 → 24, 36 → 48).
+
+    The dialog hosts a live OpenGL viewport on the LEFT and a touch-friendly 3-column × 9-row
+    command panel (the WinForms `tlp1` TableLayoutPanel) on the RIGHT. The operator cycles the
+    visible guidance tracks, builds tram lines (passes / start-pass / alpha), toggles an
+    outer-boundary tram, and uses a three-click cutting tool on the viewport to trim tram
+    segments. The tram geometry lives in CTram / CTrackMethods and is behavior-frozen.
+
+    WINDOW SHELL — mirrors FormTramLine.Designer.cs:
+      Text (runtime gStr.gsAdvancedTramLines)   → NO Title set here; the code-behind assigns it
+                                                   (FormTramLine_Load: Text = gStr.gsAdvancedTramLines)
+                                                   and FixLabelsCurve rebuilds it with
+                                                   InvariantCulture-formatted numbers.
+      BackColor WhiteSmoke                       → Background="WhiteSmoke". A FIXED neutral surface
+                                                   in the source; this dialog is NOT part of the
+                                                   FormGPS day/night SwapDayNightMode chrome, so it is
+                                                   intentionally NOT bound to App.axaml's AogFrameBrush.
+                                                   WhiteSmoke == #FFF5F5F5 == App.axaml
+                                                   AogLegacyWhiteSmokeBrush (identical render).
+      ClientSize 1004 × 701                      → initial Width="1004" Height="701".
+      Resizable (Width = Height + 300 on resize) → CanResize="True". The code-behind reproduces the
+                                                   square-viewport aspect rule on resize; no MinimumSize
+                                                   was set in the source, so none is invented here.
+      ShowInTaskbar = false                      → ShowInTaskbar="False".
+      StartPosition CenterParent                 → WindowStartupLocation="CenterOwner".
+      ControlBox = false / MaximizeBox/MinimizeBox
+        = false / HelpButton = true              → no portable Avalonia equivalent for hiding only the
+                                                   caption buttons / "?" help glyph; approximated by a
+                                                   standard fixed title bar (SystemDecorations="Full").
+                                                   The HelpButton is OMITTED — identical to every other
+                                                   migrated Guidance view.
+      Font Tahoma                                → FontFamily="Tahoma" (inherited by every child).
+
+    GL HOSTING (markup side only) — CRITICAL:
+      The WinForms `oglSelf` (OpenTK.GLControl, BackColor Black, Cursor Cross, 700×700) is REPLACED
+      by an empty Border named `ViewportHost`. There is NO OpenTK.GLControl in Avalonia and this
+      markup must NOT instantiate `AvaloniaGeoViewport` nor reference the `AgOpenGPS.Controls`
+      namespace. The partner code-behind (FormTramLineView.axaml.cs) constructs the
+      AvaloniaGeoViewport with the field bounding box and assigns ViewportHost.Child = _viewport.View
+      (public Control View => _glHost), and wires the three-click pointer cutting tool — so NO input
+      bindings are declared here. The Black background shows until the renderer paints its first frame.
+
+    WIRING CONTRACT — the partner code-behind owns ALL behaviour:
+      * Code-behind dialog: NO DataContext, NO x:DataType, NO MVVM bindings — exactly like the sibling
+        Guidance views (FormTramView / FormSmoothABView). Every control is addressed imperatively by
+        its x:Name, which keeps the ORIGINAL WinForms name so the migrated code-behind references it
+        exactly as FormTramLine.cs / .Designer.cs did. The label spelling `lblAplha` is a SOURCE typo,
+        preserved verbatim so the code-behind binds by the exact name.
+      * NO Click= / event attributes are declared here on purpose: the handler method names are owned
+        by the code-behind, which subscribes by name using the named fields below. This keeps the view
+        compiling independently of the code-behind.
+      * The label texts below ("Alpha" / "100%" / "1" / "Start\n 12" / "12") are design-time
+        placeholders the code-behind overwrites on Load (ResetStartNumLabels / FixLabelsCurve).
+
+    There is NO numeric-up-down and NO ComboBox in this form — passes / start-pass / alpha are
+    adjusted purely with the increment/decrement buttons, so NO FormNumeric trigger is added.
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs,
+    the convention used by every sibling GPS view. NOTE: the assets live under btnImages/ (the
+    AvaloniaResource glob in AgOpenGPS.csproj embeds btnImages\**\*.png) — the WinForms
+    Properties.Resources images are served from there cross-platform; ConD_FullScreenBegin lives in
+    the btnImages/Config sub-folder (verified against Properties/Resources.resx and the sibling
+    FormConfigView). No System.Windows.Forms, no OpenTK.GLControl, no GMap, no System.Drawing types
+    are referenced. Avalonia 11.3.x, compiled bindings.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormTramLineView"
+        Width="1004"
+        Height="701"
+        CanResize="True"
+        SystemDecorations="Full"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="WhiteSmoke"
+        FontFamily="Tahoma">
+
+    <Window.Styles>
+        <!-- Button.glyph — the panel's image buttons. Per the file spec the image buttons "keep
+             theme default" (the standard, day/night-aware Fluent button face), so only the content
+             layout is tuned: the glyph is stretched to fill the fixed button cell (matching the
+             WinForms buttons that filled their TableLayoutPanel cells with a centred Image). -->
+        <Style Selector="Button.glyph">
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+
+        <!-- Button.flat — btnCancel / btnSave were FlatStyle.Flat + FlatAppearance.BorderSize=0 +
+             BackColor.Transparent, carrying only a glyph. The template ContentPresenter overrides
+             stop the Fluent theme painting a hover/pressed fill over the glyph (the technique used by
+             the sibling FormTramView / FormPanView / FormYesView). -->
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.flat /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flat:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- ToggleButton.outer — cboxIsOuter was a WinForms CheckBox with Appearance=Button:
+             BackColor.Transparent at rest, FlatAppearance.CheckedBackColor = Color.FromArgb(220,250,220)
+             (== #FFDCFADC) when checked. Reproduced as an Avalonia ToggleButton: transparent across the
+             rest / hover states, and a #FFDCFADC fill when :checked (and checked+hover). -->
+        <Style Selector="ToggleButton.outer">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="ToggleButton.outer /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="ToggleButton.outer:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="ToggleButton.outer:checked /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFDCFADC" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="ToggleButton.outer:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFDCFADC" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Root: column 0 = GL viewport host (fills), column 1 = the tlp1 command panel (fixed 300). -->
+    <Grid ColumnDefinitions="*,Auto">
+
+        <!-- ===================== LEFT: GL viewport host (oglSelf) ===================== -->
+        <!-- REPLACES the WinForms oglSelf (OpenTK.GLControl, BackColor Black, Cursor Cross). The
+             code-behind sets ViewportHost.Child = _viewport.View; the Black background shows until
+             the renderer paints. Margin 1 reproduces oglSelf.Left/Top = 1. -->
+        <Border x:Name="ViewportHost"
+                Grid.Column="0"
+                Background="Black"
+                Cursor="Cross"
+                Margin="1" />
+
+        <!-- ===================== RIGHT: tlp1 command panel (3 × 9) ===================== -->
+        <Grid x:Name="tlp1"
+              Grid.Column="1"
+              Width="300"
+              ColumnDefinitions="*,*,*"
+              RowDefinitions="*,*,*,*,*,*,*,*,*">
+
+            <!-- (0,0) span2 — btnDnAlpha: alpha − (decrease tram-line opacity). 72×62, IncrementMinus. -->
+            <Button x:Name="btnDnAlpha" Classes="glyph"
+                    Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"
+                    Width="72" Height="62" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Decrease alpha">
+                <Image Source="avares://AgOpenGPS/btnImages/IncrementMinus.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (1,0) — labelAlpha: "Alpha" caption. 57×23, Tahoma 14.25pt → 19, WhiteSmoke bg, Black,
+                 MiddleRight. Code-behind localises to gStr.gsAlpha. -->
+            <Border Grid.Column="1" Grid.Row="0" Margin="2"
+                    Width="57" Height="23" Background="WhiteSmoke"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock x:Name="labelAlpha" Text="Alpha"
+                           FontSize="19" Foreground="Black"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           TextAlignment="Right" />
+            </Border>
+
+            <!-- (2,0) span2 — btnUpAlpha: alpha + (increase tram-line opacity). 72×62, IncrementPlus. -->
+            <Button x:Name="btnUpAlpha" Classes="glyph"
+                    Grid.Column="2" Grid.Row="0" Grid.RowSpan="2"
+                    Width="72" Height="62" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Increase alpha">
+                <Image Source="avares://AgOpenGPS/btnImages/IncrementPlus.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (1,1) — lblAplha: live alpha percentage (SOURCE typo preserved). 69×23, Tahoma 14.25pt
+                 → 19 Bold, WhiteSmoke bg, Black, MiddleRight. "100%" overwritten on Load. -->
+            <Border Grid.Column="1" Grid.Row="1" Margin="2"
+                    Width="69" Height="23" Background="WhiteSmoke"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock x:Name="lblAplha" Text="100%"
+                           FontSize="19" FontWeight="Bold" Foreground="Black"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           TextAlignment="Right" />
+            </Border>
+
+            <!-- (0,2) — btnSwapAB: swap the A/B (or curve) draw side. 72×62, ABSwapPoints. -->
+            <Button x:Name="btnSwapAB" Classes="glyph"
+                    Grid.Column="0" Grid.Row="2"
+                    Width="72" Height="62" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Swap side">
+                <Image Source="avares://AgOpenGPS/btnImages/ABSwapPoints.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (1,2) — btnDeleteAllTrams: delete all tram lines. 73×52, Trash. -->
+            <Button x:Name="btnDeleteAllTrams" Classes="glyph"
+                    Grid.Column="1" Grid.Row="2"
+                    Width="73" Height="52" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Delete all trams">
+                <Image Source="avares://AgOpenGPS/btnImages/Trash.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (2,2) — btnResize: maximize the window height. 72×62, Config/ConD_FullScreenBegin. -->
+            <Button x:Name="btnResize" Classes="glyph"
+                    Grid.Column="2" Grid.Row="2"
+                    Width="72" Height="62" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Maximize height">
+                <Image Source="avares://AgOpenGPS/btnImages/Config/ConD_FullScreenBegin.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (0,3) — btnCancelTouch: reset the three-click cut points. 72×58, HeadlandDeletePoints. -->
+            <Button x:Name="btnCancelTouch" Classes="glyph"
+                    Grid.Column="0" Grid.Row="3"
+                    Width="72" Height="58" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Reset cut points">
+                <Image Source="avares://AgOpenGPS/btnImages/HeadlandDeletePoints.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (2,3) — cboxIsOuter: toggle the outer-boundary tram. WinForms CheckBox(Appearance=Button)
+                 → ToggleButton. 87×68, TramOuter, Transparent rest / #FFDCFADC checked, Tahoma 15.75pt
+                 → 21 Bold. -->
+            <ToggleButton x:Name="cboxIsOuter" Classes="outer"
+                          Grid.Column="2" Grid.Row="3"
+                          Width="87" Height="68" Margin="2"
+                          FontSize="21" FontWeight="Bold"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          AutomationProperties.Name="Outer boundary tram">
+                <Image Source="avares://AgOpenGPS/btnImages/TramOuter.png" Stretch="Uniform" />
+            </ToggleButton>
+
+            <!-- (0,4) — btnSelectCurveBk: previous guidance track. 93×65, ABLineCycleBk. -->
+            <Button x:Name="btnSelectCurveBk" Classes="glyph"
+                    Grid.Column="0" Grid.Row="4"
+                    Width="93" Height="65" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Previous track">
+                <Image Source="avares://AgOpenGPS/btnImages/ABLineCycleBk.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (1,4) — lblCurveSelected: selected-track index. 78×26, Tahoma 14.25pt → 19 Bold, Black,
+                 centred, no background. "1" overwritten on Load. -->
+            <TextBlock x:Name="lblCurveSelected"
+                       Grid.Column="1" Grid.Row="4" Margin="2"
+                       Width="78" Text="1"
+                       FontSize="19" FontWeight="Bold" Foreground="Black"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       TextAlignment="Center" />
+
+            <!-- (2,4) — btnSelectCurve: next guidance track. 96×65, ABLineCycle. -->
+            <Button x:Name="btnSelectCurve" Classes="glyph"
+                    Grid.Column="2" Grid.Row="4"
+                    Width="96" Height="65" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Next track">
+                <Image Source="avares://AgOpenGPS/btnImages/ABLineCycle.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (0,5) — btnDnStartTram: start-pass − . 72×62, IncrementMinus. -->
+            <Button x:Name="btnDnStartTram" Classes="glyph"
+                    Grid.Column="0" Grid.Row="5"
+                    Width="72" Height="62" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Decrease start pass">
+                <Image Source="avares://AgOpenGPS/btnImages/IncrementMinus.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (1,5) — lblStartPass: "Start\n<n>" readout. 92×92, Tahoma 18pt → 24 Bold, WhiteSmoke bg,
+                 Black, centred, multi-line. Value injected on Load (gStr.gsStart + ":\r\n" + startPass). -->
+            <Border Grid.Column="1" Grid.Row="5" Margin="2"
+                    Width="92" Height="92" Background="WhiteSmoke"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock x:Name="lblStartPass" Text="Start&#x0A; 12"
+                           FontSize="24" FontWeight="Bold" Foreground="Black"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextAlignment="Center" />
+            </Border>
+
+            <!-- (2,5) — btnUpStartTram: start-pass + . 72×62, IncrementPlus. -->
+            <Button x:Name="btnUpStartTram" Classes="glyph"
+                    Grid.Column="2" Grid.Row="5"
+                    Width="72" Height="62" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Increase start pass">
+                <Image Source="avares://AgOpenGPS/btnImages/IncrementPlus.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (0,6) — btnDnTrams: passes − . 72×62, IncrementMinus. -->
+            <Button x:Name="btnDnTrams" Classes="glyph"
+                    Grid.Column="0" Grid.Row="6"
+                    Width="72" Height="62" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Fewer passes">
+                <Image Source="avares://AgOpenGPS/btnImages/IncrementMinus.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (1,6) — lblNumPasses: number-of-passes readout. 87×58, Tahoma 36pt → 48 Bold,
+                 WhiteSmoke bg, DarkOliveGreen, centred. "12" overwritten on Load. -->
+            <Border Grid.Column="1" Grid.Row="6" Margin="2"
+                    Width="87" Height="58" Background="WhiteSmoke"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock x:Name="lblNumPasses" Text="12"
+                           FontSize="48" FontWeight="Bold" Foreground="DarkOliveGreen"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextAlignment="Center" />
+            </Border>
+
+            <!-- (2,6) — btnUpTrams: passes + . 72×62, IncrementPlus. -->
+            <Button x:Name="btnUpTrams" Classes="glyph"
+                    Grid.Column="2" Grid.Row="6"
+                    Width="72" Height="62" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="More passes">
+                <Image Source="avares://AgOpenGPS/btnImages/IncrementPlus.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (1,7) — btnAddLines: commit the built tram lines. 70×59, AddNew. -->
+            <Button x:Name="btnAddLines" Classes="glyph"
+                    Grid.Column="1" Grid.Row="7"
+                    Width="70" Height="59" Margin="2"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Add tram lines">
+                <Image Source="avares://AgOpenGPS/btnImages/AddNew.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (0,8) — btnCancel: cancel & close (WinForms DialogResult.Cancel). 88×70, SwitchOff,
+                 Transparent bg, Tahoma 14.25pt → 19. -->
+            <Button x:Name="btnCancel" Classes="flat"
+                    Grid.Column="0" Grid.Row="8"
+                    Width="88" Height="70" Margin="2"
+                    FontSize="19"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/SwitchOff.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- (2,8) — btnSave: save & close. 88×70, FileSave, Transparent bg, Tahoma 15.75pt → 21 Bold,
+                 Foreground #FFC04000 (ARGB 192,64,0). -->
+            <Button x:Name="btnSave" Classes="flat"
+                    Grid.Column="2" Grid.Row="8"
+                    Width="88" Height="70" Margin="2"
+                    FontSize="21" FontWeight="Bold" Foreground="#FFC04000"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Save and close">
+                <Image Source="avares://AgOpenGPS/btnImages/FileSave.png" Stretch="Uniform" />
+            </Button>
+
+        </Grid>
+    </Grid>
+</Window>

@@ -84,6 +84,16 @@ namespace AgOpenGPS.Core
         // See MIGRATION_DOCS/TRANSITION_MAP.md.
         public bool isKeepOffsetsOn;
 
+        // [XPLAT] GPS-data window "sentences on" flag relocated here from the WinForms host form
+        // (FormGPS) so the portable, cross-platform UI (the Avalonia FormGPSDataView live-telemetry
+        // read-out) clears the SAME canonical flag the original form did, without any WinForms coupling.
+        // The name, type and default are preserved exactly from the original
+        // (FormGPS: `public bool isGPSSentencesOn = false;`) so behavior stays identical: the original
+        // FormGPSData_FormClosing handler set mf.isGPSSentencesOn = false on close, and the Avalonia
+        // view reproduces that in its OnClosed override (FormGPSDataView.axaml.cs).
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public bool isGPSSentencesOn;
+
         // [XPLAT] NMEA-sentence / fix-cadence watchdog counter relocated here from the WinForms host
         // form (FormGPS, GUI.Designer.cs) so the portable, cross-platform fix pipeline — the GPS
         // simulator (CSim), the extracted position/scan-loop service and the comm/NMEA decoders — all

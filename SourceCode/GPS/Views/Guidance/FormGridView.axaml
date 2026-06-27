@@ -1,0 +1,215 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "2 Points - Align Grid" dialog (Avalonia view).
+
+    1:1 visual + behavioural PARITY reimplementation of the WinForms
+    Forms/Guidance/FormGrid (source: FormGrid.cs + FormGrid.Designer.cs). Per AAP §0.3.3 this
+    is a faithful re-platform of the currently rendered Windows Forms surface, never a redesign:
+    every size, position, colour and font below is taken verbatim from FormGrid.Designer.cs
+    (WinForms pixels map 1:1 to Avalonia device-independent pixels at 96 dpi; point font sizes
+    are converted pt x 96/72 -> DIP).
+
+    The dialog shows the field in a square OpenGL viewport. The operator taps two points in the
+    viewport to define a direction (point A then point B) and the world-grid is rotated to that
+    AB heading; alternatively "Align to track" snaps the grid to the active guidance track. The
+    four buttons down the right edge clear the tapped points, align to track, cancel (reset the
+    grid rotation to 0), or accept and close.
+
+    CODE-BEHIND CONTRACT — FormGridView.axaml.cs (partial class AgOpenGPS.Views.FormGridView : Window):
+      * This view is IMPERATIVE, not MVVM: there is intentionally NO x:DataType, no DataContext
+        and no {Binding}. The x:Name'd controls below are the entire integration surface and keep
+        their ORIGINAL WinForms names so the migrated code-behind addresses them exactly as
+        FormGrid.cs / FormGrid.Designer.cs did. No handlers are wired in this markup — the
+        code-behind attaches them by name (reproducing the WinForms handlers):
+          - ViewportHost   : the Black square Border that hosts the injected GL surface. The
+                             code-behind sets ViewportHost.Child = viewport.View (the companion
+                             control of AgOpenGPS.Controls.AvaloniaGeoViewport — the cross-platform
+                             replacement for the WinForms OpenTK.GLControl "oglSelf"), attaches the
+                             PointerPressed tap handler to it (was oglSelf_MouseDown — captures the
+                             two GeoCoords and rotates worldGrid), and keeps it square on resize
+                             (was FormABDraw_ResizeEnd: oglSelf is sized Height-40 and the button
+                             column re-anchored to its right).
+          - btnCancelTouch : clears the two tapped points and resets zoom/pan (was btnCancelTouch_Click).
+          - btnAlignToTrack: rotates the world-grid to the active track's AB heading and closes
+                             (was btnAlignToTrack_Click).
+          - btnCancel      : resets worldGrid.gridRotation to 0 and closes (was btnCancel_Click).
+          - btnExit        : accepts and closes (was btnExit_Click).
+
+    WINDOW SHELL — mirrors FormGrid.Designer.cs:
+      Text "2 Points - Align Grid" -> Title (design-time literal; the source assigns this.Text
+                                      directly — no gStr key is used for this caption).
+      ClientSize 605 x 501         -> Width / Height 605 x 501 (the source ClientSize; where native
+                                      decorations are drawn outside the client the title bar takes a
+                                      few pixels — a documented minor deviation, mitigated by
+                                      CanResize="True").
+      BackColor WhiteSmoke         -> Background {DynamicResource AogLegacyWhiteSmokeBrush}. This
+                                      App.axaml token IS Color.WhiteSmoke (#FFF5F5F5); it is used
+                                      instead of the raw literal so the Views layer references one
+                                      named, self-documenting parity resource (App.axaml rationale).
+                                      The dialog is a FIXED light surface — it was never part of the
+                                      FormGPS day/night SwapDayNightMode chrome — so it is NOT bound
+                                      to the day/night AogFrameBrush.
+      ControlBox = false,          -> [XPLAT] Avalonia cannot hide only the caption buttons; the
+      HelpButton = true,              no-control-box / help-button look is approximated by keeping
+      Max/MinimizeBox = false         the normal title bar (SystemDecorations="Full"). The dialog is
+                                      driven by its own Cancel / OK buttons exactly as the source.
+      ShowInTaskbar = false        -> ShowInTaskbar="False".
+      StartPosition CenterParent   -> WindowStartupLocation="Manual": the code-behind restores the
+                                      persisted setWindow_gridLocation/Size (was FormABDraw_Load),
+                                      falling back to CenterOwner when no valid location is stored.
+      ResizeEnd persists size      -> CanResize="True" (the source persists setWindow_gridSize and
+                                      re-runs the square/anchor layout in FormABDraw_ResizeEnd).
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs,
+    mapped from the Designer's Image assignments (assets live under btnImages\, included as
+    <AvaloniaResource> in AgOpenGPS.csproj):
+      btnCancelTouch.Image  = Resources.HeadlandDeletePoints -> btnImages/HeadlandDeletePoints.png
+      btnAlignToTrack.Image = Resources.ABTrackAB            -> btnImages/ABTrackAB.png
+      btnCancel.Image       = Resources.Cancel64             -> btnImages/Cancel64.png
+      btnExit.Image         = Resources.OK64                 -> btnImages/OK64.png
+
+    No System.Windows.Forms, no OpenTK.GLControl, no GMap, no ColorPicker types are referenced —
+    Avalonia 11.3 markup only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormGridView"
+        Title="2 Points - Align Grid"
+        Width="605"
+        Height="501"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+        SystemDecorations="Full"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="Manual">
+
+    <!--
+        Flat, chrome-less push buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor.Transparent face: just the scaled glyph, with no
+        button surface in any interaction state. The :pointerover / :pressed template overrides
+        suppress the Fluent hover/press fill that would otherwise box the glyph (the proven sibling
+        convention — see Guidance/FormSmoothABView, FormYesView, FormPanView). FormGrid uses only
+        Buttons (no RepeatButton), so a single Button.flatImage style class is declared.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root layout == the WinForms client area split into two regions, mirroring the Designer's
+        oglSelf (left) + tlp1 (right): a flexible left column holding the square viewport host, and
+        an auto-width right column holding the vertical button strip. The code-behind keeps the
+        viewport square on resize (FormABDraw_ResizeEnd) and re-anchors the strip to its right edge.
+    -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- oglSelf -> ViewportHost: WinForms OpenTK.GLControl @ (2,2), BackColor Black, Cursor
+             Cross, 500 x 500, kept square (Height-40) by the resize handler. In Avalonia the GL
+             surface is the injected AgOpenGPS.Controls.AvaloniaGeoViewport; the code-behind sets
+             this Border's Child to viewport.View and attaches the PointerPressed tap handler. The
+             Black background shows through until the GL surface paints, exactly like the WinForms
+             control's BackColor. Margin 2 reproduces the (2,2) inset. -->
+        <Border x:Name="ViewportHost"
+                Grid.Column="0"
+                Background="Black"
+                Margin="2"
+                Cursor="Cross" />
+
+        <!-- tlp1: WinForms TableLayoutPanel anchored Top|Bottom|Right, 1 column x 4 rows, ~99 wide.
+             Reproduced as a single-column 4-row Grid so the four buttons distribute down the full
+             height (btnExit pinned to the bottom row) and stay distributed as the window resizes —
+             the responsive equivalent of the TableLayoutPanel row styles (~20%/20%/20% + a taller
+             bottom row). Each button is centred in its row (the WinForms Anchor.None). x:Name kept
+             as "tlp1" for the code-behind's resize/anchor math. -->
+        <Grid x:Name="tlp1"
+              Grid.Column="1"
+              Width="99">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- btnCancelTouch: WinForms Button row 0, 54 x 56, Image HeadlandDeletePoints,
+                 FlatStyle.Flat + BorderSize 0 + BackColor Transparent + BackgroundImageLayout Zoom.
+                 Clears the two tapped points and resets zoom/pan (btnCancelTouch_Click). The glyph
+                 scales uniformly to fit the 54 x 56 face (the Zoom parity). -->
+            <Button x:Name="btnCancelTouch"
+                    Grid.Row="0"
+                    Classes="flatImage"
+                    Width="54" Height="56"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Clear touch points">
+                <Image Source="avares://AgOpenGPS/btnImages/HeadlandDeletePoints.png"
+                       Width="54" Height="56" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnAlignToTrack: WinForms Button row 1, 54 x 81, Image ABTrackAB, FlatStyle.Flat +
+                 BorderSize 0 + BackColor Transparent + Zoom. Rotates the world-grid to the active
+                 track's AB heading and closes (btnAlignToTrack_Click). -->
+            <Button x:Name="btnAlignToTrack"
+                    Grid.Row="1"
+                    Classes="flatImage"
+                    Width="54" Height="81"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Align grid to track">
+                <Image Source="avares://AgOpenGPS/btnImages/ABTrackAB.png"
+                       Width="54" Height="81" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnCancel: WinForms Button row 2, 54 x 56, Image Cancel64, FlatStyle.Flat +
+                 BorderSize 0 + BackColor Transparent + Zoom (DialogResult.Cancel). Resets
+                 worldGrid.gridRotation to 0 and closes (btnCancel_Click). -->
+            <Button x:Name="btnCancel"
+                    Grid.Row="2"
+                    Classes="flatImage"
+                    Width="54" Height="56"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                       Width="54" Height="56" Stretch="Uniform" />
+            </Button>
+
+            <!-- btnExit: WinForms Button row 3, 54 x 56, Image OK64, FlatStyle.Flat + BorderSize 0 +
+                 BackColor Transparent. Font Tahoma 15.75pt Bold (-> 21 DIP) and ForeColor
+                 Color.FromArgb(192,64,0) (#FFC04000) are carried verbatim for exact parity even
+                 though the source assigns no .Text to this button (the font/colour are therefore
+                 inert with the image-only content, but reproduce the Designer exactly and apply if
+                 the code-behind ever sets a caption). Accepts and closes (btnExit_Click). -->
+            <Button x:Name="btnExit"
+                    Grid.Row="3"
+                    Classes="flatImage"
+                    Width="54" Height="56"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma"
+                    FontSize="21"
+                    FontWeight="Bold"
+                    Foreground="#FFC04000"
+                    AutomationProperties.Name="Accept">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                       Width="54" Height="56" Stretch="Uniform" />
+            </Button>
+
+        </Grid>
+    </Grid>
+</Window>

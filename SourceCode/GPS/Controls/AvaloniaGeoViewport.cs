@@ -102,6 +102,16 @@ namespace AgOpenGPS.Controls
         // viewport renders a cleared background harmlessly until the coordinator is wired.
         private RenderCoordinator _renderCoordinator;
 
+        // ---- [XPLAT] Lightweight per-frame draw callback for self-hosting GL DIALOGS ----
+        // The main field viewport drives its heavyweight, behavior-frozen draw through RenderCoordinator
+        // (above). The small GL-hosting dialogs migrated from WinForms (e.g. FormBndTool's oglSelf_Paint)
+        // own a SELF-CONTAINED GLW draw body and have no need for the 200-property coordinator. Rather than
+        // force a coordinator onto every dialog, this additive hook lets such a dialog supply ONLY its draw
+        // routine; the host invokes it between BeginPaint()/EndPaint() exactly as it does the coordinator,
+        // inside the same error guard. Mutually exclusive in practice: the main viewport leaves this null
+        // (coordinator drives), a dialog leaves the coordinator null (this drives). Both are null-guarded.
+        private Action _renderAction;
+
         // ---- Avalonia's per-frame default framebuffer ----
         // Avalonia binds a NON-ZERO framebuffer as the render target and passes its id to OnOpenGlRender.
         // We cache it so the off-screen passes (oglBack/oglZoom) can restore it after binding their own FBO.
@@ -272,6 +282,19 @@ namespace AgOpenGPS.Controls
         {
             get => _renderCoordinator;
             set => _renderCoordinator = value;
+        }
+
+        /// <summary>
+        /// [XPLAT] Optional per-frame draw callback for self-hosting GL dialogs. When set, the host invokes
+        /// it between <see cref="BeginPaint"/> and <see cref="EndPaint"/> (inside the same error guard as the
+        /// <see cref="RenderCoordinator"/>), so a migrated dialog can supply just the body of its former
+        /// WinForms <c>oglSelf_Paint</c> (a sequence of <c>GLW</c> DrawLib calls) without standing up the
+        /// full coordinator. Null on the main field viewport, which renders through the coordinator instead.
+        /// </summary>
+        public Action RenderAction
+        {
+            get => _renderAction;
+            set => _renderAction = value;
         }
 
         /// <summary>
@@ -625,6 +648,11 @@ namespace AgOpenGPS.Controls
                 // The behavior-frozen draw routines live in RenderCoordinator; this host never ports draw
                 // logic. Render() performs its own internal GL.Flush (NOT a swap) and the "No GPS" fallback.
                 _renderCoordinator?.Render(this);
+
+                // [XPLAT] Self-hosting GL dialogs (e.g. FormBndToolView) supply ONLY their draw body here.
+                // The dialog's callback issues GLW DrawLib calls against the camera transform that BeginPaint
+                // just installed — exactly as the WinForms oglSelf_Paint drew between BeginPaint/EndPaint.
+                _renderAction?.Invoke();
             }
             catch (Exception ex)
             {
@@ -952,9 +980,10 @@ namespace AgOpenGPS.Controls
         /// <summary>
         /// [XPLAT] Asks the companion control for a prompt redraw, marshalling onto the UI thread because
         /// <see cref="OpenGlControlBase.RequestNextFrameRendering"/> must be invoked there while callers may be
-        /// on a threadpool thread.
+        /// on a threadpool thread. Public so self-hosting GL dialogs (e.g. FormBndToolView's step timer) can
+        /// request a redraw after mutating draw state, mirroring the WinForms <c>oglSelf.Refresh()</c>.
         /// </summary>
-        private void RequestRender()
+        public void RequestRender()
         {
             if (Dispatcher.UIThread.CheckAccess())
             {
