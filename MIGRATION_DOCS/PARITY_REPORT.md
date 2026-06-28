@@ -36,11 +36,12 @@ remediation pass — `Field/*.txt`) — they are **no longer `README.md` / `.git
 golden loader now **enforces presence** (`LoadRequired…` checks `File.Exists` and calls `Assert.Fail`
 when a required artifact is absent), so a missing required artifact **fails** the test rather than
 silently self-ignoring; the entire `Parity` suite runs green on the **local Linux development
-environment**, and the full `AgOpenGPS.Tests` assembly reports **79 passed / 1 intentional skip / 0
+environment**, and the full `AgOpenGPS.Tests` assembly reports **93 passed / 1 intentional skip / 0
 failed** (the single skip is the `FormGPS`-graph-dependent ISOXML export driver,
-`IsoXmlExport_DrivenFromDomainGraph_RequiresFormGpsGraph`, **not** a golden loader). Across all three
-test assemblies the local Linux total is **115 passed / 1 skipped / 0 failed** (`AgOpenGPS.Core.Tests`
-33, `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 79). **The desktop-GL request hook is now wired** in both
+`IsoXmlExport_DrivenFromDomainGraph_RequiresFormGpsGraph`, **not** a golden loader; the count rose from 79
+to 93 in the QA F5 remediation, which added 14 production-invoking guidance/section/algorithm parity tests).
+Across all three test assemblies the local Linux total is **129 passed / 1 skipped / 0 failed**
+(`AgOpenGPS.Core.Tests` 33, `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 93). **The desktop-GL request hook is now wired** in both
 composition roots (`SourceCode/GPS/Program.cs` and `SourceCode/AgIO/Source/Program.cs` chain
 `AvaloniaGeoViewport.RequestDesktopGlProfile(...)` into `BuildAvaloniaApp()`), closing the bootstrap half
 of the dominant GL risk. **The remaining honest gaps are external-evidence items:** (1) tri-OS CI
@@ -74,7 +75,9 @@ identity catches floating-point, culture, and path divergences.
 | `FieldRoundTripTests` | `SourceCode/GPS/IO/` artifacts (boundary / contour / section / headland / headlines / track / tram / recorded-path / flag / elevation / field-plane) | Load→save byte-compare | **Goldens captured + enforced; green locally (linux, 11/11 field tests); Pending CI (windows / macos)** |
 | `IsoXmlEquivalenceTests` | ISOXML V3 + V4 exports | Semantic equivalence (name ≤ 248 bytes; AB + Curve export limit) | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
 | `SettingsRoundTripTests` | Vehicle / Tool / Environment XML + `CSettingsMigration` | Round-trip byte-compare; Registry→path migration on Windows | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
-| `GuidanceEquivalenceTests` | Steer angle + section state from an identical fix sequence | Exact for pure math; tolerance `Is.LessThan(0.001)` for geometry | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
+| `GuidanceEquivalenceTests` | Stanley (`CGuidance.DoSteerAngleCalc`), Pure-Pursuit (`CABLine.GetCurrentABLine`) steer angle + `maxSteerAngle=30°` clamp + `glm.toDegrees` tie | **Invokes the REAL production methods** (built via `ParityGraphFixture`); exact for pure math, tolerance `Is.LessThan(0.001)` for geometry | **Production-invoking; goldens production-captured + enforced; green locally (linux, 8/8); Pending CI (windows / macos)** |
+| `SectionControlParityTests` | `SectionService.BuildMachineByte` (1–16 unique-width + ≤64 same-width PGN bytes) + `DoRemoteSwitches` `isJobStarted` gate | **Invokes the REAL `SectionService`**; exact PGN byte / state equality | **Production-invoking; goldens production-captured + enforced; green locally (linux, 3/3); Pending CI (windows / macos)** |
+| `GuidanceAlgorithmCoverageTests` | `CDubins.GenerateDubins` (+ determinism), `CSmartWAS`, `CContour`, `CABCurve`, `CRecordedPath`, `CYouTurn` | **Invokes the REAL production methods**; exact for counts/states, tolerance `Within(0.001)` for lengths / distances / steer angles | **Production-invoking; goldens production-captured + enforced; green locally (linux, 6/6); Pending CI (windows / macos)** |
 
 **Test toolchain.** The suites use the kept NUnit stack — **NUnit 4.3.2**, **Microsoft.NET.Test.Sdk
 17.12.0**, **NUnit3TestAdapter 4.6.0**, **NUnit.Analyzers 4.6.0**. Golden fixtures under
@@ -230,15 +233,50 @@ partial classes into injectable services for decoupling, but the numbers it prod
 - **Section-control semantics** — **1–16 unique-width** sections or **up to 64 same-width** sections
   via PGN `0xE5`, with `isJobStarted` gating preserved so sections never actuate outside an active job.
 
-**Proof.** `GuidanceEquivalenceTests` drives an **identical fix sequence** through the migrated
-pipeline and asserts the resulting steer angle and section-state output match the golden values —
-**exact equality for pure-math results**, and a tolerance of **`Is.LessThan(0.001)`** for
-geometry-derived values (matching the existing geometry tests). The golden vectors
-(`Guidance/stanley.csv`, `purepursuit.csv`, `sections.csv`) are **captured and committed** from the
-frozen Stanley / Pure-Pursuit / section-bitmask formulas (`maxSteerAngle = 30°` clamp applied), and
-`LoadRequiredGoldenLines` **fails** if a required CSV is absent. Running it on every CI leg confirms
-cross-OS float determinism. **Status: captured + enforced; green locally (linux, steer-angle within
-0.001° and exact section bitmasks); Pending CI confirmation on windows / macos.**
+**Proof — production-invoking (not formula-self-referential).** The parity suites now construct the
+**real production guidance/section graph** (via `SourceCode/AgOpenGPS.Tests/Parity/ParityGraphFixture.cs`,
+built in the same order as the live `App.axaml.cs` composition root) and drive an **identical fixed
+input** through the **actual production methods**, asserting their output against committed goldens:
+
+- **Stanley** — `GuidanceEquivalenceTests` invokes the real (private) `CGuidance.DoSteerAngleCalc()` via a
+  controlled reflection seam over fixed input fields, plus a public-entry-point determinism test.
+- **Pure Pursuit** — invokes the real `CABLine.GetCurrentABLine(...)` and captures the production
+  `steerAngleAB` (the production expression is the goal-point `Math.Atan` form, mathematically equivalent
+  to the documented `atan2(2·wheelbase·sin(error), lookahead)` — see note below).
+- **Dubins / CSmartWAS / CContour / CABCurve / CRecordedPath / CYouTurn** — `GuidanceAlgorithmCoverageTests`
+  constructs each real class and invokes a deterministic public method (`GenerateDubins`, `AddSample`,
+  `DistanceFromContourLine`, `BuildNewOffsetList`, `StartDrivingRecordedPath`, `DistanceFromYouTurnLine`),
+  including a **Dubins determinism re-run** (identical input → identical path).
+- **Section control** — `SectionControlParityTests` invokes the real `SectionService.BuildMachineByte`
+  (both the 1–16 unique-width and ≤64 same-width modes, asserting the exact PGN `0xFE`/`0xEF`/`0xE5` bytes)
+  and the real `DoRemoteSwitches` to prove the **`isJobStarted` gate** blocks section activation outside an
+  active job (off → no activation; on → activation).
+- **Safety clamp** — over-range input is driven through the **production** `DoSteerAngleCalc` and asserted
+  to saturate at ±`vehicle.maxSteerAngle` (default 30°).
+
+Assertions are **exact equality for pure-math / counts / states** and a tolerance of **`Within(0.001)`**
+for geometry-derived values (matching the existing geometry tests). The golden vectors
+(`Guidance/stanley.csv`, `purepursuit.csv`, `sections_machinebyte.csv`, `algorithms.csv`) are
+**captured from the migrated production methods themselves** (an accepted golden source, since the
+production code is byte-identical to the net48 baseline `860eb9fd` by source-diff — decoupling only, no
+math edits — so a production-captured golden equals the net48 behavior), and the loader **fails** if a
+required CSV is absent. The legacy formula-self-referential goldens (`sections.csv`) are retained only as a
+**secondary** mask-edge cross-check, clearly labelled as such. Running every suite on each CI leg confirms
+cross-OS float determinism. **Status: production-invoking + production-captured goldens enforced; green
+locally (linux — 8 Guidance + 3 Section + 6 Algorithm-coverage = 17/17, steer angles within 0.001° and
+exact PGN byte/section state); Pending CI confirmation on windows / macos.**
+
+> **Note (production Pure-Pursuit form).** Production `CABLine`/`CABCurve` compute the steer angle with
+> `glm.toDegrees(Math.Atan(2·((gpE−pE)·cos h + (gpN−pN)·sin h)·Wheelbase / goalPointDistanceSquared))` over
+> goal-point/pivot geometry — a structurally different but mathematically equivalent expression to the
+> documented `atan2` form. The parity test now invokes this **production** expression rather than
+> reproducing the documented formula in-test.
+
+> **Note (angular-velocity guard, `0.64°/s`).** The `maxAngularVelocity` rate-limiter is **commented out
+> (inactive) in production** — the `0.64` value feeds only the compass "*" indicator. This is **faithful
+> frozen parity**: the limiter was **also commented out** in the net48 `Position.designer.cs`. The test
+> asserts the `0.64` contract literal and documents that the production limiter is nominal (not enforced at
+> runtime) in **both** versions.
 
 ---
 
@@ -252,14 +290,14 @@ and path divergences. All cells below are the **target** end-state.
 | OS runner | RID(s) | Build | Unit + parity tests | Self-contained publish |
 |---|---|---|---|---|
 | `windows-latest` | `win-x64` | Pending CI run | Pending CI run | Pending CI run |
-| `ubuntu-latest` | `linux-x64` | **Green (local dev env): Debug + Release, 0 errors** | **Green (local dev env): 115 passed / 1 skipped / 0 failed** | Pending CI run |
+| `ubuntu-latest` | `linux-x64` | **Green (local dev env): Debug + Release, 0 errors** | **Green (local dev env): 129 passed / 1 skipped / 0 failed** | Pending CI run |
 | `macos-latest` | `osx-x64` **and** `osx-arm64` | Pending CI run | Pending CI run | Pending CI run |
 
 The `ubuntu-latest` Build and Unit+parity cells are recorded as **Green** because the identical
 build/test commands were run in this Linux development environment: `dotnet build SourceCode/AgOpenGPS.sln
 -c Debug` and `-c Release` both report 0 errors (16 pre-existing Avalonia `AVLN3001` "no public
 constructor for runtime loader" advisories on 8 unrelated views × 2 TFMs, not escalated to errors under
-Release `TreatWarningsAsErrors`), and the three test assemblies report 115 passed / 1 skipped / 0 failed.
+Release `TreatWarningsAsErrors`), and the three test assemblies report 129 passed / 1 skipped / 0 failed.
 The `windows-latest` and `macos-latest` cells, and **all** self-contained publish cells, remain **Pending
 CI run** — they require GitHub-hosted runners not available in this offline environment.
 
@@ -274,7 +312,7 @@ _The build/release workflow matrix that produces these legs and artifacts is **o
 `.github/workflows/release.yml` declares the per-RID self-contained publish matrix with per-OS upload
 artifacts. What remains **Pending** is the **execution** of that matrix on GitHub-hosted runners and the
 recording of green results here — an external-evidence item (this offline environment cannot dispatch
-GitHub Actions). The local Linux leg is already proven (build + 115 tests green); see the row note
+GitHub Actions). The local Linux leg is already proven (build + 129 tests green); see the row note
 below._
 
 ---
@@ -363,8 +401,13 @@ and is listed first.
    `.gitattributes` (`-text` rules on the test/parity fixtures, including
    `SourceCode/AgLibrary.Tests/Settings/TestSettings.xml` and `SourceCode/AgOpenGPS.Tests/Parity/**`)
    so the byte-comparison assertions stay stable across operating systems.
-6. **Float determinism.** IEEE arithmetic is generally stable across RyuJIT, but the guidance
-   golden tests (`GuidanceEquivalenceTests`) must confirm it cross-OS rather than assume it.
+6. **Float determinism — confirmed locally; tri-OS pending.** IEEE arithmetic is generally stable across
+   RyuJIT. The production-invoking guidance/section/algorithm parity tests (`GuidanceEquivalenceTests`,
+   `SectionControlParityTests`, `GuidanceAlgorithmCoverageTests`) now assert this on the **real** production
+   methods, and the suite was additionally re-run under a comma-decimal locale
+   (`LANG=de_DE.UTF-8 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=0`) with **identical** results, confirming
+   culture-invariance of the data path. Cross-OS (windows / macos) confirmation via the CI matrix remains
+   the only residual item.
 7. **FormGPS-coupled source closure — RESOLVED at CP9.** Earlier checkpoints temporarily excluded the GPS
    sources coupled to the WinForms `FormGPS` god-object from compilation via `<Compile Remove>` /
    `<AvaloniaXaml Remove>` to reach a clean build. **At CP9 every such gate was removed** —
@@ -380,7 +423,7 @@ and is listed first.
    previously tracked here is also **closed at CP9**: the PGN / Guidance / ISOXML / Settings golden
    fixtures are captured, committed under `Parity/Golden/**`, and **enforced** (each `LoadRequired…`
    loader fails when a required artifact is absent — no silent self-ignore), and the full `Parity` suite
-   is **green on the local Linux environment** (the full `AgOpenGPS.Tests` assembly reports 79 passed / 1 intentional skip / 0 failed; 115 passed / 1 skipped across all three test assemblies). The **only
+   is **green on the local Linux environment** (the full `AgOpenGPS.Tests` assembly reports 93 passed / 1 intentional skip / 0 failed; 129 passed / 1 skipped across all three test assemblies). The **only
    residual parity item** is **tri-OS CI confirmation** (the `windows` / `macos` legs have not yet run);
    that cross-OS confirmation is tracked under **Golden-File Parity Suites** and **Cross-OS CI Matrix**
    above, not here.
@@ -388,16 +431,21 @@ and is listed first.
    remediation pass; not part of the 31 reviewed findings).** The guidance classes expose a
    `SetGuidanceReferences(...)` method (defined on `CABCurve`, `CABLine`, `CContour`, `CTrack`,
    `CYouTurn`, `CGuidance`, and `CRecordedPath`) intended to wire the cyclic guidance peers to one
-   another, but it currently has **zero callers**, and **no `new CGuidance(...)` instantiation exists**
-   anywhere in the migrated composition root. The guidance **mathematics are present and unit-proven**
-   (`GuidanceEquivalenceTests` exercises the Stanley / Pure-Pursuit / section-bitmask formulas directly),
-   so this does **not** affect the frozen-output contract; but until the composition root constructs a
-   live `CGuidance` and invokes `SetGuidanceReferences`, the **end-to-end live guidance pipeline** (as
-   opposed to the math in isolation) is not wired and could `NullReferenceException` on a live guidance
-   path. This is a **pre-existing** gap (the WinForms `FormGPS` god-object performed this wiring
-   implicitly; the decoupling extracted the seam but the root has not yet called it). It is recorded here
-   as an open integration risk for a follow-up wiring task; it is **out of scope of the 31 findings**
-   addressed in this remediation pass and was not introduced by it.
+   another, but the **migrated composition root** (`Program.cs` / `App.axaml.cs`) currently has **zero
+   callers** of it and constructs **no live `new CGuidance(...)`**. The guidance **mathematics are present
+   and now production-proven**: the F5 remediation pass added `SourceCode/AgOpenGPS.Tests/Parity/ParityGraphFixture.cs`,
+   which **does** construct a live `CGuidance` and invoke `SetGuidanceReferences(...)` across all cyclic
+   peers (`CABLine`/`CABCurve`/`CContour`/`CTrack`/`CGuidance`), and the production-invoking parity suites
+   exercise the real `DoSteerAngleCalc` / `GetCurrentABLine` / `SectionService` / Dubins / contour / curve /
+   you-turn / recorded-path methods over that wired graph **without NRE** — so the seam itself is proven to
+   work. This does **not** affect the frozen-output contract. What remains is solely that the **composition
+   root** has not yet replicated this wiring, so the **end-to-end live guidance pipeline** (as opposed to the
+   math exercised through the test fixture) is not yet wired at application startup and could
+   `NullReferenceException` on a live guidance path until it is. This is a **pre-existing** gap (the WinForms
+   `FormGPS` god-object performed this wiring implicitly; the decoupling extracted the seam but the root has
+   not yet called it). It is recorded here as an open integration risk for a follow-up wiring task; it is
+   **out of scope of the F5 guidance-parity findings** addressed in this remediation pass (which concern test
+   fidelity/coverage, CI, and documentation — not composition-root wiring) and was not introduced by it.
 
 **Accepted capability gaps (feature-completeness, not parity, risks).** The following are
 **Feature-gated (per-OS)** by design — they degrade gracefully where no cross-platform equivalent

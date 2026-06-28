@@ -88,7 +88,7 @@ the Core geo conversion is unit-covered.
 | F-004 | GPS position ingestion (PGN `0xD6`, 52 bytes) | At parity (local) | `SourceCode/GPS/Services/PgnDispatcher.cs` → `PositionService.cs` on disk and compiled; the 52-byte decode is frozen by contract and golden-covered. |
 | F-005 | NTRIP / RTK client (AgIO) | At parity (local) | AgIO `Source/Services/NtripService.cs` on disk and compiled; **CR/LF header-injection hardened** (mountpoint validated against control/CR/LF chars before the request line — this remediation pass, SEC-1). |
 | F-006 | External IMU + disconnect (PGN `0xD3` / `0xD4`) | At parity (local) | Handled by GPS `Services/PgnDispatcher.cs`; contract frozen, golden-covered. |
-| F-007 | GPS / IMU heading & roll fusion (CAHRS) | At parity (local) | `SourceCode/GPS/Classes/CAHRS.cs` recompiled (behavior frozen) and driven per-fix by `PositionService`. |
+| F-007 | GPS / IMU heading & roll fusion (CAHRS) | At parity (local) | `SourceCode/GPS/Classes/CAHRS.cs` recompiled (behavior frozen) and driven per-fix by `PositionService`. **QA F5: the inline IMU+GPS fusion was extracted verbatim into the pure static `CAHRS.FuseImuGpsHeading(...)` (a behavior-preserving testable seam); `PositionService` delegates to it, and a production-invoking test certifies the fused heading against a production-captured golden.** |
 | F-008 | Dual-antenna heading & reverse detection | At parity (local) | `PositionService` + `AgOpenGPS.Core` geo models on disk and compiled; behavior frozen. |
 | F-009 | WGS84 ↔ local-plane conversion | At parity (local) | `AgOpenGPS.Core` geo conversion **covered by the Core test suite (33/33 pass locally)**; numeric I/O via `InvariantCulture`. |
 | F-010 | Single-instance enforcement | At parity (local) | `IPlatformServices.TryAcquireSingleInstance` + `PlatformServicesFactory` in Core; GPS/AgIO `Platform/{Windows,Linux,Mac}PlatformServices.cs` on disk (Windows named `Mutex`; Linux/macOS lockfile + advisory lock, fail-closed); GUIDs `{516-0AC5-…6BDE8F}` (GPS) / `{8F6F0AC4-…6BDE8F}` (AgIO) preserved. App composition root now **reuses the single process-level `IPlatformServices`** created by `Program` (this remediation pass, APP-1). |
@@ -97,27 +97,33 @@ the Core geo conversion is unit-covered.
 
 ## Phase 2 — Guidance & Steering (F-011 … F-020)
 
-The guidance/steering **mathematics are recompiled (behavior frozen) and proven locally** by
-`GuidanceEquivalenceTests` (exact for pure math; `Is.LessThan(0.001)` tolerance for geometry). Logic
-was decoupled from the `FormGPS` god-object via constructor injection; outputs are unchanged. **Beyond
-the universal tri-OS CI residual, the guidance features carry one additional documented residual:** the
-cyclic guidance peers expose `SetGuidanceReferences(...)` but the composition root does not yet call it
-(no live `CGuidance` is constructed) — the *math* is proven, but the *live end-to-end* guidance
-pipeline wiring is a latent gap tracked as `PARITY_REPORT.md` Open Risk #8 (pre-existing; out of scope
-of the 31 reviewed findings).
+The guidance/steering **mathematics are recompiled (behavior frozen) and certified locally by
+production-invoking parity tests** (QA F5 remediation): `GuidanceEquivalenceTests` now invokes the
+**real** `CGuidance.DoSteerAngleCalc` (Stanley), `CABLine.GetCurrentABLine` (Pure Pursuit) and the
+production clamp; `GuidanceAlgorithmCoverageTests` invokes the **real** `CDubins`, `CSmartWAS`,
+`CContour`, `CABCurve`, `CRecordedPath`, and `CYouTurn`; and `SectionControlParityTests` invokes the
+**real** `SectionService` — all built through `ParityGraphFixture` (which constructs a live `CGuidance`
+and wires the cyclic peers via `SetGuidanceReferences`) and asserted against **production-captured**
+goldens (exact for pure math/counts/states; `Within(0.001)` for geometry). Logic was decoupled from the
+`FormGPS` god-object via constructor injection; outputs are unchanged. **Beyond the universal tri-OS CI
+residual, the guidance features carry one additional documented residual:** while the parity fixture now
+constructs a live `CGuidance` and calls `SetGuidanceReferences(...)` (so the seam is production-proven and
+NRE-free), the **application composition root** does not yet replicate that wiring — the *math and seam*
+are proven, but the *live end-to-end* startup wiring is a latent gap tracked as `PARITY_REPORT.md` Open
+Risk #8 (pre-existing; out of scope of the F5 parity findings).
 
 | ID | Feature | Status | Cross-platform location / notes |
 |---|---|---|---|
-| F-011 | AB line guidance | At parity (local) | `SourceCode/GPS/Classes/CABLine.cs` recompiled (behavior frozen); UI wired from MainView (this remediation pass). Live-pipeline peer-wiring residual: `PARITY_REPORT.md` #8. |
-| F-012 | AB curve guidance | At parity (local) | `SourceCode/GPS/Classes/CABCurve.cs` recompiled; UI wired. Residual: #8. |
-| F-013 | Contour guidance | At parity (local) | `SourceCode/GPS/Classes/CContour.cs` recompiled. Residual: #8. |
+| F-011 | AB line guidance | At parity (local) | `SourceCode/GPS/Classes/CABLine.cs` recompiled (behavior frozen); UI wired from MainView. **Steer output certified by `GuidanceEquivalenceTests` invoking the REAL `CABLine.GetCurrentABLine` (production-captured golden).** Live-pipeline peer-wiring residual: `PARITY_REPORT.md` #8. |
+| F-012 | AB curve guidance | At parity (local) | `SourceCode/GPS/Classes/CABCurve.cs` recompiled; UI wired. **Curve-offset geometry certified by `GuidanceAlgorithmCoverageTests` invoking the REAL `CABCurve.BuildNewOffsetList`.** Residual: #8. |
+| F-013 | Contour guidance | At parity (local) | `SourceCode/GPS/Classes/CContour.cs` recompiled. **Steer output certified by `GuidanceAlgorithmCoverageTests` invoking the REAL `CContour.DistanceFromContourLine`.** Residual: #8. |
 | F-014 | Track management (create / select / nudge / snap / cycle) | At parity (local) | `SourceCode/GPS/Classes/CTrack.cs` + `CTrackMethods` recompiled; AB-draw/build-tracks and track-cycle UI wired from MainView (this remediation pass). |
-| F-015 | Pure Pursuit steering (`CTrackMethods.GoalPoint()`, `atan2(2·wheelbase·sin(error), lookahead)`) | At parity (local) | Frozen math in `SourceCode/GPS/Classes/CTrackMethods.cs`; **asserted by `GuidanceEquivalenceTests` (green locally)**. |
-| F-016 | Stanley steering (`CGuidance.DoSteerAngleCalc()`) | At parity (local) | Frozen math in `SourceCode/GPS/Classes/CGuidance.cs`; safety guards `maxSteerAngle = 30°` / `maxAngularVelocity = 0.64°/s` preserved (`docs/settings.md` L54-L55); **asserted by `GuidanceEquivalenceTests`**. Residual: #8. |
+| F-015 | Pure Pursuit steering (`CTrackMethods.GoalPoint()`; production `steerAngleAB` via `Math.Atan` goal-point form, equivalent to documented `atan2(2·wheelbase·sin(error), lookahead)`) | At parity (local) | Frozen math; **certified by `GuidanceEquivalenceTests` invoking the REAL `CABLine.GetCurrentABLine` (green locally, production-captured golden)**. |
+| F-016 | Stanley steering (`CGuidance.DoSteerAngleCalc()`) | At parity (local) | Frozen math in `SourceCode/GPS/Classes/CGuidance.cs`; safety guard `maxSteerAngle = 30°` enforced (`docs/settings.md` L54-L55) and **certified by `GuidanceEquivalenceTests` invoking the REAL `DoSteerAngleCalc` + clamp (green locally)**. `maxAngularVelocity = 0.64°/s` is a **nominal** guard — the rate-limiter is commented-out (inactive) in **both** net48 and migrated code (feeds only the compass "*" indicator). Residual: #8 (composition-root wiring only). |
 | F-017 | AutoSteer output (PGN `0xFE`, 14 bytes) + module response (`0xFD`) | At parity (local) | `SourceCode/GPS/Services/PgnDispatcher.cs` on disk; 14-byte encode/decode frozen and golden-covered (`FE_autosteer.bin`). |
-| F-018 | U-turn / YouTurn + Dubins paths | At parity (local) | `SourceCode/GPS/Classes/CYouTurn.cs`, `CDubins.cs` recompiled (behavior frozen). |
-| F-019 | Recorded path | At parity (local) | `SourceCode/GPS/Classes/CRecordedPath.cs` recompiled; `RecPath.txt` field golden enforced. |
-| F-020 | Steering-angle-sensor (WAS) calibration / steer wizard | At parity (local) | **Wired in this remediation pass:** the steer-wizard workflow is reachable from MainView (`OpenSteerWizard` routes through real adapters — `SteerWizAdapters.cs` / `SteerSettingsAdapters.cs`); `CSmartWAS(ApplicationModel)` injection done. The earlier "Not available yet" stub is removed. |
+| F-018 | U-turn / YouTurn + Dubins paths | At parity (local) | `SourceCode/GPS/Classes/CYouTurn.cs`, `CDubins.cs` recompiled (behavior frozen). **Certified by `GuidanceAlgorithmCoverageTests` invoking the REAL `CDubins.GenerateDubins` (straight ≈30 m, U-turn ≈53.25 m, + determinism re-run) and `CYouTurn.DistanceFromYouTurnLine` (production-captured goldens).** |
+| F-019 | Recorded path | At parity (local) | `SourceCode/GPS/Classes/CRecordedPath.cs` recompiled; `RecPath.txt` field golden enforced. **Drive-start certified by `GuidanceAlgorithmCoverageTests` invoking the REAL `CRecordedPath.StartDrivingRecordedPath`.** |
+| F-020 | Steering-angle-sensor (WAS) calibration / steer wizard | At parity (local) | **Wired in this remediation pass:** the steer-wizard workflow is reachable from MainView (`OpenSteerWizard` routes through real adapters — `SteerWizAdapters.cs` / `SteerSettingsAdapters.cs`); `CSmartWAS(ApplicationModel)` injection done. **WAS statistics certified by `GuidanceAlgorithmCoverageTests` invoking the REAL `CSmartWAS` (Mean/Median/StdDev/RecommendedOffset over a 250-sample sequence).** The earlier "Not available yet" stub is removed. |
 
 ---
 
@@ -137,7 +143,7 @@ manual section buttons are enabled and routed, and the **eleven field-file forma
 | F-024 | Headland | At parity (local) | `SourceCode/GPS/Classes/CHead.cs` recompiled; `FormHeadAcheView` / `FormHeadLineView` wired from shell; `Headland.txt` / `Headlines.txt` goldens enforced. |
 | F-025 | Tramlines | At parity (local) | `SourceCode/GPS/Classes/CTram.cs` recompiled; `FormTramLineView` wired from shell; `Tram.txt` golden enforced. |
 | F-026 | Serial communications (GPS / IMU / steer, AgIO) | At parity (local) | `System.IO.Ports 9.0.0` (cross-platform NuGet) retained; AgIO `Source/Services/SerialCommService.cs` on disk; port-**name** enumeration (`COMx` vs `/dev/ttyUSB*` / `/dev/ttyACM*` / `/dev/cu.*`) abstracted via `IPlatformServices.GetSerialPortNames`. Behavior preserved; **on-hardware serial confirmation** is an external-evidence residual alongside tri-OS CI. |
-| F-027 | Section control (manual + auto) | At parity (local) | `SourceCode/GPS/Services/SectionService.cs` on disk; **manual section buttons `btnSection1Man..16Man` enabled and routed to `SectionService` public APIs in this remediation pass** (previously hard-disabled). `isJobStarted` gating preserved. |
+| F-027 | Section control (manual + auto) | At parity (local) | `SourceCode/GPS/Services/SectionService.cs` on disk; **manual section buttons `btnSection1Man..16Man` enabled and routed to `SectionService` public APIs** (previously hard-disabled). **QA F5: `SectionControlParityTests` invokes the REAL `SectionService.BuildMachineByte` (1–16 unique-width + ≤64 same-width PGN `0xFE`/`0xEF`/`0xE5` bytes) and the REAL `DoRemoteSwitches` to certify the `isJobStarted` gate blocks activation outside an active job (production-captured goldens).** |
 | F-028 | Multi-section / zone width (1–16 unique / up to 64 same-width via PGN `0xE5`) | At parity (local) | `SectionService` exposes section/zone state + click handlers; PGN `0xE5` (8 section-bitmask bytes → sections 1–64) frozen by contract and golden-covered (`E5_sections.bin`). |
 | F-029 | Coverage / worked-area mapping | At parity (local) | `SourceCode/GPS/Classes/CFieldData.cs` recompiled + `RenderCoordinator` on disk. **Additional residual:** live coverage rendering uses the immediate-mode GL pipeline and `glReadPixels` back-buffer scan — shares the GL on-hardware confirmation residual (`PARITY_REPORT.md` #1; desktop-GL hook now wired). |
 | F-030 | Flags / markers | At parity (local) | `SourceCode/GPS/Classes/CFlag.cs` recompiled; `Flags.txt` golden enforced (incl. `InvariantCulture` period-decimal assertion). **Additional residual:** flag-pick uses `glReadPixels` — GL on-hardware residual (#1). |
@@ -184,8 +190,10 @@ day/night theme tokens were consolidated in this remediation pass.
 
 - **At parity (local): 42** — contract-preserved, integrated/wired, and green on the local Linux
   environment, with **tri-OS CI confirmation** as the single universal residual. Two subsets carry one
-  *additional* documented residual: the guidance features **F-011 … F-016** (live-pipeline peer-wiring,
-  `PARITY_REPORT.md` #8 — *math is proven*), and **F-029 / F-030** plus the live field viewport (GL
+  *additional* documented residual: the guidance features **F-011 … F-016** (composition-root
+  peer-wiring, `PARITY_REPORT.md` #8 — *math and seam are now production-certified by the F5
+  production-invoking parity suites; only the application-startup wiring remains*), and **F-029 / F-030**
+  plus the live field viewport (GL
   on-hardware confirmation, `PARITY_REPORT.md` #1 — *desktop-GL hook now wired*). Serial features
   **F-026 / F-038** additionally await on-hardware confirmation.
 - **Feature-gated (per-OS): 3** — **F-021** (background map imagery), **F-044** (monitor brightness),

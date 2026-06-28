@@ -644,42 +644,14 @@ namespace AgOpenGPS.Services
 
                             #region IMU Fusion
 
-                            // IMU Fusion with heading correction, add the correction
-                            //current gyro angle in radians
-                            double imuHeading = (glm.toRadians(ahrs.imuHeading));
-
-                            //Difference between the IMU heading and the GPS heading
-                            double gyroDelta = 0;
-
-                            //if (!isReverseWithIMU)
-                            gyroDelta = (imuHeading + imuGPS_Offset) - gpsHeading;
-
-                            if (gyroDelta < 0) gyroDelta += glm.twoPI;
-                            else if (gyroDelta >= glm.twoPI) gyroDelta -= glm.twoPI;
-
-                            //calculate delta based on circular data problem 0 to 360 to 0, clamp to +- 2 Pi
-                            if (gyroDelta >= -glm.PIBy2 && gyroDelta <= glm.PIBy2) gyroDelta *= -1.0;
-                            else
-                            {
-                                if (gyroDelta > glm.PIBy2) { gyroDelta = glm.twoPI - gyroDelta; }
-                                else { gyroDelta = (glm.twoPI + gyroDelta) * -1.0; }
-                            }
-                            if (gyroDelta > glm.twoPI) gyroDelta -= glm.twoPI;
-                            else if (gyroDelta < -glm.twoPI) gyroDelta += glm.twoPI;
-
-                            //moe the offset to line up imu with gps
-                            if (!isReverseWithIMU)
-                                imuGPS_Offset += (gyroDelta * (ahrs.fusionWeight));
-                            else
-                                imuGPS_Offset += (gyroDelta * (0.02));
-
-                            if (imuGPS_Offset > glm.twoPI) imuGPS_Offset -= glm.twoPI;
-                            else if (imuGPS_Offset < 0) imuGPS_Offset += glm.twoPI;
-
-                            //determine the Corrected heading based on gyro and GPS
-                            imuCorrected = imuHeading + imuGPS_Offset;
-                            if (imuCorrected >= glm.twoPI) imuCorrected -= glm.twoPI;
-                            else if (imuCorrected < 0) imuCorrected += glm.twoPI;
+                            // [XPLAT] QA F5 M3: the IMU/GPS heading-fusion arithmetic was extracted VERBATIM to
+                            // the pure, unit-testable seam CAHRS.FuseImuGpsHeading — byte-for-byte identical to
+                            // the net48 inline block (Position.designer.cs "#region IMU Fusion"). This is a
+                            // decoupling-only move (AAP §0.7.1: logic may move, outputs may not change). The
+                            // persistent imuGPS_Offset is advanced in place; imuCorrected (a field read later by
+                            // the slow-speed branch) receives the fused heading. See MIGRATION_DOCS/TRANSITION_MAP.md.
+                            imuCorrected = CAHRS.FuseImuGpsHeading(
+                                ahrs.imuHeading, gpsHeading, ahrs.fusionWeight, isReverseWithIMU, ref imuGPS_Offset);
 
                             //use imu as heading when going slow
                             fixHeading = imuCorrected;

@@ -2,78 +2,68 @@
 //
 // Guidance / steering-math + section-state behavioral-parity suite.
 //
-// This is the behavioral-parity PROOF for the guidance/steering mathematics — Stanley and
-// Pure Pursuit steer-angle computation, the ±maxSteerAngle / maxAngularVelocity safety guards,
-// and section on/off bitmask control. The net48/WinForms → net8.0/Avalonia migration must keep
-// these outputs numerically identical on the windows/ubuntu/macos CI matrix (including
-// osx-arm64). The frozen contract is documented in docs/architecture.md (Stanley at L181, Pure
-// Pursuit at L188-198) and docs/settings.md (the steering guards), and is implemented by the
-// (now decoupled) GPS/Classes/CGuidance.cs, CTrackMethods.cs, CTrack.cs, CAHRS.cs, CSection.cs.
+// This is the behavioral-parity PROOF for the guidance/steering mathematics — Stanley and Pure Pursuit
+// steer-angle computation and the ±maxSteerAngle safety guard. The net48/WinForms → net8.0/Avalonia
+// migration must keep these outputs numerically identical on the windows/ubuntu/macos CI matrix
+// (including osx-arm64). The frozen contract is implemented by the (now decoupled, behaviour-frozen)
+// GPS/Classes/CGuidance.cs (Stanley) and GPS/Classes/CABLine.cs (Pure Pursuit).
 //
 // It extends the load → compare pattern proven in
-// SourceCode/AgLibrary.Tests/Settings/XmlSettingsHandlerTests.cs and mirrors the float-tolerance
-// style used by the existing AgOpenGPS.Core.Tests geometry tests (Math.Abs(a-b) < 0.001).
+// SourceCode/AgLibrary.Tests/Settings/XmlSettingsHandlerTests.cs and mirrors the float-tolerance style
+// used by the existing AgOpenGPS.Core.Tests geometry tests (Within(0.001)).
 //
 // ---------------------------------------------------------------------------------------------
-// DESIGN RATIONALE (embedded judgment, AAP §0.6.4)
+// DESIGN — PRODUCTION INVOCATION (resolves QA F5 M1/M6/m2/i3)
 // ---------------------------------------------------------------------------------------------
-// CGuidance.DoSteerAngleCalc() — the real Stanley implementation — is PRIVATE and its class is
-// constructed from a FormGPS-era collaborator graph (CGuidance(ApplicationModel, CVehicle, CTool,
-// CAHRS)); the documented Pure Pursuit "GoalPoint" math actually lives in CABLine/CABCurve. For
-// the duration of the staged migration, CGuidance.cs and CTrack.cs (and CABLine/CABCurve) are
-// intentionally compile-gated out of the GPS assembly (<Compile Remove …/> in
-// SourceCode/GPS/AgOpenGPS.csproj), so they are NOT present in the compiled assembly and cannot
-// be referenced or constructed from this test project — exactly as the sibling PgnFrameGoldenTests
-// fixture documents for its still-gated producer.
+// HISTORY: an earlier revision of this suite reproduced SIMPLIFIED documented formulas in-test and
+// compared them to formula-derived goldens (QA F5/M1), and its header claimed the guidance classes were
+// "compile-gated out … cannot be referenced or constructed" (QA F5/m2). Both are now obsolete:
 //
-// This suite therefore proves equivalence two ways, BOTH compilable under net8.0 with no FormGPS
-// graph and no gated type:
+//   * The CP6-era `<Compile Remove …/>` gating of the guidance classes was REMOVED at CP9 — CGuidance,
+//     CABLine, CABCurve, CContour, CYouTurn, CTrack, CDubins, CSmartWAS and CRecordedPath all compile
+//     into AgOpenGPS.dll and ARE referenceable from this test project.
 //
-//   (1) FROZEN-FORMULA reproduction (always runs; needs no captured artifact): the documented
-//       Stanley / Pure Pursuit formulas, the ±maxSteerAngle clamp, the maxAngularVelocity rate
-//       bound, and the section-bitmask capability are reproduced with pure Math.Atan/Atan2/Sin and
-//       integer math, then asserted for self-consistency and against the frozen guard literals.
-//       Phase F additionally ties the reproduced degree-conversion to the REAL production helper
-//       glm.toDegrees (CGLM.cs) — the very function CGuidance.DoSteerAngleCalc calls — which IS a
-//       cleanly-callable public static utility.
+//   * They are also CONSTRUCTIBLE in the test process from the same dependency-ordered graph the
+//     composition root builds (SourceCode/GPS/App.axaml.cs step 9). ParityGraphFixture builds that graph,
+//     so the tests below drive the REAL production methods:
+//         - Stanley : AgOpenGPS.CGuidance.DoSteerAngleCalc()  (private; invoked via reflection on a freshly
+//                     constructed CGuidance so its smoothing/derivative/PID state starts at 0) AND the public
+//                     entrypoint CGuidance.StanleyGuidanceABLine(...).
+//         - Pure Pursuit : AgOpenGPS.CABLine.GetCurrentABLine(pivot, steer) with the production Pure-Pursuit
+//                     branch forced (Properties.ToolSettings.Default.setVehicle_isStanleyUsed = false) and
+//                     the integral term isolated (CVehicle.purePursuitIntegralGain = 0).
+//         - degree conversion : the real glm.toDegrees (CGLM.cs) — the helper the production code calls.
 //
-//   (2) GOLDEN numeric compare (enforced): fix-sequence inputs + expected outputs captured from the
-//       Windows/net48 baseline as Parity/Golden/Guidance/*.csv, committed to the repository. A required
-//       artifact that is missing FAILS the consuming test so CI enforces guidance parity on every OS
-//       (see MIGRATION_DOCS/PARITY_REPORT.md).
+// GOLDEN PROVENANCE (resolves M6): Parity/Golden/Guidance/stanley.csv and purepursuit.csv were captured by
+// RUNNING those production methods over the committed input rows. Because each production method body is
+// byte-for-byte identical to the net48 baseline 860eb9fd by source-diff (only mf.* → injected collaborators
+// and Settings → VehicleSettings renames), the captured values ARE the net48 outputs — QA F5/M6 explicitly
+// accepts capture from the migrated production method as the net48 golden source. A future change to the
+// production steering math would diverge from the frozen golden and FAIL — a genuine regression gate.
+//
+// NOTE (resolves INFO i3): the PRODUCTION Pure Pursuit steer angle is
+//   steerAngleAB = glm.toDegrees( Math.Atan( 2 * dot(goal-pivot, heading) * Wheelbase / D² ) )
+// i.e. Math.Atan over the goal-point geometry — NOT the simplified documented atan2(2·wb·sin(err),lookahead)
+// form. The tests invoke the REAL expression; the simplified form is retained ONLY as a documented helper
+// tied to production via glm.toDegrees (it is NOT asserted to equal the richer production output).
+//
+// NOTE (resolves MINOR m4): the maxAngularVelocity (0.64°/s) rate-limiter is COMMENTED OUT (inactive) in
+// BOTH the net48 baseline (Position.designer.cs) and the migrated PositionService — the 0.64 value feeds
+// only the compass "*" max-angular-velocity indicator, it does NOT clamp the steer output at runtime. This
+// is faithful frozen parity, not a regression. AngularVelocity_RespectsMax therefore asserts the frozen
+// CONTRACT literal (0.64) and demonstrates the nominal per-scan bound with an explicitly-labelled in-test
+// rate limiter; it does not claim production actively rate-limits.
 //
 // ---------------------------------------------------------------------------------------------
-// GOLDEN CSV SCHEMA (documented so the capture step produces matching files)
-// ---------------------------------------------------------------------------------------------
-// All three goldens are plain CSV (text). The FIRST non-blank, non-'#'-comment line is the schema
-// header and is skipped; every remaining line is a data row. Cells use a PERIOD decimal separator
-// and are parsed with InvariantCulture (a comma-decimal locale must never change parsing). Paths
-// are always resolved with Path.Combine — never a hard-coded separator.
+// GOLDEN CSV SCHEMA (the FIRST non-blank, non-'#'-comment line is the schema header and is skipped; every
+// remaining line is a data row; cells use a PERIOD decimal separator parsed with InvariantCulture; paths
+// are built with Path.Combine). See each CSV's own comment block for the full column legend.
+//   Parity/Golden/Guidance/stanley.csv      (float compare, Within 0.001) — production DoSteerAngleCalc inputs/output
+//   Parity/Golden/Guidance/purepursuit.csv  (float compare, Within 0.001) — production GetCurrentABLine setup/output
+//   Parity/Golden/Guidance/sections.csv     (EXACT integer compare)        — section on/off bitmask capability
 //
-//   Parity/Golden/Guidance/stanley.csv      (float compare, Within 0.001)
-//     header: distanceError,headingErrorRad,speed,distanceGain,headingGain,expectedSteerAngleDeg
-//       distanceError         — cross-track distance error of the steer axle (meters)
-//       headingErrorRad       — heading error (radians)
-//       speed                 — forward speed used in the documented denominator (> 0)
-//       distanceGain          — stanleyDistanceErrorGain
-//       headingGain           — stanleyHeadingErrorGain
-//       expectedSteerAngleDeg — baseline steer angle (degrees, clamped to ±maxSteerAngle)
-//
-//   Parity/Golden/Guidance/purepursuit.csv  (float compare, Within 0.001)
-//     header: error,wheelbase,lookahead,expectedSteerAngleDeg
-//       error                 — goal-point heading error (radians)
-//       wheelbase             — vehicle wheelbase (meters)
-//       lookahead             — goal-point lookahead distance (meters)
-//       expectedSteerAngleDeg — baseline steer angle (degrees, clamped to ±maxSteerAngle)
-//
-//   Parity/Golden/Guidance/sections.csv     (EXACT integer compare, no tolerance)
-//     header: sectionCount,coverageBitmaskHex,expectedOnBitmaskHex
-//       sectionCount          — active section count (1-16 unique / up to 64 same-width)
-//       coverageBitmaskHex    — requested/coverage bitmask (hex, optional 0x prefix, up to 64 bits)
-//       expectedOnBitmaskHex  — resulting on bitmask (hex), masked to the active section range
-//
-// TOLERANCE POLICY (AAP §0.6.4): floating-point steer angles compare Within(0.001); section-state
-// bitmask math is integer and compares EXACTLY (no tolerance).
+// TOLERANCE POLICY (AAP §0.6.4): floating-point steer angles compare Within(0.001); section-state bitmask
+// math is integer and compares EXACTLY (no tolerance).
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -83,10 +73,11 @@ using NUnit.Framework;
 namespace AgOpenGPS.Tests.Parity
 {
     /// <summary>
-    /// Numeric behavioral-parity tests for the guidance/steering mathematics (Stanley, Pure Pursuit),
-    /// the steering safety guards (max steer angle, max angular velocity), and section on/off bitmask
-    /// control. Floating-point outputs are compared within a 0.001 tolerance; section-state math is
-    /// asserted exactly. Golden-consuming tests FAIL when a required CSV is missing (CI-enforced parity).
+    /// Production-invoking behavioral-parity tests for the guidance/steering mathematics (Stanley via the
+    /// real CGuidance, Pure Pursuit via the real CABLine), the ±maxSteerAngle safety guard, the (nominal)
+    /// maxAngularVelocity contract, and the section on/off bitmask capability. Floating-point outputs are
+    /// compared Within(0.001) against production-captured goldens; section-state math is asserted exactly.
+    /// Golden-consuming tests FAIL when a required CSV is missing (CI-enforced parity).
     /// </summary>
     [TestFixture]
     public class GuidanceEquivalenceTests
@@ -101,7 +92,7 @@ namespace AgOpenGPS.Tests.Parity
         /// <summary>Maximum steer angular velocity in degrees/second (setVehicle_maxAngularVelocity = 0.64).</summary>
         private const double MaxAngularVelocity = 0.64;
 
-        /// <summary>Nominal vehicle wheelbase in meters (setVehicle_wheelbase = 3.3).</summary>
+        /// <summary>Nominal vehicle wheelbase in meters (setVehicle_wheelbase = 3.3) — used by the documented secondary helper.</summary>
         private const double Wheelbase = 3.3;
 
         /// <summary>Floating-point comparison tolerance for steer angles (AAP §0.6.4).</summary>
@@ -139,8 +130,6 @@ namespace AgOpenGPS.Tests.Parity
                 Is.True,
                 $"Required guidance golden artifact is missing: {path}. Commit it under Parity/Golden/Guidance so CI enforces parity (see MIGRATION_DOCS/PARITY_REPORT.md).");
 
-            // Reading as text is acceptable for THIS suite: the goldens are interpreted numerically
-            // (parsed with InvariantCulture), not byte-compared like the PGN/Settings goldens.
             return File.ReadAllLines(path);
         }
 
@@ -201,6 +190,12 @@ namespace AgOpenGPS.Tests.Parity
             return int.Parse(field, NumberStyles.Integer, CultureInfo.InvariantCulture);
         }
 
+        /// <summary>Parses a 0/1 boolean flag field.</summary>
+        private static bool ParseFlag(string field)
+        {
+            return ParseInt(field) != 0;
+        }
+
         /// <summary>
         /// Parses an unsigned 64-bit hex field (optional <c>0x</c> prefix) with
         /// <see cref="CultureInfo.InvariantCulture"/>; holds up to 64 section bits.
@@ -217,22 +212,86 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         // ===========================================================================================
-        // Frozen-formula reproductions (pure math — no FormGPS graph, no gated types).
+        // Production invocation drivers (construct the REAL graph, set inputs, invoke production methods).
         // ===========================================================================================
 
         /// <summary>
-        /// Radians → degrees, identical to the production <c>glm.toDegrees</c> helper (CGLM.cs) that
-        /// CGuidance.DoSteerAngleCalc uses (<c>value * 180/π</c>). Phase F asserts this equality.
+        /// Drives the REAL Stanley implementation: builds a fresh guidance graph, sets the exact public input
+        /// fields <c>CGuidance.DoSteerAngleCalc</c> reads, invokes the private production method via reflection,
+        /// and returns the production <c>steerAngleGu</c>. A fresh graph per call keeps the smoothing/PID state
+        /// at its construction default so the single-shot result is deterministic.
         /// </summary>
+        private static double RunProductionStanley(
+            double distSteer, double steerHeadErr, double distPivot, double avgSpeed,
+            double distGain, double headGain, double integralGain, double maxSteer,
+            bool isReverse, bool autoSteerOn, double imuRoll)
+        {
+            var g = ParityGraphFixture.Build();
+            g.Vehicle.stanleyDistanceErrorGain = distGain;
+            g.Vehicle.stanleyHeadingErrorGain = headGain;
+            g.Vehicle.stanleyIntegralGainAB = integralGain;
+            g.Vehicle.maxSteerAngle = maxSteer;
+            g.AppModel.avgSpeed = avgSpeed;
+            g.AppModel.isReverse = isReverse;
+            g.AppModel.isBtnAutoSteerOn = autoSteerOn;
+            g.Ahrs.imuRoll = imuRoll;
+            g.Guidance.distanceFromCurrentLineSteer = distSteer;
+            g.Guidance.steerHeadingError = steerHeadErr;
+            g.Guidance.distanceFromCurrentLinePivot = distPivot;
+            g.InvokeDoSteerAngleCalc();
+            return g.Guidance.steerAngleGu;
+        }
+
+        /// <summary>
+        /// Drives the REAL Pure Pursuit branch of <c>CABLine.GetCurrentABLine</c>: builds a fresh graph,
+        /// forces the Pure Pursuit branch, isolates the goal-point math (integral gain 0, roll-comp skipped),
+        /// sets up the active AB line + pivot + heading, invokes the production method and returns the
+        /// production <c>steerAngleAB</c>.
+        /// </summary>
+        private static double RunProductionPurePursuit(
+            double abHeading, double aE, double aN, double bE, double bN, bool sameWay,
+            double pE, double pN, double pHead, double fixHeadRad, double avgSpeed,
+            double modeActualXTE, double wheelbase, double maxSteer, bool isReverse)
+        {
+            var g = ParityGraphFixture.Build();
+
+            // Force the production Pure Pursuit branch (skip the Stanley sub-branch) and isolate the
+            // goal-point steer math from the optional integral term.
+            Properties.ToolSettings.Default.setVehicle_isStanleyUsed = false;
+            g.Vehicle.purePursuitIntegralGain = 0;
+            g.Vehicle.maxSteerAngle = maxSteer;
+            g.Vehicle.VehicleConfig.Wheelbase = wheelbase;
+            g.Vehicle.modeActualXTE = modeActualXTE;
+            g.AppModel.avgSpeed = avgSpeed;
+            g.AppModel.isReverse = isReverse;
+            g.AppModel.FixHeading = new AgOpenGPS.Core.Models.GeoDir(fixHeadRad);
+            g.Ahrs.imuRoll = 88888; // skip side-hill roll compensation for a clean goal-point capture
+
+            g.ABLine.abHeading = abHeading;
+            g.ABLine.currentLinePtA = new vec3(aE, aN, abHeading);
+            g.ABLine.currentLinePtB = new vec3(bE, bN, abHeading);
+            g.ABLine.isHeadingSameWay = sameWay;
+
+            var pivot = new vec3(pE, pN, pHead);
+            var steer = new vec3(pE, pN, pHead);
+            g.ABLine.GetCurrentABLine(pivot, steer);
+            return g.ABLine.steerAngleAB;
+        }
+
+        // ===========================================================================================
+        // Documented-formula reproductions — RETAINED ONLY as a SECONDARY cross-check (NOT the parity
+        // gate). The production Stanley/Pure Pursuit math is richer than these published simplifications
+        // (smoothing, derivative, PID, goal-point geometry), which is exactly why the parity gate captures
+        // and compares PRODUCTION output. These helpers are tied to production via glm.toDegrees below.
+        // ===========================================================================================
+
+        /// <summary>Radians → degrees, matching the production <c>glm.toDegrees</c> helper (value * 180/π).</summary>
         private static double ToDegrees(double radians)
         {
             return radians * 180.0 / Math.PI;
         }
 
-        /// <summary>
-        /// Clamps a steer angle (degrees) to ±<see cref="MaxSteerAngle"/>, mirroring the explicit
-        /// if/else clamp at the tail of CGuidance.DoSteerAngleCalc() (CGuidance.cs L127-128).
-        /// </summary>
+        /// <summary>Clamps a steer angle (degrees) to ±<see cref="MaxSteerAngle"/> (documented secondary helper).</summary>
         private static double ClampSteerAngle(double steerAngleDeg)
         {
             if (steerAngleDeg < -MaxSteerAngle)
@@ -248,13 +307,7 @@ namespace AgOpenGPS.Tests.Parity
             return steerAngleDeg;
         }
 
-        /// <summary>
-        /// Reproduces the FROZEN documented Stanley steer angle (docs/architecture.md L181):
-        /// <c>steerAngle = atan((distanceError * gain) / speed) + headingError * gain</c>, applying the
-        /// source's separate distance/heading gains and the <c>* -1.0</c> sign convention + degree
-        /// conversion of CGuidance.DoSteerAngleCalc(), then clamping to ±maxSteerAngle. Speed is the
-        /// documented denominator and is expected to be &gt; 0 in the goldens.
-        /// </summary>
+        /// <summary>Documented (simplified) Stanley steer angle — secondary cross-check only; see header note.</summary>
         private static double StanleySteerAngleDeg(
             double distanceError, double headingErrorRad, double speed, double distanceGain, double headingGain)
         {
@@ -264,11 +317,7 @@ namespace AgOpenGPS.Tests.Parity
             return ClampSteerAngle(ToDegrees(steerRadians));
         }
 
-        /// <summary>
-        /// Reproduces the FROZEN documented Pure Pursuit steer angle (docs/architecture.md L188-198):
-        /// <c>steerAngle = atan2(2 * wheelbase * sin(error), lookahead)</c>, converted to degrees and
-        /// clamped to ±maxSteerAngle.
-        /// </summary>
+        /// <summary>Documented (simplified) Pure Pursuit steer angle — secondary cross-check only; see header note (i3).</summary>
         private static double PurePursuitSteerAngleDeg(double errorRad, double wheelbase, double lookahead)
         {
             double steerRadians = Math.Atan2(2.0 * wheelbase * Math.Sin(errorRad), lookahead);
@@ -276,9 +325,9 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         /// <summary>
-        /// Computes the on/off section bitmask from a coverage request for a given active section count
-        /// (1-16 unique / up to 64 same-width). A section can only be ON if it is within the active
-        /// range, so the coverage is masked to the valid section bits — exact 64-bit integer math.
+        /// Section on/off bitmask capability (1-16 unique / up to 64 same-width): a section is ON only if it
+        /// is within the active range, so coverage is masked to the valid bits — exact 64-bit integer math.
+        /// (The REAL production SectionService.BuildMachineByte packing is exercised by SectionControlParityTests.)
         /// </summary>
         private static ulong SectionOnBitmask(int sectionCount, ulong coverageBitmask)
         {
@@ -290,9 +339,9 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         /// <summary>
-        /// Rate-limits a requested steer angle (degrees) so the per-step change cannot exceed
-        /// <paramref name="maxDelta"/> in magnitude — the maxAngularVelocity guard expressed as a
-        /// per-scan bound (maxAngularVelocity × dt).
+        /// Rate-limits a requested steer angle so the per-step change cannot exceed <paramref name="maxDelta"/>
+        /// — the maxAngularVelocity guard expressed as a per-scan bound. SECONDARY illustration only: this
+        /// limiter is NOT active in production (commented out in both net48 and the migration — see header m4).
         /// </summary>
         private static double RateLimit(double previous, double requested, double maxDelta)
         {
@@ -310,12 +359,13 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         // ===========================================================================================
-        // Phase B — Stanley equivalence (guarded golden).
+        // Stanley equivalence — PRODUCTION CGuidance.DoSteerAngleCalc vs production-captured golden.
         // ===========================================================================================
 
         /// <summary>
-        /// Asserts the reproduced documented Stanley steer angle matches the baseline expected column
-        /// of <c>stanley.csv</c> within 0.001° for every row. FAILS when the required CSV is missing.
+        /// Drives the REAL production <c>CGuidance.DoSteerAngleCalc()</c> for every row of <c>stanley.csv</c>
+        /// and asserts the production <c>steerAngleGu</c> matches the production-captured golden Within(0.001).
+        /// FAILS when the required CSV is missing.
         /// </summary>
         [Test]
         public void Stanley_SteerAngle_MatchesGolden()
@@ -327,22 +377,30 @@ namespace AgOpenGPS.Tests.Parity
             {
                 Assert.That(
                     row.Length,
-                    Is.GreaterThanOrEqualTo(6),
-                    "stanley.csv row must have 6 columns: distanceError,headingErrorRad,speed,distanceGain,headingGain,expectedSteerAngleDeg");
+                    Is.GreaterThanOrEqualTo(12),
+                    "stanley.csv row must have 12 columns: distSteer,steerHeadErr,distPivot,avgSpeed,distGain,headGain,integralGain,maxSteer,isReverse,autoSteerOn,imuRoll,expectedSteerAngleGu");
 
-                double distanceError = ParseDouble(row[0]);
-                double headingErrorRad = ParseDouble(row[1]);
-                double speed = ParseDouble(row[2]);
-                double distanceGain = ParseDouble(row[3]);
-                double headingGain = ParseDouble(row[4]);
-                double expectedSteerAngleDeg = ParseDouble(row[5]);
+                double distSteer = ParseDouble(row[0]);
+                double steerHeadErr = ParseDouble(row[1]);
+                double distPivot = ParseDouble(row[2]);
+                double avgSpeed = ParseDouble(row[3]);
+                double distGain = ParseDouble(row[4]);
+                double headGain = ParseDouble(row[5]);
+                double integralGain = ParseDouble(row[6]);
+                double maxSteer = ParseDouble(row[7]);
+                bool isReverse = ParseFlag(row[8]);
+                bool autoSteerOn = ParseFlag(row[9]);
+                double imuRoll = ParseDouble(row[10]);
+                double expected = ParseDouble(row[11]);
 
-                double actual = StanleySteerAngleDeg(distanceError, headingErrorRad, speed, distanceGain, headingGain);
+                double actual = RunProductionStanley(
+                    distSteer, steerHeadErr, distPivot, avgSpeed, distGain, headGain,
+                    integralGain, maxSteer, isReverse, autoSteerOn, imuRoll);
 
                 Assert.That(
                     actual,
-                    Is.EqualTo(expectedSteerAngleDeg).Within(Tolerance),
-                    $"Stanley steer angle (row {rowCount}) must match the net48 baseline within {Tolerance}°.");
+                    Is.EqualTo(expected).Within(Tolerance),
+                    $"production CGuidance.DoSteerAngleCalc steer angle (row {rowCount}) must match the net48 baseline within {Tolerance}°.");
 
                 rowCount++;
             }
@@ -350,13 +408,46 @@ namespace AgOpenGPS.Tests.Parity
             Assert.That(rowCount, Is.GreaterThan(0), "stanley.csv contained no data rows.");
         }
 
+        /// <summary>
+        /// Exercises the PUBLIC production entrypoint <c>CGuidance.StanleyGuidanceABLine(curPtA,curPtB,pivot,
+        /// steer)</c> (which computes the cross-track/heading geometry and then calls DoSteerAngleCalc) and
+        /// asserts it is deterministic and produces a finite, clamped steer angle that is also surfaced on the
+        /// shared <c>ApplicationModel.guidanceLineSteerAngle</c> output sink.
+        /// </summary>
+        [Test]
+        public void Stanley_PublicEntrypoint_IsDeterministic()
+        {
+            double First()
+            {
+                var g = ParityGraphFixture.Build();
+                g.Vehicle.maxSteerAngle = MaxSteerAngle;
+                g.AppModel.avgSpeed = 6.0;
+                var a = new vec3(0.0, 0.0, 0.0);
+                var b = new vec3(0.0, 100.0, 0.0);
+                var pivot = new vec3(0.3, 10.0, 0.05);
+                var steer = new vec3(0.3, 11.0, 0.05);
+                g.Guidance.StanleyGuidanceABLine(a, b, pivot, steer);
+                return g.Guidance.steerAngleGu;
+            }
+
+            double r1 = First();
+            double r2 = First();
+
+            Assert.That(r2, Is.EqualTo(r1).Within(1e-12),
+                "the public Stanley entrypoint must be deterministic for identical inputs.");
+            Assert.That(double.IsNaN(r1), Is.False, "production Stanley steer angle must be finite.");
+            Assert.That(Math.Abs(r1), Is.LessThanOrEqualTo(MaxSteerAngle + Tolerance),
+                "production Stanley steer angle must respect the ±maxSteerAngle clamp.");
+        }
+
         // ===========================================================================================
-        // Phase C — Pure Pursuit equivalence (guarded golden).
+        // Pure Pursuit equivalence — PRODUCTION CABLine.GetCurrentABLine vs production-captured golden.
         // ===========================================================================================
 
         /// <summary>
-        /// Asserts the reproduced documented Pure Pursuit steer angle matches the baseline expected
-        /// column of <c>purepursuit.csv</c> within 0.001° for every row. FAILS when the required CSV is missing.
+        /// Drives the REAL production Pure Pursuit branch of <c>CABLine.GetCurrentABLine(pivot, steer)</c> for
+        /// every row of <c>purepursuit.csv</c> and asserts the production <c>steerAngleAB</c> matches the
+        /// production-captured golden Within(0.001). FAILS when the required CSV is missing.
         /// </summary>
         [Test]
         public void PurePursuit_SteerAngle_MatchesGolden()
@@ -368,20 +459,34 @@ namespace AgOpenGPS.Tests.Parity
             {
                 Assert.That(
                     row.Length,
-                    Is.GreaterThanOrEqualTo(4),
-                    "purepursuit.csv row must have 4 columns: error,wheelbase,lookahead,expectedSteerAngleDeg");
+                    Is.GreaterThanOrEqualTo(16),
+                    "purepursuit.csv row must have 16 columns: abHeading,aE,aN,bE,bN,sameWay,pE,pN,pHead,fixHeadRad,avgSpeed,modeActualXTE,wheelbase,maxSteer,isReverse,expectedSteerAngleAB");
 
-                double errorRad = ParseDouble(row[0]);
-                double wheelbase = ParseDouble(row[1]);
-                double lookahead = ParseDouble(row[2]);
-                double expectedSteerAngleDeg = ParseDouble(row[3]);
+                double abHeading = ParseDouble(row[0]);
+                double aE = ParseDouble(row[1]);
+                double aN = ParseDouble(row[2]);
+                double bE = ParseDouble(row[3]);
+                double bN = ParseDouble(row[4]);
+                bool sameWay = ParseFlag(row[5]);
+                double pE = ParseDouble(row[6]);
+                double pN = ParseDouble(row[7]);
+                double pHead = ParseDouble(row[8]);
+                double fixHeadRad = ParseDouble(row[9]);
+                double avgSpeed = ParseDouble(row[10]);
+                double modeActualXTE = ParseDouble(row[11]);
+                double wheelbase = ParseDouble(row[12]);
+                double maxSteer = ParseDouble(row[13]);
+                bool isReverse = ParseFlag(row[14]);
+                double expected = ParseDouble(row[15]);
 
-                double actual = PurePursuitSteerAngleDeg(errorRad, wheelbase, lookahead);
+                double actual = RunProductionPurePursuit(
+                    abHeading, aE, aN, bE, bN, sameWay, pE, pN, pHead, fixHeadRad,
+                    avgSpeed, modeActualXTE, wheelbase, maxSteer, isReverse);
 
                 Assert.That(
                     actual,
-                    Is.EqualTo(expectedSteerAngleDeg).Within(Tolerance),
-                    $"Pure Pursuit steer angle (row {rowCount}) must match the net48 baseline within {Tolerance}°.");
+                    Is.EqualTo(expected).Within(Tolerance),
+                    $"production CABLine.GetCurrentABLine Pure Pursuit steer angle (row {rowCount}) must match the net48 baseline within {Tolerance}°.");
 
                 rowCount++;
             }
@@ -390,59 +495,55 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         // ===========================================================================================
-        // Phase D — safety-guard clamping (no golden required; always runs).
+        // Safety-guard clamping — driven through PRODUCTION CGuidance.DoSteerAngleCalc.
         // ===========================================================================================
 
         /// <summary>
-        /// Verifies steer-angle outputs are clamped to the exact ±<see cref="MaxSteerAngle"/> boundary.
-        /// Inputs are engineered to drive the raw angle far beyond ±30° (both signs), a gentle input is
-        /// confirmed to pass through unclamped, and the clamp boundary is asserted exactly.
+        /// Verifies the production steer output saturates at the exact ±maxSteerAngle boundary by driving
+        /// over-range inputs through the REAL <c>CGuidance.DoSteerAngleCalc()</c> (the clamp lives at the tail
+        /// of that method, CGuidance.cs L127-128). Both signs are checked, plus a documented-formula
+        /// boundary cross-check.
         /// </summary>
         [Test]
         public void SteerAngle_ClampedTo_MaxSteerAngle()
         {
-            // Large positive distance error + high gains drive the raw angle hugely negative (source
-            // '* -1.0' sign convention), so the output saturates at exactly -maxSteerAngle.
-            double clampedLow = StanleySteerAngleDeg(
-                distanceError: 100.0, headingErrorRad: 1.5, speed: 1.0, distanceGain: 10.0, headingGain: 5.0);
-            Assert.That(
-                clampedLow,
-                Is.EqualTo(-MaxSteerAngle).Within(Tolerance),
-                "an over-range negative request must clamp to exactly -maxSteerAngle.");
+            // Over-range positive heading error -> production output saturates at exactly -maxSteerAngle
+            // (the source '* -1.0' sign convention flips a large +error to the negative clamp).
+            double clampedLow = RunProductionStanley(
+                distSteer: 0.05, steerHeadErr: 5.0, distPivot: 0.05, avgSpeed: 5.0,
+                distGain: 5.0, headGain: 5.0, integralGain: 0.0, maxSteer: MaxSteerAngle,
+                isReverse: false, autoSteerOn: false, imuRoll: 88888);
+            Assert.That(clampedLow, Is.EqualTo(-MaxSteerAngle).Within(Tolerance),
+                "production: an over-range negative request must clamp to exactly -maxSteerAngle.");
 
-            // The mirror image saturates at exactly +maxSteerAngle.
-            double clampedHigh = StanleySteerAngleDeg(
-                distanceError: -100.0, headingErrorRad: -1.5, speed: 1.0, distanceGain: 10.0, headingGain: 5.0);
-            Assert.That(
-                clampedHigh,
-                Is.EqualTo(MaxSteerAngle).Within(Tolerance),
-                "an over-range positive request must clamp to exactly +maxSteerAngle.");
+            // Mirror image -> +maxSteerAngle.
+            double clampedHigh = RunProductionStanley(
+                distSteer: 0.05, steerHeadErr: -5.0, distPivot: 0.05, avgSpeed: 5.0,
+                distGain: 5.0, headGain: 5.0, integralGain: 0.0, maxSteer: MaxSteerAngle,
+                isReverse: false, autoSteerOn: false, imuRoll: 88888);
+            Assert.That(clampedHigh, Is.EqualTo(MaxSteerAngle).Within(Tolerance),
+                "production: an over-range positive request must clamp to exactly +maxSteerAngle.");
 
-            // Pure Pursuit at a sharp error + short lookahead also saturates, never exceeding the bound.
-            double purePursuitExtreme = PurePursuitSteerAngleDeg(Math.PI / 2.0, Wheelbase, 0.5);
-            Assert.That(
-                Math.Abs(purePursuitExtreme),
-                Is.LessThanOrEqualTo(MaxSteerAngle + Tolerance),
-                "Pure Pursuit output must never exceed ±maxSteerAngle.");
+            // A gentle input stays strictly inside the bound (production is not clamping here).
+            double gentle = RunProductionStanley(
+                distSteer: 0.05, steerHeadErr: 0.01, distPivot: 0.05, avgSpeed: 5.0,
+                distGain: 1.0, headGain: 1.0, integralGain: 0.0, maxSteer: MaxSteerAngle,
+                isReverse: false, autoSteerOn: false, imuRoll: 88888);
+            Assert.That(Math.Abs(gentle), Is.LessThan(MaxSteerAngle),
+                "production: a small request must pass through without clamping.");
 
-            // A gentle input stays well inside the bound and is NOT clamped.
-            double gentle = StanleySteerAngleDeg(
-                distanceError: 0.05, headingErrorRad: 0.01, speed: 5.0, distanceGain: 1.0, headingGain: 1.0);
-            Assert.That(
-                Math.Abs(gentle),
-                Is.LessThan(MaxSteerAngle),
-                "a small request must pass through without clamping.");
-
-            // Exact clamp-boundary behavior (no tolerance needed — these are literal saturations).
+            // Documented-formula clamp boundary (secondary cross-check; exact literal saturations).
             Assert.That(ClampSteerAngle(45.0), Is.EqualTo(MaxSteerAngle));
             Assert.That(ClampSteerAngle(-45.0), Is.EqualTo(-MaxSteerAngle));
             Assert.That(ClampSteerAngle(12.34), Is.EqualTo(12.34));
         }
 
         /// <summary>
-        /// Verifies the maxAngularVelocity guard (0.64°/s). Asserts the contract literal and that a
-        /// per-scan rate limiter never advances the steer angle by more than maxAngularVelocity × dt,
-        /// while a sub-threshold request passes through unchanged.
+        /// Verifies the maxAngularVelocity guard (0.64°/s) CONTRACT. IMPORTANT (QA F5/m4): the per-scan rate
+        /// limiter is COMMENTED OUT — inactive — in BOTH the net48 baseline and the migrated PositionService;
+        /// the 0.64 value feeds only the compass max-angular-velocity indicator. This test therefore asserts
+        /// the frozen contract literal and demonstrates the nominal per-scan bound with an explicitly-labelled
+        /// in-test limiter (it does NOT claim production actively rate-limits the steer output).
         /// </summary>
         [Test]
         public void AngularVelocity_RespectsMax()
@@ -454,42 +555,31 @@ namespace AgOpenGPS.Tests.Parity
                 "max angular velocity contract literal must be 0.64°/s.");
 
             const double dt = 0.1; // seconds per scan step
-            double maxDelta = MaxAngularVelocity * dt; // max permitted |Δsteer| this step (0.064°)
+            double maxDelta = MaxAngularVelocity * dt; // nominal max permitted |Δsteer| this step (0.064°)
 
-            // A full-scale request is rate-limited to exactly the per-step bound.
+            // The (illustrative, NOT production-active) per-scan limiter caps a full-scale request at the bound.
             double saturating = RateLimit(previous: 0.0, requested: MaxSteerAngle, maxDelta: maxDelta);
-            Assert.That(
-                Math.Abs(saturating - 0.0),
-                Is.LessThanOrEqualTo(maxDelta + Tolerance),
-                "a rate-limited step must not exceed maxAngularVelocity × dt.");
-            Assert.That(
-                saturating,
-                Is.EqualTo(maxDelta).Within(Tolerance),
-                "a saturating request advances by exactly maxAngularVelocity × dt.");
+            Assert.That(saturating, Is.EqualTo(maxDelta).Within(Tolerance),
+                "the nominal per-scan bound advances a saturating request by exactly maxAngularVelocity × dt.");
 
-            // The mirror image (decreasing) respects the same bound.
             double saturatingNeg = RateLimit(previous: 0.0, requested: -MaxSteerAngle, maxDelta: maxDelta);
-            Assert.That(
-                saturatingNeg,
-                Is.EqualTo(-maxDelta).Within(Tolerance),
-                "a saturating negative request advances by exactly -maxAngularVelocity × dt.");
+            Assert.That(saturatingNeg, Is.EqualTo(-maxDelta).Within(Tolerance),
+                "the nominal per-scan bound advances a saturating negative request by exactly -maxAngularVelocity × dt.");
 
-            // A sub-threshold request is below the bound and passes through unchanged.
             double subThreshold = RateLimit(previous: 0.0, requested: 0.01, maxDelta: maxDelta);
-            Assert.That(
-                subThreshold,
-                Is.EqualTo(0.01).Within(Tolerance),
+            Assert.That(subThreshold, Is.EqualTo(0.01).Within(Tolerance),
                 "a request smaller than the per-step bound is not rate-limited.");
         }
 
         // ===========================================================================================
-        // Phase E — section-state equivalence (EXACT integer math).
+        // Section-state capability (EXACT integer math). The REAL SectionService.BuildMachineByte /
+        // DoRemoteSwitches packing + isJobStarted gate are exercised by SectionControlParityTests; the rows
+        // below assert the generic 1-16/64 mask invariant against the committed golden.
         // ===========================================================================================
 
         /// <summary>
-        /// Asserts the reproduced section on/off bitmask matches the baseline expected column of
-        /// <c>sections.csv</c> EXACTLY (integer math, no tolerance) for every row. FAILS when the required
-        /// CSV is missing. Bitmasks are 64-bit to cover the up-to-64 same-width section capability.
+        /// Asserts the section on/off bitmask matches <c>sections.csv</c> EXACTLY (integer math, no tolerance)
+        /// for every row. FAILS when the required CSV is missing. Bitmasks are 64-bit (up-to-64 same-width).
         /// </summary>
         [Test]
         public void SectionState_MatchesGolden_Exact()
@@ -522,44 +612,31 @@ namespace AgOpenGPS.Tests.Parity
         }
 
         /// <summary>
-        /// Self-consistency for the section-bitmask capability (no golden required; always runs).
-        /// Proves the mask math is exact and 64-bit safe across the documented range: full 16-section
+        /// Self-consistency for the section-bitmask capability across the documented range: full 16-section
         /// coverage, coverage clipped beyond the active count, single/none, and the full 64-section case.
         /// </summary>
         [Test]
         public void SectionState_MaskMath_SelfConsistent()
         {
-            // 16 unique sections, all covered -> all 16 on.
             Assert.That(SectionOnBitmask(16, 0xFFFFUL), Is.EqualTo(0xFFFFUL));
-
-            // Coverage requests bits beyond the 8 active sections; the surplus is masked off.
             Assert.That(SectionOnBitmask(8, 0xFFFFUL), Is.EqualTo(0x00FFUL));
-
-            // Single section on / off.
             Assert.That(SectionOnBitmask(1, 0x1UL), Is.EqualTo(0x1UL));
             Assert.That(SectionOnBitmask(1, 0x0UL), Is.EqualTo(0x0UL));
-
-            // No active sections -> nothing can be on.
             Assert.That(SectionOnBitmask(0, 0xFFFFUL), Is.EqualTo(0x0UL));
-
-            // Up to 64 same-width sections, all on (64-bit safe — no 1UL<<64 undefined shift).
             Assert.That(SectionOnBitmask(64, ulong.MaxValue), Is.EqualTo(ulong.MaxValue));
-
-            // 63 active sections -> the top bit is masked off.
             Assert.That(SectionOnBitmask(63, ulong.MaxValue), Is.EqualTo((1UL << 63) - 1UL));
         }
 
         // ===========================================================================================
-        // Phase F — production-type tie-in (glm.toDegrees is the helper CGuidance actually uses).
+        // Production helper tie-in — glm.toDegrees is the conversion the production guidance math uses, and
+        // the documented (secondary) Stanley/Pure Pursuit helpers are anchored to it here.
         // ===========================================================================================
 
         /// <summary>
-        /// Ties the in-test math to the REAL production helper. CGuidance/CTrack are compile-gated and
-        /// FormGPS/private-coupled (cannot be invoked here), but <c>glm.toDegrees</c> — the very
-        /// degree-conversion CGuidance.DoSteerAngleCalc calls — is a cleanly-callable public static
-        /// utility in CGLM.cs. Asserting the reproduced conversion equals <c>glm.toDegrees</c> anchors
-        /// the frozen-formula reproduction to the production type. <c>glm</c> resolves unqualified
-        /// because <c>AgOpenGPS.Tests.Parity</c> is nested under the <c>AgOpenGPS</c> namespace.
+        /// Asserts the documented secondary helpers agree with the REAL production <c>glm.toDegrees</c>
+        /// (CGLM.cs) — the very degree-conversion the production guidance math calls — and that the glm
+        /// constants match their standard values. <c>glm</c> resolves unqualified because
+        /// <c>AgOpenGPS.Tests.Parity</c> is nested under the <c>AgOpenGPS</c> namespace.
         /// </summary>
         [Test]
         public void ProductionGlm_TiesInTestConversion()
@@ -573,24 +650,24 @@ namespace AgOpenGPS.Tests.Parity
                     "production glm.toDegrees must equal the in-test degree conversion.");
             }
 
-            // The inverse helper round-trips (180° == π radians).
             Assert.That(glm.toRadians(180.0), Is.EqualTo(Math.PI).Within(Tolerance));
-
-            // glm constants used throughout the guidance math match their standard values.
             Assert.That(glm.PIBy2, Is.EqualTo(Math.PI / 2.0).Within(1e-9));
             Assert.That(glm.twoPI, Is.EqualTo(2.0 * Math.PI).Within(1e-9));
 
-            // Route one full Stanley reproduction through production glm.toDegrees and assert it equals
-            // the in-test helper — proving the reproduced math and the production conversion agree.
-            double crossTrackTerm = Math.Atan((0.2 * 1.0) / 2.0);
-            double steerRadians = (crossTrackTerm + (0.1 * 1.0)) * -1.0;
-            double viaProductionGlm = ClampSteerAngle(glm.toDegrees(steerRadians));
+            // Route the documented (secondary) Stanley/Pure Pursuit helpers through production glm.toDegrees
+            // and confirm they agree with the in-test conversion (anchors the secondary helpers to production).
+            double viaProductionGlm = ClampSteerAngle(glm.toDegrees(
+                (Math.Atan((0.2 * 1.0) / 2.0) + (0.1 * 1.0)) * -1.0));
             double viaInTest = StanleySteerAngleDeg(
                 distanceError: 0.2, headingErrorRad: 0.1, speed: 2.0, distanceGain: 1.0, headingGain: 1.0);
-            Assert.That(
-                viaInTest,
-                Is.EqualTo(viaProductionGlm).Within(Tolerance),
-                "the in-test Stanley reproduction must equal the same math routed through production glm.toDegrees.");
+            Assert.That(viaInTest, Is.EqualTo(viaProductionGlm).Within(Tolerance),
+                "the documented Stanley helper must equal the same math routed through production glm.toDegrees.");
+
+            double ppViaProductionGlm = ClampSteerAngle(glm.toDegrees(
+                Math.Atan2(2.0 * Wheelbase * Math.Sin(0.2), 5.0)));
+            double ppViaInTest = PurePursuitSteerAngleDeg(0.2, Wheelbase, 5.0);
+            Assert.That(ppViaInTest, Is.EqualTo(ppViaProductionGlm).Within(Tolerance),
+                "the documented Pure Pursuit helper must equal the same math routed through production glm.toDegrees.");
         }
     }
 }

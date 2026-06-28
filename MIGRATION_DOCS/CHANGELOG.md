@@ -34,8 +34,9 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 > reach every `avares://` view; and the Release gate now promotes Avalonia/MSBuild-task warnings (not
 > just Roslyn `CS####`) to errors, so the zero-warning acceptance bar is actually enforced in Release
 > and on the tri-OS CI matrix (see the **Build/CI** area, **F1-001**).
-> The local Linux test run is **115 passed / 1 skipped / 0 failed** across all three assemblies
-> (`AgOpenGPS.Core.Tests` 33, `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 79), and **all five golden-file
+> The local Linux test run is **129 passed / 1 skipped / 0 failed** across all three assemblies
+> (`AgOpenGPS.Core.Tests` 33, `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 93 — the latter raised from 79 by the
+> QA F5 production-invoking parity additions), and **all five golden-file
 > parity suites — PGN, Guidance, ISOXML, Settings, and Field — are authored, committed, and enforcing**
 > (each loader fails, not skips, when a required golden is absent). There is **no remaining
 > `<Compile Remove>` / `<AvaloniaXaml Remove>` gating** in any project; the `FormGPS`→services decoupling
@@ -53,6 +54,64 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 ## [Unreleased] — net48/WinForms → net8.0/Avalonia cross-platform migration
 
 _Single-phase migration within the one solution; converged at the final code-review remediation pass._
+
+> **[XPLAT] QA Checkpoint F5 remediation — Guidance / Steering / Section-control parity certification (13
+> findings: 0 Critical, 6 Major, 4 Minor, 3 Info; all resolved + runtime-verified on Linux).** The F5
+> checkpoint confirmed there is **no behavioral regression and no safety-clamp violation** — every guidance
+> output, safety guard, and section-control semantic is **byte-identical to the net48 baseline `860eb9fd`**
+> by source-diff (logic moved for decoupling; outputs frozen). The FAIL was driven entirely by **the parity
+> suite's inability to *certify* that parity**: it reproduced documented formulas in-test rather than
+> invoking production code (M1), its goldens were formula-derived (M6), several checkpoint-required algorithms
+> had **zero committed coverage** (Dubins M2, six algorithms M5, `isJobStarted` gate M4, CAHRS fusion M3),
+> plus minor CI-runtime (m1) and stale-documentation (m2, m3, m4) issues. This pass converts the suite into a
+> **production-invoking** regression gate. The **only production-code change** is the behavior-preserving
+> CAHRS fusion seam (M3); all other changes are in the **test project, golden fixtures, CI, and docs**. Each
+> fix was runtime-verified by invoking the **real** production methods on net8.0/Linux. Changes by group:
+> >
+> > - **M3 (Major) — CAHRS heading/roll fusion was untestable in isolation.** The IMU+GPS fusion lived as an
+> >   inline block inside the `FormGPS`-coupled `PositionService.UpdateFixPosition`. Extracted the **verbatim**
+> >   fusion arithmetic into a pure static `CAHRS.FuseImuGpsHeading(imuHeadingRad, gpsHeading, fusionWeight,
+> >   isReverseWithIMU, ref imuGPS_Offset)`; `PositionService` now delegates to it (byte-identical behavior).
+> >   This is the sole production touch and is behavior-preserving. _Verified:_ production-invoking fusion test
+> >   (production-captured golden, `Within(0.001)`) + full-suite regression (zero drift). _At parity._
+> > - **M1 + M6 (Major) — suite was formula-self-referential with formula-derived goldens.** Added
+> >   `SourceCode/AgOpenGPS.Tests/Parity/ParityGraphFixture.cs`, which builds the **real** guidance/section
+> >   graph in the live `App.axaml.cs` composition order (and wires the cyclic peers via
+> >   `SetGuidanceReferences`). Rewrote `GuidanceEquivalenceTests.cs` to invoke the **real** (private, via a
+> >   controlled reflection seam) `CGuidance.DoSteerAngleCalc` (Stanley), the **real** `CABLine.GetCurrentABLine`
+> >   (Pure Pursuit `steerAngleAB`), the **real** clamp (over-range → ±`vehicle.maxSteerAngle`), and the
+> >   production `glm.toDegrees` tie. Recaptured `stanley.csv` / `purepursuit.csv` **from the production
+> >   methods** (accepted golden source: production ≡ net48 by source-diff). _Verified:_ 8/8 production-invoking
+> >   tests PASS. _At parity._
+> > - **M1 + M6 + M4 (Major) — section control + `isJobStarted` gate.** Added `SectionControlParityTests.cs`
+> >   invoking the **real** `SectionService.BuildMachineByte` (both 1–16 unique-width and ≤64 same-width modes,
+> >   asserting the exact PGN `0xFE`/`0xEF`/`0xE5` bytes) and the **real** `DoRemoteSwitches` proving the
+> >   `isJobStarted` gate blocks section activation outside an active job (off → none on; on → activation).
+> >   Golden `sections_machinebyte.csv` production-captured; legacy `sections.csv` retained as a labelled
+> >   secondary mask-edge cross-check. _Verified:_ 3/3 PASS. _At parity._
+> > - **M2 + M5 (Major) — Dubins + six uncovered algorithms.** Added `GuidanceAlgorithmCoverageTests.cs`
+> >   invoking the **real** `CDubins.GenerateDubins` (straight ≈30.0 m, lateral, U-turn ≈53.25 m, plus a
+> >   determinism re-run), `CSmartWAS` (250-sample Mean/Median/StdDev/RecommendedOffset), `CContour`
+> >   (`DistanceFromContourLine`), `CABCurve` (`BuildNewOffsetList`), `CRecordedPath`
+> >   (`StartDrivingRecordedPath`), and `CYouTurn` (`DistanceFromYouTurnLine`), against production-captured
+> >   goldens (`algorithms.csv`). _Verified:_ 6/6 PASS. _At parity._
+> > - **m1 (Minor) — net8.0 tests could fail to launch on a 9.0-only CI runtime.** Added
+> >   `<RollForward>Major</RollForward>` to the three test projects and pinned explicit `dotnet-version`
+> >   (`8.0.x` + `9.0.x`) on `setup-dotnet` in `build.yml` / `release.yml` (defense-in-depth). _Verified:_ the
+> >   full suite now launches and passes on this **9.0-only** container with `DOTNET_ROLL_FORWARD` unset.
+> > - **m2 + m3 + m4 + i3 (Minor/Info) — stale/contradictory test documentation.** Rewrote the
+> >   `GuidanceEquivalenceTests.cs` header (the CP6 `<Compile Remove>` gating was removed at CP9; in-test
+> >   formula reproduction replaced by production invocation), reconciled the golden `README.md` with reality
+> >   (production-captured goldens), documented that the `0.64°/s` angular-velocity limiter is **inactive in
+> >   both** net48 and migrated code (nominal guard, m4), and noted the production Pure-Pursuit `Math.Atan`
+> >   goal-point form vs. the documented `atan2` (mathematically equivalent, i3).
+> >
+> > _Net result:_ production code invoked by the committed parity suite went from **1 of 17 paths
+> > (`glm.toDegrees`)** to the full Stanley / Pure-Pursuit / clamp / Dubins / CSmartWAS / Contour / ABCurve /
+> > RecordedPath / YouTurn / section-assembly / `isJobStarted` set. Local Linux: **17 production-invoking
+> > parity tests green** (8 Guidance + 3 Section + 6 Algorithm-coverage), full `AgOpenGPS.Tests` **93 passed /
+> > 1 skipped / 0 failed** (the skip is the out-of-scope F6/F7 ISOXML export driver), culture-invariant on
+> > re-run under `de_DE.UTF-8`.
 
 > **[XPLAT] QA Checkpoint F4 remediation — UDP loopback fabric / two-program model / simulators (5
 > findings: 2 Critical, 2 Major, 1 Minor; all resolved + runtime-verified on Linux).** This pass closes
@@ -467,12 +526,40 @@ latency.
   golden is absent — proven by a negative test. `.gitattributes` pins the fixtures byte-stable (`-text`).
   **Green on local Linux**; tri-OS CI is the residual. _At parity (local)._
 
+- **[XPLAT] F5 — production-invoking guidance/section parity (M1, M2, M4, M5, M6).**
+  `SourceCode/AgOpenGPS.Tests/Parity/ParityGraphFixture.cs` builds the **real** guidance/section graph in
+  the live `App.axaml.cs` composition order and wires the cyclic peers (`SetGuidanceReferences`). Two new
+  suites — **`SectionControlParityTests`** (real `SectionService.BuildMachineByte` 1–16/≤64 modes + the
+  `isJobStarted` gate via real `DoRemoteSwitches`) and **`GuidanceAlgorithmCoverageTests`** (real
+  `CDubins.GenerateDubins` + determinism, `CSmartWAS`, `CContour`, `CABCurve`, `CRecordedPath`, `CYouTurn`)
+  — join the rewritten **`GuidanceEquivalenceTests`** (now invoking the real `CGuidance.DoSteerAngleCalc`,
+  `CABLine.GetCurrentABLine`, and clamp). New production-captured goldens `Guidance/sections_machinebyte.csv`
+  and `Guidance/algorithms.csv` (legacy `sections.csv` kept as a labelled secondary cross-check). **17/17
+  production-invoking parity tests green on local Linux.** _At parity (local)._
+
+- **[XPLAT] F5 — CAHRS fusion seam test (M3).** A production-invoking test exercises the new pure static
+  `CAHRS.FuseImuGpsHeading` (the extracted, behavior-preserving IMU+GPS fusion) against a production-captured
+  golden. _At parity (local)._
+
 #### Changed
 
 - **`AgOpenGPS.Tests.csproj`** drops `<PlatformTarget>x64</PlatformTarget>` (invalid for `osx-arm64`)
   and `System.Memory`, and adds an `AgOpenGPS.Core` `ProjectReference` plus
   `Dev4Agriculture.ISO11783.ISOXML 0.23.1.1`. The test toolchain is kept: `NUnit 4.3.2`,
   `Microsoft.NET.Test.Sdk 17.12.0`, `NUnit3TestAdapter 4.6.0`, `NUnit.Analyzers 4.6.0`. _At parity (local)._
+
+- **[XPLAT] F5 — CI runtime roll-forward (m1).** Added `<RollForward>Major</RollForward>` to
+  `AgOpenGPS.Tests.csproj`, `AgOpenGPS.Core.Tests.csproj`, and `AgLibrary.Tests.csproj`, and pinned explicit
+  `dotnet-version` (`8.0.x` + `9.0.x`) on the `setup-dotnet` step in `.github/workflows/build.yml` and
+  `release.yml`, so the **net8.0** test assemblies launch reliably even on a runner image that resolves only
+  the 9.0 runtime. Verified by running the full suite with `DOTNET_ROLL_FORWARD` unset on a 9.0-only
+  container. _At parity._
+
+- **[XPLAT] F5 — test documentation reconciled (m2, m3, m4, i3).** The `GuidanceEquivalenceTests.cs` header
+  and the `Parity/Golden/Guidance/README.md` were rewritten to describe production invocation and
+  production-captured goldens (the CP6 `<Compile Remove>` gating was removed at CP9), the inactive `0.64°/s`
+  angular-velocity limiter (nominal in both net48 and migrated) is documented, and the production
+  Pure-Pursuit `Math.Atan` goal-point form (vs. the documented `atan2`, mathematically equivalent) is noted.
 
 #### Removed
 

@@ -1,0 +1,56 @@
+# algorithms.csv — PRODUCTION-CAPTURED guidance-algorithm coverage golden (QA F5: M2 + M5).
+#
+# PROVENANCE (resolves M2 + M5):
+#   Every value below was CAPTURED by invoking the REAL production guidance class/method on net8.0/Linux
+#   over a fully-specified deterministic input, then frozen here. GuidanceAlgorithmCoverageTests.cs rebuilds
+#   the SAME inputs through the SAME production methods (via ParityGraphFixture) and asserts these values
+#   (exact for integer counts / states; Within(0.001) for distances, lengths and steer angles per AAP §0.6.4).
+#   The production code is byte-identical to the net48 baseline 860eb9fd by source-diff (decoupling only); the
+#   captured values therefore also represent the net48 behavior. This turns "zero runtime coverage" (M5) and
+#   "no committed Dubins test" (M2) into committed, production-invoking regression gates.
+#
+# PRODUCTION METHODS EXERCISED:
+#   dubins   : CDubins.GenerateDubins(vec3 start, vec3 goal)  — turningRadius = 8.1
+#              pose1  = (0,0,0)->(0,30,0)   straight  (count = path point count; len = summed segment length)
+#              pose2  = (0,0,0)->(10,30,0)  lateral shift
+#              pose3  = (0,0,0)->(5,0,PI)   U-turn
+#              (the test also re-invokes pose1 and asserts an identical count+length — determinism, M2)
+#   smartwas : CSmartWAS.Start() + 250x AddSample(angle), angle[i] = (((i*37)%101)-50)/10.0  (range [-5,5]),
+#              with appModel.isBtnAutoSteerOn=true, avgSpeed=5.0, guidanceLineDistanceOff=0 (passes the gate);
+#              metrics are the production CSmartWAS.{Mean,Median,StdDev,RecommendedOffset,SampleCount}.
+#   contour  : CContour.DistanceFromContourLine(pivot,steer) over a 12-pt north ctList at easting 0, Stanley
+#              mode, gains=1.0, maxSteer=30, avgSpeed=5, pivot=steer=(0.3,10,0) -> steerAngleCT, distPivot.
+#   abcurve  : CABCurve.BuildNewOffsetList(2.0, CTrk{mode=Curve, 20-pt north curve at easting 0}) -> offset
+#              point count + first/last coordinate (curve-offset geometry).
+#   recpath  : CRecordedPath.StartDrivingRecordedPath() with 8-pt recList (north, from (0,20)), pivotAxlePos
+#              (0,0), youTurnRadius=8.1 -> shuttleListCount (Dubins approach path), currentPositonIndex.
+#   youturn  : CYouTurn.DistanceFromYouTurnLine() over a 21-pt north ytList at easting 0, Stanley mode,
+#              gains=1.0, maxSteer=30, steerAxlePos=(e0.2,n4) -> steerAngleYT, distFromLine.
+#
+# Compare mode per metric (enforced by the test): *_count / *Index / shuttleListCount -> EXACT integer;
+# everything else -> Within(0.001).
+#
+# Schema header (first non-comment line; skipped by the loader): algorithm,metric,value
+algorithm,metric,value
+dubins,pose1_count,121
+dubins,pose1_len,29.999999237922
+dubins,pose2_count,128
+dubins,pose2_len,31.749783190847477
+dubins,pose3_count,214
+dubins,pose3_len,53.24797555910052
+smartwas,sampleCount,250
+smartwas,mean,-0.021599999999999987
+smartwas,median,-0.05
+smartwas,stddev,2.9271635735546755
+smartwas,recOffset,0.05
+contour,steerAngleCT,-7.157824545029191
+contour,distPivot,0.3
+abcurve,offset_count,417
+abcurve,first_e,2
+abcurve,first_n,-199
+abcurve,last_e,2
+abcurve,last_n,217
+recpath,shuttleListCount,70
+recpath,currentPositonIndex,0
+youturn,steerAngleYT,-4.785703246870089
+youturn,distFromLine,0.2

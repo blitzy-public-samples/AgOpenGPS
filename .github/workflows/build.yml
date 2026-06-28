@@ -53,6 +53,14 @@ jobs:
 
     - name: Setup dotnet
       uses: actions/setup-dotnet@v4
+      # [XPLAT] QA F5 m1: explicitly install BOTH the .NET 8 runtime (the test target framework, net8.0)
+      # and the .NET 9 SDK (pinned by global.json). Without 8.0.x the net8.0 test host would abort with
+      # FrameworkNotFound on a 9.0-only runner image. Paired with <RollForward>Major</RollForward> in the
+      # test projects for defense-in-depth — see MIGRATION_DOCS/PARITY_REPORT.md.
+      with:
+        dotnet-version: |
+          8.0.x
+          9.0.x
 
     - name: Setup GitVersion
       uses: gittools/actions/gitversion/setup@v3.2.0
