@@ -20,12 +20,18 @@
 // DESIGN RATIONALE (embedded judgment, AAP §0.6.4)
 // ---------------------------------------------------------------------------------------------
 // The migrated producer PgnDispatcher.cs — together with the CPGN_* frame templates relocated into
-// it — is INTENTIONALLY compile-gated in SourceCode/GPS/AgOpenGPS.csproj
-// (`<Compile Remove="Services\PgnDispatcher.cs" />`) for the duration of the staged migration,
-// because it injects the still-gated CISOBUS/CTrack collaborators that remain FormGPS-coupled.
-// The AgOpenGPS.Services namespace and the CPGN_* types are therefore NOT present in the compiled
-// GPS assembly and cannot be referenced from this test project. PgnDispatcher and CISOBUS are also
-// DI/`mf`-coupled (8-arg ctor / collaborator graph) and would never be constructed here regardless.
+// it — IS compiled into the GPS assembly (namespace AgOpenGPS.Services) and IS referenceable from
+// this test project (AgOpenGPS.Tests ProjectReferences ..\GPS\AgOpenGPS.csproj; there is no
+// `<Compile Remove>` for it). It is nonetheless NOT directly constructed here: PgnDispatcher is
+// DI/`mf`-coupled — its 8-arg constructor injects the CISOBUS/CTrack collaborators whose graph
+// remains FormGPS-coupled — so it cannot be cleanly instantiated in isolation (no FormGPS graph,
+// no real socket) without standing up that entire collaborator graph. That not-cleanly-constructible
+// property — NOT any compile-gating — is the operative reason this fixture proves the contract via the
+// pure algorithm + golden byte-compare rather than by invoking the producer directly.
+// [XPLAT] (Corrected at QA Checkpoint F10: an earlier revision of this header claimed the file was
+// compile-gated via `<Compile Remove="Services\PgnDispatcher.cs" />` and that AgOpenGPS.Services was
+// therefore absent from / unreferenceable in the assembly — both stale and inaccurate at HEAD. See
+// MIGRATION_DOCS/CHANGELOG.md "QA Checkpoint F10 remediation".)
 //
 // As explicitly sanctioned by the file's specification ("If it is not cleanly constructible, fall
 // back to verifying the pure algorithm + structure plus the golden byte-compare"), the frozen

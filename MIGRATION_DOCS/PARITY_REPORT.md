@@ -384,8 +384,52 @@ and is listed first.
    context is actually obtained and that live rendering plus the `glReadPixels` `oglBack` section/lookahead
    and flag-pick scans render correctly must be run on each target OS/RID and recorded here. This on-hardware
    confirmation is an **external-evidence item** (it requires real GPUs on `windows` / `ubuntu` / `macos`
-   runners or devices, not available in this environment); it remains the dominant open feasibility risk —
-   **but it can no longer crash the program, and the bootstrap is no longer the blocker.**
+   runners or devices, not available in this environment); it remains the dominant open feasibility risk for
+   the *immediate-mode-vs-GLES* question.
+   **RESOLVED (c) — OpenTK↔Avalonia GL binding delegate defect (found by QA Checkpoint F10; DISTINCT from the
+   GLES/ANGLE context-type risk above).** A defect in `EnsureGlBindings`
+   (`SourceCode/GPS/Controls/AvaloniaGeoViewport.cs`) made the OpenTK 3.3.3 binding throw on **every** platform
+   — independent of GPU, driver, or context type — so the field viewport rendered nothing even on a valid
+   desktop-GL context. The `GetCurrentContextDelegate` returned `ContextHandle.Zero`; OpenTK 3.3.3's
+   `GraphicsContext(ContextHandle, GetAddressDelegate, GetCurrentContextDelegate)` constructor, given a Zero
+   handle, **adopts the delegate's return value as the context handle** and throws `GraphicsContextMissingException`
+   ("No context is current in the calling thread") when that return is also Zero. `HandleOpenGlInit` then
+   correctly fail-safed (`if (!EnsureGlBindings(gl)) { _glInitialized = false; return; }`) **before**
+   `AuditGlContext`/`Initialize`/`CreateBackFbo`/any render — so the program never crashed (graceful
+   degradation held), but the viewport stayed permanently blank, and the GLES audit + feature-gate described
+   above was **never reached** because the bind failed first. The failure is **delegate-return-driven, not a
+   native query**, hence environment-independent (it reproduces on Windows, Linux, and macOS regardless of the
+   headless container). **Fix:** the delegate now returns a stable non-zero process-lifetime currency token
+   (`AvaloniaCurrentContextToken = new ContextHandle(new IntPtr(1))`). This is semantically correct because
+   Avalonia guarantees a GL context is current for the entire duration of
+   `OnOpenGlInit`/`OnOpenGlRender`/`OnOpenGlDeinit` — the only times the bind runs — and OpenTK uses the value
+   only as a currency token for the binding-only wrapper (the key under which it registers in
+   `available_contexts` and the value `GraphicsContext.CurrentContext` returns), never to make a context
+   current (`MakeCurrent()` is a deliberate no-op). A non-zero sentinel was deliberately chosen over a per-OS
+   `glXGetCurrentContext`/`wglGetCurrentContext`/`CGLGetCurrentContext` query, because the latter returns null
+   under an EGL/ANGLE context and would re-trigger the identical exception. **Verified at QA-fix time (two independent runtime levels):** (A — decisive,
+   environment-independent) a standalone OpenTK 3.3.3 `GraphicsContext`-constructor toggle reproduces the
+   defect (`ContextHandle.Zero` → `GraphicsContextMissingException` "No context is current in the calling
+   thread") and proves the fix (non-zero token → constructor does **not** throw + `LoadAll()` succeeds);
+   (B — gold standard, real control) the **real production `AvaloniaGeoViewport`** hosted in an Avalonia
+   window under Xvfb + Mesa now completes `OnOpenGlInit` end-to-end — the production log records
+   `"AvaloniaGeoViewport: OpenTK 3.3.3 GL entry points bound to Avalonia GL context."` (the success branch
+   of `EnsureGlBindings`), the context is audited as **desktop GL `4.5 (Compatibility Profile)` Mesa —
+   `IsLikelyOpenGlEs = false`, `IsRenderingGated = false`**, and `_glInitialized = true`; an immediate-mode
+   `GLW`-style triangle then renders through the production `_renderAction` seam and `glReadPixels` reads
+   back the full 520×320 framebuffer (665 600 bytes) with the center pixel `(255,217,0)` and corners
+   `(69,115,51)` — matching the QA capstone exactly (evidence
+   `blitzy/screenshots/f10_levelb_real_viewport_readback.png`, alongside the QA capstone
+   `blitzy/screenshots/f10_gl_immediate_mode_readback.png`). **Note on the headless host:** Avalonia 11.3.18
+   ships a default GLX renderer blacklist `{ "llvmpipe" }`; the Level-B harness cleared it via
+   `X11PlatformOptions.GlxRendererBlacklist` **in the test host only** so the container's software Mesa GL
+   context would be accepted — a test-environment concession that exercises (does not alter) the product
+   binding path. On real GPU hosts the blacklist is irrelevant and the same production path runs unchanged.
+   **Correction to a prior statement of this risk:** an earlier revision asserted "the bootstrap is no longer
+   the blocker." That was accurate for the *bootstrap / desktop-GL-request* path but overlooked this
+   binding-delegate defect, which **was** the active blocker until the fix above. The statement that the
+   program "could no longer crash" remains true (the bind failure fail-safed gracefully); but the viewport
+   could not render until **(c)** was resolved.
 2. **Culture / locale (highest data-integrity risk).** Each program sets `CurrentCulture` /
    `CurrentUICulture` from settings. All **numeric file and protocol I/O must use `InvariantCulture`**,
    or a Linux/macOS locale with a comma decimal separator will corrupt field files, settings, ISOXML,

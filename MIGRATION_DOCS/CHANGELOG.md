@@ -55,6 +55,50 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 
 _Single-phase migration within the one solution; converged at the final code-review remediation pass._
 
+> **[XPLAT] QA Checkpoint F10 remediation — End-to-end MVVM wiring, OpenGL re-host & cross-layer flow (2
+> findings: 0 Critical, 1 Major, 0 Minor, 1 Info; all resolved + runtime-verified on Linux).** F10 confirmed
+> every cross-layer seam PASS (UI→VM→Service→PGN→UDP→AgIO→fuse→UI), G2 MVVM activation FULL, G4 platform
+> services FULL, and all behavior-frozen contracts FULL (129 passed / 0 failed / 1 skipped regression+parity).
+> The single Major was an **OpenGL re-host (G3) binding defect**; the Info was a stale test-header comment.
+> Changes by area:
+> >
+> > - **Rendering — Major (G3): OpenTK↔Avalonia GL binding threw on every platform, blanking the field
+> >   viewport.** In `SourceCode/GPS/Controls/AvaloniaGeoViewport.cs`, `EnsureGlBindings`'s
+> >   `GetCurrentContextDelegate` returned `ContextHandle.Zero`. OpenTK 3.3.3's
+> >   `GraphicsContext(ContextHandle, GetAddressDelegate, GetCurrentContextDelegate)` constructor, given a Zero
+> >   handle, **adopts the delegate's return as the context handle** and throws `GraphicsContextMissingException`
+> >   when it is also Zero — so the bind aborted, `HandleOpenGlInit` fail-safed (`_glInitialized = false`)
+> >   before any render, and the central guidance viewport rendered nothing on Windows/Linux/macOS alike
+> >   (delegate-return-driven ⇒ environment-independent; no crash — graceful degradation held). **Fix:** the
+> >   delegate now returns a stable non-zero process-lifetime currency token
+> >   (`AvaloniaCurrentContextToken = new ContextHandle(new IntPtr(1))`), semantically correct because Avalonia
+> >   guarantees a context is current for the whole `OnOpenGlInit`/`OnOpenGlRender`/`OnOpenGlDeinit` window (the
+> >   only time the bind runs). A sentinel was chosen over a per-OS
+> >   `glXGetCurrentContext`/`wglGetCurrentContext`/`CGLGetCurrentContext` query precisely because the latter
+> >   returns null under an EGL/ANGLE context and would re-throw; the GLES-vs-desktop decision stays with the
+> >   existing `AuditGlContext` feature-gate. _Verified at two runtime levels:_ (A) a standalone
+> >   OpenTK-constructor toggle (`ContextHandle.Zero` → `GraphicsContextMissingException` vs. non-zero token →
+> >   constructor does not throw + `LoadAll()` succeeds — environment-independent); and (B, gold standard) the
+> >   **real production `AvaloniaGeoViewport`** hosted in an Avalonia window under Xvfb + Mesa completing
+> >   `OnOpenGlInit` end-to-end — production log `"…OpenTK 3.3.3 GL entry points bound to Avalonia GL context."`,
+> >   context audited as **desktop GL 4.5 Compatibility / not-GLES / not-gated**, `_glInitialized = true`, and an
+> >   immediate-mode `GLW`-style triangle rendered through the `_renderAction` seam with `glReadPixels` reading
+> >   back the full framebuffer (center `(255,217,0)`, corners `(69,115,51)`)
+> >   (`blitzy/screenshots/f10_levelb_real_viewport_readback.png`, with the QA capstone
+> >   `blitzy/screenshots/f10_gl_immediate_mode_readback.png`). The Level-B host cleared Avalonia 11.3.18's
+> >   default GLX `{"llvmpipe"}` blacklist in the **test host only** so the container's software Mesa GL was
+> >   accepted; no product code is affected.
+> >   `PARITY_REPORT.md` Open Risk #1 updated to record this defect + resolution (**RESOLVED (c)**) as DISTINCT
+> >   from the GLES/ANGLE context-type risk. _At parity._
+> > - **Tests/docs — Info: stale `<Compile Remove>` claim in a parity-test header.**
+> >   `SourceCode/AgOpenGPS.Tests/Parity/PgnFrameGoldenTests.cs` asserted that `Services/PgnDispatcher.cs` was
+> >   compile-gated out of `AgOpenGPS.csproj` and that `AgOpenGPS.Services` was therefore unreferenceable. That
+> >   gating was removed earlier in the migration (no `<Compile Remove>` at HEAD; `AgOpenGPS.Tests` references
+> >   the GPS project; `PgnDispatcher` compiles into the assembly). Corrected the header to reflect HEAD while
+> >   preserving the still-valid rationale that the DI/`mf`-coupled `PgnDispatcher` (8-arg ctor) is not cleanly
+> >   constructible in isolation, so the pure-algorithm + golden-byte proof remains the chosen approach (test
+> >   behavior unchanged; suite stays green). _Documentation hygiene._
+
 > **[XPLAT] QA Checkpoint F5 remediation — Guidance / Steering / Section-control parity certification (13
 > findings: 0 Critical, 6 Major, 4 Minor, 3 Info; all resolved + runtime-verified on Linux).** The F5
 > checkpoint confirmed there is **no behavioral regression and no safety-clamp violation** — every guidance

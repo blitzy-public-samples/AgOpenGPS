@@ -416,6 +416,30 @@ namespace AgOpenGPS.Controls
         // garbage-collected (also keeps the field both written AND read, avoiding an unused-field warning).
         private static GraphicsContext _sharedGlContext;
 
+        // [XPLAT] Non-zero currency token returned by the GetCurrentContextDelegate in EnsureGlBindings.
+        // WHY IT MUST BE NON-ZERO: OpenTK 3.3.3's
+        // GraphicsContext(ContextHandle, GetAddressDelegate, GetCurrentContextDelegate) constructor, when
+        // handed a Zero handle (our case — Avalonia owns the real context), CALLS getCurrent() and adopts its
+        // return AS the context handle; if that return is itself ContextHandle.Zero the constructor throws
+        // GraphicsContextMissingException ("No context is current in the calling thread") and the entire bind
+        // aborts. (Previously getCurrent returned ContextHandle.Zero, so the bind threw, HandleOpenGlInit's
+        // gate stayed closed, no render path ever ran, and the field viewport was permanently blank on every
+        // platform — environment-independent, because OpenTK keys off the DELEGATE'S RETURN, not a native
+        // query. See MIGRATION_DOCS/PARITY_REPORT.md Open Risk #1.)
+        // WHY A SENTINEL AND NOT A REAL HANDLE: returning the real native context via per-OS P/Invoke
+        // (glXGetCurrentContext / wglGetCurrentContext / CGLGetCurrentContext) would be more code AND less
+        // robust — under an EGL/ANGLE context, which Avalonia frequently supplies, those desktop-GL queries
+        // return null and re-trigger the SAME exception. A stable non-zero sentinel is semantically TRUE here:
+        // Avalonia guarantees a GL context IS current for the whole duration of OnOpenGlInit/OnOpenGlRender/
+        // OnOpenGlDeinit, the only times this binding runs. OpenTK uses the value purely as a currency token
+        // for this binding-only wrapper (the key under which it registers in available_contexts and the value
+        // GraphicsContext.CurrentContext returns); it is NEVER used to make a context current — MakeCurrent()
+        // is a deliberate no-op because Avalonia owns currency. The GLES-vs-desktop-GL decision is made
+        // afterward by AuditGlContext()'s feature-gate, the architecturally-correct place for it. The handle
+        // value (IntPtr 1) is arbitrary-but-non-zero; EnsureGlBindings constructs the GraphicsContext exactly
+        // once per process (guarded by _sharedGlContext), so this token can never collide in available_contexts.
+        private static readonly ContextHandle AvaloniaCurrentContextToken = new ContextHandle(new IntPtr(1));
+
         // One-time guard so a GLES/immediate-mode render failure logs once instead of every frame.
         private bool _renderErrorLogged;
 
@@ -449,12 +473,19 @@ namespace AgOpenGPS.Controls
                 try
                 {
                     // Explicitly-typed delegates avoid any constructor-overload ambiguity. GetProcAddress
-                    // returns IntPtr, matching GraphicsContext.GetAddressDelegate exactly; the
-                    // GetCurrentContextDelegate returns ContextHandle.Zero because Avalonia — not OpenTK —
-                    // owns and tracks the current context.
+                    // returns IntPtr, matching GraphicsContext.GetAddressDelegate exactly. The
+                    // GetCurrentContextDelegate MUST return a NON-ZERO handle: the constructor below adopts
+                    // its return value as the context handle and throws GraphicsContextMissingException when
+                    // it is Zero. Avalonia — not OpenTK — owns and makes the context current (for the duration
+                    // of this callback), so we hand OpenTK a stable non-zero currency token rather than a real
+                    // native handle (which would be null — and throw — under an EGL/ANGLE context). See the
+                    // AvaloniaCurrentContextToken field for the full rationale. [XPLAT]
                     var getAddress = new GraphicsContext.GetAddressDelegate(name => gl.GetProcAddress(name));
-                    var getCurrent = new GraphicsContext.GetCurrentContextDelegate(() => ContextHandle.Zero);
+                    var getCurrent = new GraphicsContext.GetCurrentContextDelegate(() => AvaloniaCurrentContextToken);
 
+                    // First arg stays ContextHandle.Zero: it tells OpenTK this is an EXTERNAL context OpenTK
+                    // does not own (it wraps Avalonia's via the address loader); getCurrent (above) supplies
+                    // the non-zero currency token the constructor adopts so the bind no longer throws. [XPLAT]
                     var context = new GraphicsContext(ContextHandle.Zero, getAddress, getCurrent);
                     context.LoadAll();
 
