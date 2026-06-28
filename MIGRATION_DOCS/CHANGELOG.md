@@ -27,9 +27,13 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 
 > **Status & buildability note (final state).** The migrated suite has **converged**. The full
 > `AgOpenGPS.sln` — all twelve projects, including the `GPS` application — builds clean in **Debug and
-> Release** (`TreatWarningsAsErrors`) for both `net8.0` and `net8.0-windows`, with **0 errors and 0 new
-> C# warnings**; the only residual notices are **8 pre-existing `AVLN3001`** Avalonia-XAML
-> runtime-loader notices in unmodified views (not promoted by `TreatWarningsAsErrors`, out of scope).
+> Release** (`TreatWarningsAsErrors` + `MSBuildTreatWarningsAsErrors`) for both `net8.0` and
+> `net8.0-windows`, with **0 errors and 0 warnings** — including **0 `AVLN3001`** Avalonia-XAML
+> runtime-loader notices. The eight `GPS` views that previously lacked a public parameterless
+> constructor now carry the standard Avalonia dual-constructor pattern, so the runtime/XAML loader can
+> reach every `avares://` view; and the Release gate now promotes Avalonia/MSBuild-task warnings (not
+> just Roslyn `CS####`) to errors, so the zero-warning acceptance bar is actually enforced in Release
+> and on the tri-OS CI matrix (see the **Build/CI** area, **F1-001**).
 > The local Linux test run is **115 passed / 1 skipped / 0 failed** across all three assemblies
 > (`AgOpenGPS.Core.Tests` 33, `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 79), and **all five golden-file
 > parity suites — PGN, Guidance, ISOXML, Settings, and Field — are authored, committed, and enforcing**
@@ -278,6 +282,32 @@ preserved and verified by `SettingsRoundTripTests` (F-036).
 
 #### Changed
 
+- **[XPLAT] F1-001 — `GPS` now builds zero-warning in Release; the warnings-as-errors gate hardened.**
+  The final build/packaging QA checkpoint found the `GPS` project emitting **16 `AVLN3001`** Avalonia
+  XAML-compiler warnings in a clean Release rebuild (8 unique views × the `net8.0` + `net8.0-windows`
+  legs), violating the "all projects build with zero warnings" acceptance bar (AAP §0.7). Root cause:
+  eight views declared only a parameterized (DI) constructor, so Avalonia's compiled-XAML runtime
+  loader (`AvaloniaXamlLoader`) could not reach the `avares://` resource (it needs a **public
+  parameterless** constructor). Resolved two ways:
+  - **Constructors (the fix).** Added the standard Avalonia **dual-constructor** pattern to each of the
+    eight views — a public parameterless ctor that calls `InitializeComponent()`, with the existing
+    constructor chaining to it via `: this()` (so `InitializeComponent()` still runs exactly once and
+    all dependency wiring is unchanged). This matches the convention already used by 39 sibling views
+    (e.g. `FormDialogView`, `FormBoundaryView`, `FormColorView`). Views fixed:
+    `Views/Field/FormEnterFlagView`, `Views/Field/FormFlagsView`, `Views/FormAgShareSettingsView`,
+    `Views/FormInputDialogView` (public parameterless + the existing **private** parity ctor, mirroring
+    `FormDialogView`), `Views/Inputs/FormKeyboard`, `Views/Inputs/FormNumeric`,
+    `Views/Settings/FormConfigView`, `Views/Settings/FormCorrectionView`. No behavior change (UI-shell
+    constructors only; no behavior-frozen contract touched).
+  - **Gate hardening.** `SourceCode/Directory.Build.props` Release config now also sets
+    **`<MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>`** alongside the existing
+    `TreatWarningsAsErrors`. Plain `TreatWarningsAsErrors` only escalates Roslyn `CS####` warnings, so
+    Avalonia **MSBuild-task** warnings such as `AVLN3001` previously passed the Release gate silently;
+    the new property promotes them to errors, so this class of regression now **fails** the Release
+    build and the tri-OS CI `dotnet build` step. Verified: full-solution clean Release rebuild =
+    *"Build succeeded. 0 Warning(s). 0 Error(s)."* (was 16 warnings); `linux-x64` self-contained
+    publish of all six executables succeeds warning-free; tests remain 115 passed / 1 skipped / 0
+    failed. _At parity._
 - **`.github/workflows/build.yml`** from a single `windows-latest` runner to a `strategy.matrix` over
   windows-latest / ubuntu-latest / macos-latest (the macOS leg covering `osx-x64` + `osx-arm64`) with
   `fail-fast: false` and a per-OS artifact `AgOpenGPS-${{ matrix.os }}`. `<EnableWindowsTargeting>true</EnableWindowsTargeting>`

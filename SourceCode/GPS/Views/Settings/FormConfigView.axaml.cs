@@ -133,11 +133,25 @@ namespace AgOpenGPS.Views.Settings
         private int numberOfSections;
 
         // =====================================================================================
+        // [XPLAT] Parameterless constructor required by Avalonia's compiled-XAML loader. Without it the
+        // Avalonia XAML compiler raises AVLN3001 ("XAML resource ... won't be reachable via runtime
+        // loader, as no public constructor was found"), which the Release zero-warning gate forbids
+        // (see MIGRATION_DOCS/CHANGELOG.md, F1-001). The DI constructor below chains to it with
+        // `: this()` so InitializeComponent() runs exactly once.
+        // =====================================================================================
+        public FormConfigView()
+        {
+            InitializeComponent();
+        }
+
+        // =====================================================================================
         // Constructor — port of FormConfig.cs ctor (24-101). The ~60 `nud*.Controls[0].Enabled=false`
         // caret-disable lines are intentionally omitted: value entry is via the FormNumeric dialog.
+        // Chains to the parameterless constructor (`: this()`) for InitializeComponent().
         // =====================================================================================
         public FormConfigView(IConfigContext ctx, IVehicleState vehicle, IToolState tool, ITramState tram,
             IAbLineState abLine, IGuidanceState gyd, IAhrsState ahrs, Window owner)
+            : this()
         {
             this.ctx = ctx;
             this.vehicle = vehicle;
@@ -147,8 +161,6 @@ namespace AgOpenGPS.Views.Settings
             this.gyd = gyd;
             this.ahrs = ahrs;
             this.owner = owner;
-
-            InitializeComponent();
 
             // [XPLAT] nud caret-disable not needed — value entry via FormNumeric dialog.
             BuildNudRegistry();

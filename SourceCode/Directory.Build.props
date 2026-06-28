@@ -16,6 +16,14 @@
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- [XPLAT] Close the zero-warning gate hole for Avalonia (and other MSBuild-task) warnings.
+         Plain TreatWarningsAsErrors only escalates Roslyn (CS####) compiler warnings, so an Avalonia
+         build-task warning such as AVLN3001 (a XAML view missing a public parameterless constructor —
+         the cross-platform runtime loader cannot reach it) would pass the Release gate silently. Setting
+         MSBuildTreatWarningsAsErrors escalates those MSBuild-emitted warnings to errors too, so the
+         "all projects build with zero warnings" acceptance bar (AAP §0.7) is actually enforced in
+         Release and on the tri-OS CI matrix. See MIGRATION_DOCS/CHANGELOG.md (F1-001). -->
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
   </PropertyGroup>
 
 </Project>

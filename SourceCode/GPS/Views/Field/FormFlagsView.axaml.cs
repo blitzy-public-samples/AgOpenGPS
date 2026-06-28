@@ -130,17 +130,29 @@ namespace AgOpenGPS.Views
         private readonly DispatcherTimer _timer;
 
         /// <summary>
+        /// [XPLAT] Parameterless constructor required by Avalonia's compiled-XAML loader. Without it the
+        /// Avalonia XAML compiler raises AVLN3001 ("XAML resource ... won't be reachable via runtime
+        /// loader, as no public constructor was found"), which the Release zero-warning gate forbids
+        /// (see MIGRATION_DOCS/CHANGELOG.md, F1-001). The parity constructor below chains to it with
+        /// <c>: this()</c> so <c>InitializeComponent()</c> runs exactly once.
+        /// </summary>
+        public FormFlagsView()
+        {
+            InitializeComponent();
+        }
+
+        /// <summary>
         /// Initializes the dialog over the supplied live flag context. Parity with the WinForms
         /// <c>FormFlags(Form callingForm)</c> constructor, except the FormGPS "mf" reference is
-        /// replaced by the injected <see cref="IFlagsViewContext"/>; there is intentionally no
-        /// parameterless constructor (the view cannot function without the live flag state).
+        /// replaced by the injected <see cref="IFlagsViewContext"/>. Chains to the parameterless
+        /// constructor (<c>: this()</c>) for <c>InitializeComponent()</c>; the view is only functional
+        /// when constructed through this overload with the live flag state.
         /// </summary>
         /// <param name="context">The live, shared flag state and operations (must not be null).</param>
         public FormFlagsView(IFlagsViewContext context)
+            : this()
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
-
-            InitializeComponent();
 
             // [XPLAT] WinForms ctor: this.Text = gStr.gsFlags; labelDistanceToFlag.Text = gStr.gsDistanceToFlag.
             // The .axaml carries only the design-time caption / label; the localised runtime strings are

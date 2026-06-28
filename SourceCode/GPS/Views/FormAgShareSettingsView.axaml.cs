@@ -67,16 +67,28 @@ public partial class FormAgShareSettingsView : Window
     private DispatcherTimer _clipboardCheckTimer;
 
     /// <summary>
+    /// [XPLAT] Parameterless constructor required by Avalonia's compiled-XAML loader. Without it the
+    /// Avalonia XAML compiler raises AVLN3001 ("XAML resource ... won't be reachable via runtime
+    /// loader, as no public constructor was found"), which the Release zero-warning gate forbids
+    /// (see MIGRATION_DOCS/CHANGELOG.md, F1-001). The parity constructor below chains to it with
+    /// <c>: this()</c> so <c>InitializeComponent()</c> runs exactly once.
+    /// </summary>
+    public FormAgShareSettingsView()
+    {
+        InitializeComponent();
+    }
+
+    /// <summary>
     /// Initializes the dialog with the AgShare client it configures. Parity with the WinForms
     /// <c>FormAgShareSettings(AgShareClient agShareClient)</c> constructor — the client is stored, the
-    /// component tree is loaded, and the control event handlers are wired (mirroring the handlers the
-    /// WinForms designer attached in <c>InitializeComponent</c>).
+    /// component tree is loaded (via the <c>: this()</c> chain), and the control event handlers are
+    /// wired (mirroring the handlers the WinForms designer attached in <c>InitializeComponent</c>).
     /// </summary>
     /// <param name="agShareClient">The AgShare client whose server URL / API key this dialog edits.</param>
     public FormAgShareSettingsView(AgShareClient agShareClient)
+        : this()
     {
         _agShareClient = agShareClient;
-        InitializeComponent();
 
         // [XPLAT] Designer-wired Click handlers (parity with FormAgShareSettings.Designer.cs, where each
         // of these was attached inside InitializeComponent). buttonCancel had no WinForms handler — it

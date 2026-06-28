@@ -74,17 +74,30 @@ namespace AgOpenGPS.Views.Settings
         private DispatcherTimer timer1;
 
         /// <summary>
+        /// [XPLAT] Parameterless constructor required by Avalonia's compiled-XAML loader. Without it the
+        /// Avalonia XAML compiler raises AVLN3001 ("XAML resource ... won't be reachable via runtime
+        /// loader, as no public constructor was found"), which the Release zero-warning gate forbids
+        /// (see MIGRATION_DOCS/CHANGELOG.md, F1-001). It is the single construction chokepoint: the
+        /// parity constructor below chains to it with <c>: this()</c> so <c>InitializeComponent()</c>
+        /// runs exactly once.
+        /// </summary>
+        public FormCorrectionView()
+        {
+            InitializeComponent();
+        }
+
+        /// <summary>
         /// Creates the dialog bound to a telemetry snapshot. Mirrors the WinForms
         /// <c>FormCorrection(Form callingForm)</c> constructor, which assigned the caller and then
-        /// called <c>InitializeComponent()</c>.
+        /// called <c>InitializeComponent()</c> (now reached via the <c>: this()</c> chain).
         /// </summary>
         /// <param name="telemetry">Live correction/easting/roll source (the composition root's adapter).</param>
         /// <exception cref="ArgumentNullException">Thrown when <paramref name="telemetry"/> is null.</exception>
         public FormCorrectionView(ICorrectionTelemetry telemetry)
+            : this()
         {
             // [XPLAT] replaces "mf = callingForm as FormGPS;" — the DI seam is required, so guard it.
             _tel = telemetry ?? throw new ArgumentNullException(nameof(telemetry));
-            InitializeComponent();
         }
 
         /// <summary>

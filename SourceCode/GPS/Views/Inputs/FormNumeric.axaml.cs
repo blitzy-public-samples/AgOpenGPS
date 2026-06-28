@@ -67,17 +67,30 @@ namespace AgOpenGPS.Views
         public double ReturnValue { get; private set; }
 
         /// <summary>
+        /// [XPLAT] Parameterless constructor required by Avalonia's compiled-XAML loader. Without it the
+        /// Avalonia XAML compiler raises AVLN3001 ("XAML resource ... won't be reachable via runtime
+        /// loader, as no public constructor was found"), which the Release zero-warning gate forbids
+        /// (see MIGRATION_DOCS/CHANGELOG.md, F1-001). The parity constructor below chains to it with
+        /// <c>: this()</c> so <c>InitializeComponent()</c> runs exactly once.
+        /// </summary>
+        public FormNumeric()
+        {
+            InitializeComponent();
+        }
+
+        /// <summary>
         /// Initialises the dialog with the allowed range and the value to seed the entry field with.
         /// Parameter order matches the WinForms constructor exactly (<c>_min, _max, currentValue</c>).
+        /// Chains to the parameterless constructor (<c>: this()</c>) for <c>InitializeComponent()</c>.
         /// </summary>
         /// <param name="_min">Inclusive minimum accepted value.</param>
         /// <param name="_max">Inclusive maximum accepted value.</param>
         /// <param name="currentValue">The value to pre-fill the entry field with.</param>
         public FormNumeric(double _min, double _max, double currentValue)
+            : this()
         {
             max = _max;
             min = _min;
-            InitializeComponent();
 
             // [XPLAT] InvariantCulture (parity + cross-platform numeric I/O) — was currentValue.ToString().
             tboxNumber.Text = currentValue.ToString(CultureInfo.InvariantCulture);

@@ -65,6 +65,20 @@ namespace AgOpenGPS.Views
         private bool isShowingKeyboard;
 
         /// <summary>
+        /// [XPLAT] Public parameterless constructor required by Avalonia's compiled-XAML loader. Without
+        /// it the Avalonia XAML compiler raises AVLN3001 ("XAML resource ... won't be reachable via
+        /// runtime loader, as no public constructor was found"), which the Release zero-warning gate
+        /// forbids (see MIGRATION_DOCS/CHANGELOG.md, F1-001). Functional instances are still created only
+        /// through <see cref="ShowInputAsync"/> -> the private parity constructor (which chains here with
+        /// <c>: this()</c> so <c>InitializeComponent()</c> runs exactly once), mirroring the sibling
+        /// <see cref="FormDialogView"/> (public parameterless ctor + private parity ctor).
+        /// </summary>
+        public FormInputDialogView()
+        {
+            InitializeComponent();
+        }
+
+        /// <summary>
         /// [XPLAT] Parity-shaped constructor mirroring the WinForms
         /// <c>FormInputDialog(string title, string prompt, FormGPS formGPS)</c> — with the
         /// <c>FormGPS</c> dependency replaced by the plain <paramref name="keyboardOn"/> flag. It is
@@ -79,9 +93,8 @@ namespace AgOpenGPS.Views
         /// replacement for <c>FormGPS.isKeyboardOn</c>).
         /// </param>
         private FormInputDialogView(string title, string prompt, bool keyboardOn)
+            : this()
         {
-            InitializeComponent();
-
             // [XPLAT] Store the keyboard flag (was read from FormGPS.isKeyboardOn) for the pointer handler.
             this.keyboardOn = keyboardOn;
 

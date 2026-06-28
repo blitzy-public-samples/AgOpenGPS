@@ -47,15 +47,27 @@ namespace AgOpenGPS.Views
         public string ReturnString { get; private set; }
 
         /// <summary>
+        /// [XPLAT] Parameterless constructor required by Avalonia's compiled-XAML loader. Without it the
+        /// Avalonia XAML compiler raises AVLN3001 ("XAML resource ... won't be reachable via runtime
+        /// loader, as no public constructor was found"), which the Release zero-warning gate forbids
+        /// (see MIGRATION_DOCS/CHANGELOG.md, F1-001). The parity constructor below chains to it with
+        /// <c>: this()</c> so <c>InitializeComponent()</c> runs exactly once.
+        /// </summary>
+        public FormKeyboard()
+        {
+            InitializeComponent();
+        }
+
+        /// <summary>
         /// Initializes the dialog with the text to edit. Parity with the WinForms
-        /// <c>FormKeyboard(string currentString)</c> constructor — there is intentionally no
-        /// parameterless constructor (consumers always supply the current string).
+        /// <c>FormKeyboard(string currentString)</c> constructor. Chains to the parameterless
+        /// constructor (<c>: this()</c>) for <c>InitializeComponent()</c>; consumers normally supply the
+        /// current string through this overload.
         /// </summary>
         /// <param name="currentString">The text to pre-fill into the editable field.</param>
         public FormKeyboard(string currentString)
+            : this()
         {
-            InitializeComponent();
-
             // [XPLAT] WinForms `this.Text = "Enter a Value"` -> Avalonia Window.Title. The window uses
             // SystemDecorations="None", so this title is invisible chrome, but it is carried across for
             // parity and supplies the dialog's accessible name (invisible accessibility — no visual change).
