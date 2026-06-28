@@ -243,7 +243,13 @@
         <Border x:Name="panelLeft" Background="{DynamicResource AogFrameBrush}"
                 HorizontalAlignment="Left" VerticalAlignment="Stretch"
                 Margin="3,50,0,70" Width="72">
-            <StackPanel Orientation="Vertical" Spacing="2">
+            <!-- [XPLAT] Spacing="0" (was "2"): the 8 toolbar items total 710px, and at the declared
+                 1024x768 kiosk floor panelLeft has only (768 - 50 top - 70 bottom) = 648px of box height.
+                 Inter-item spacing pushed cumulative content to 724px, landing btnStartAgIO's bottom 6px
+                 past the window (QA F9 D5 clipping). Removing the 7x2px gaps yields 710px of content
+                 ending at y=760 -> an 8px clearance at 768, while leaving every button size (hence the
+                 touch-target parity) and the >=800px layouts unchanged. -->
+            <StackPanel Orientation="Vertical" Spacing="0">
                 <!-- [XPLAT] btnNavigationSettings: in WinForms this toggled panelNavigation; in the
                      Avalonia MVVM port the settings affordance surfaces the Config menu flow. The nav
                      overlay toggle is wired separately by code-behind. -->

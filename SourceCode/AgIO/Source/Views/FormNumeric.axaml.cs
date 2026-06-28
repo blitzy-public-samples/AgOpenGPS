@@ -2,6 +2,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;    // [XPLAT] Brushes.Red for the out-of-range bound-label cue (QA F9 D1).
 using Keypad;
 
 namespace AgIO.Views
@@ -63,6 +64,13 @@ namespace AgIO.Views
         // the parse/validate step. Non-null for application-constructed dialogs (the three-argument
         // constructor); null only for the parameterless loader/previewer path, hence the guards below.
         private FormNumericViewModel _vm;
+
+        // [XPLAT] References to the min/max guard labels, captured once in InitializeComponent so the
+        // out-of-range validation path can redden the violated bound and the next keypad re-entry can
+        // reset it. Restores the WinForms FormNumeric.cs (L138/143) lblMin/lblMax.ForeColor = Color.Red
+        // validation-feedback cue that the migrated GPS FormNumeric also preserves, closing QA F9 D1.
+        private TextBlock _lblMin;
+        private TextBlock _lblMax;
 
         /// <summary>
         /// [XPLAT] Parameterless constructor required by the Avalonia XAML loader and the design-time
@@ -134,6 +142,13 @@ namespace AgIO.Views
             {
                 down.Click += BtnDistanceDn_Click;
             }
+
+            // [XPLAT] Capture the min/max guard labels declared in FormNumeric.axaml so the validation
+            // path can redden the violated bound (and reset it on the next entry), mirroring the migrated
+            // GPS FormNumeric (Views/Inputs/FormNumeric.axaml.cs L250/255 redden, L155-161 reset). These
+            // controls have no compiler-generated x:Name field, so they are resolved here by name (QA F9 D1).
+            _lblMin = this.FindControl<TextBlock>("lblMin");
+            _lblMax = this.FindControl<TextBlock>("lblMax");
         }
 
         /// <summary>
@@ -161,6 +176,17 @@ namespace AgIO.Views
             }
             else
             {
+                // [XPLAT] Restore the bound-label colours as the user resumes entry after an out-of-range
+                // "Error", mirroring the migrated GPS FormNumeric (Views/Inputs/FormNumeric.axaml.cs
+                // L155-161). The view-model's AppendKey clears the "Error" sentinel text, while the label
+                // foregrounds are pure view state and are reset here via ClearValue so the bound shows its
+                // default colour again on the next attempt (QA F9 D1 — "ClearValue on re-entry").
+                if (_vm.EntryText == ErrorText)
+                {
+                    _lblMin?.ClearValue(TextBlock.ForegroundProperty);
+                    _lblMax?.ClearValue(TextBlock.ForegroundProperty);
+                }
+
                 _vm.AppendKey(e.KeyChar);
             }
         }
@@ -222,6 +248,28 @@ namespace AgIO.Views
             // next keypad edit clears — mirroring the WinForms 'K' handler that showed "Error" and only set
             // the dialog result on success.
             _vm.EntryText = ErrorText;
+
+            // [XPLAT] Redden the violated bound label, restoring the WinForms FormNumeric.cs (L138/143)
+            // lblMin/lblMax.ForeColor = Color.Red cue that the migrated GPS FormNumeric also preserves
+            // (Views/Inputs/FormNumeric.axaml.cs L250/255). TryGetResult assigns `value` from the parsed
+            // entry even when it returns false, because the inclusive range check runs only after a
+            // successful parse — so the comparison below selects the violated bound exactly as the
+            // GPS/WinForms handler did. An unparseable entry leaves `value` at 0 and reddens neither bound
+            // (only the "Error" sentinel shows), since no specific min/max bound caused the failure (QA F9 D1).
+            if (value < _vm.Min)
+            {
+                if (_lblMin != null)
+                {
+                    _lblMin.Foreground = Brushes.Red;
+                }
+            }
+            else if (value > _vm.Max)
+            {
+                if (_lblMax != null)
+                {
+                    _lblMax.Foreground = Brushes.Red;
+                }
+            }
         }
     }
 }
