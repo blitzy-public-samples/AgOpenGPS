@@ -39,17 +39,24 @@ pgn[pgn.Length - 1] = (byte)crc;
 | Parameter | Value |
 |-----------|-------|
 | **AOG Listen Port** | 15555 (loopback) |
-| **AgIO Endpoint** | 127.255.255.255:17777 |
+| **AgIO Endpoint** | 127.0.0.1:17777 (unicast loopback) |
 | **Protocol** | UDP |
 | **Subnet** | 127.x.x.x (loopback) |
+
+> **[XPLAT] Loopback addressing.** The frozen loopback **ports 15555 / 17777 are unchanged**.
+> The destination *address* was migrated from the legacy net48/WinForms directed-broadcast baseline
+> `127.255.255.255` to the **explicit unicast loopback host `127.0.0.1`** (`IPAddress.Loopback`): a
+> subnet-directed broadcast to `127.255.255.255` reaches a specifically-bound `127.0.0.1` receiver on
+> Windows but **not** on Linux/macOS, so the two-program fabric is addressed unicast on all three
+> platforms. See `MIGRATION_DOCS/TRANSITION_MAP.md` (QA F4-C1).
 
 **Connection setup:**
 ```csharp
 // AOG binds to loopback port 15555
 loopBackSocket.Bind(new IPEndPoint(IPAddress.Loopback, 15555));
 
-// Send to AgIO on 127.255.255.255:17777
-EndPoint epAgIO = new IPEndPoint(IPAddress.Parse("127.255.255.255"), 17777);
+// Send to AgIO on 127.0.0.1:17777 (unicast loopback; legacy net48 used directed broadcast 127.255.255.255)
+EndPoint epAgIO = new IPEndPoint(IPAddress.Loopback, 17777);
 ```
 
 ## PGN Messages

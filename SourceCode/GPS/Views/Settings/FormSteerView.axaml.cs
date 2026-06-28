@@ -282,6 +282,12 @@ namespace AgOpenGPS.Views.Settings
         private readonly ISteerSettingsSmartWAS smartWAS;
         private readonly Window owner;
 
+        // [XPLAT] QA Issue 3 — production launcher for the Steer/WAS calibration wizard, injected by the
+        // composition root (App.axaml.cs) so the "Wizard" button opens the REAL-adapter FormSteerWizView via
+        // the same ShowEditorDialog path as the MainView entry point. Null only on the designer/previewer
+        // (parameterless) path, where btnSteerWizard_Click falls back to the inert preview wizard.
+        private readonly Action openSteerWizard;
+
         // State fields — mirror the WinForms originals exactly (FormSteer L19-L23).
         private bool toSend = false, isSA = false;
         private int counter = 0, secondCntr = 0, cntr;
@@ -326,13 +332,16 @@ namespace AgOpenGPS.Views.Settings
             ISteerSettingsConfigService steerCfg,
             ISteerSettingsTelemetry tel,
             ISteerSettingsSmartWAS smartWAS,
-            Window owner)
+            Window owner,
+            Action openSteerWizard = null)
         {
             this.vehicle = vehicle ?? new NullSteerSettingsVehicle();
             this.steerCfg = steerCfg ?? new NullSteerSettingsConfigService();
             this.tel = tel ?? new NullSteerSettingsTelemetry();
             this.smartWAS = smartWAS ?? new NullSteerSettingsSmartWAS();
             this.owner = owner;
+            // [XPLAT] QA Issue 3 — the real-adapter wizard launcher (null on the designer/previewer path).
+            this.openSteerWizard = openSteerWizard;
 
             InitializeComponent();
 
@@ -2038,10 +2047,29 @@ namespace AgOpenGPS.Views.Settings
         }
 
         /// <summary>[XPLAT] WinForms <c>btnSteerWizard_Click</c> (source L1200-L1205): close this window and
-        /// open the steer wizard. <c>new FormSteerWiz(mf).Show(mf)</c> becomes the parameterless
-        /// <see cref="FormSteerWizView"/> shown against the injected owner.</summary>
+        /// open the steer wizard. <c>new FormSteerWiz(mf).Show(mf)</c> becomes the injected production launcher
+        /// (<see cref="openSteerWizard"/>) so the wizard is built with the SAME real ISteerWiz* adapters as the
+        /// MainView entry point (QA Issue 3 — no inert Null-adapter wizard on a production path). The launch is
+        /// deferred to this dialog's <see cref="Window.Closed"/> event so the launcher's modal
+        /// <c>ShowDialog(mainView)</c> does not nest inside this closing modal. Only the designer/previewer
+        /// (parameterless) path — where no launcher is injected — falls back to the inert preview wizard.</summary>
         private void btnSteerWizard_Click(object sender, RoutedEventArgs e)
         {
+            if (openSteerWizard != null)
+            {
+                // Production path: defer until this dialog has fully closed, then open the real-adapter wizard.
+                void ReopenAsWizard(object s, EventArgs ev)
+                {
+                    Closed -= ReopenAsWizard;
+                    openSteerWizard();
+                }
+
+                Closed += ReopenAsWizard;
+                Close();
+                return;
+            }
+
+            // Designer/previewer fallback only (no injected launcher): preserve the original inert behavior.
             Close();
             var wiz = new FormSteerWizView();
             if (owner != null) wiz.Show(owner);

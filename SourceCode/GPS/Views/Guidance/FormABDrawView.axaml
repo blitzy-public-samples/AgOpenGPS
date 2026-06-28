@@ -133,6 +133,8 @@
 
             <!-- R0 C0 — btnBLength (APlusPlusB). Extends curve B-end by 50 pts. Handler: btnBLength_Click -->
             <Button x:Name="btnBLength" Classes="imageButton"
+                    AutomationProperties.Name="Extend B end"
+                    ToolTip.Tip="Extend B end"
                     Grid.Row="0" Grid.Column="0"
                     Width="110" Height="43"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -142,6 +144,8 @@
 
             <!-- R0 C1 — btnDrawSections (MappingOff; code-behind swaps to MappingOn). Handler: btnDrawSections_Click -->
             <Button x:Name="btnDrawSections" Classes="imageButton"
+                    AutomationProperties.Name="Toggle section mapping"
+                    ToolTip.Tip="Toggle section mapping"
                     Grid.Row="0" Grid.Column="1"
                     Width="72" Height="61"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -151,6 +155,8 @@
 
             <!-- R1 C0 — btnALength (APlusPlusA). Extends curve A-end by 50 pts. Handler: btnALength_Click -->
             <Button x:Name="btnALength" Classes="imageButton"
+                    AutomationProperties.Name="Extend A end"
+                    ToolTip.Tip="Extend A end"
                     Grid.Row="1" Grid.Column="0"
                     Width="110" Height="43"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -160,6 +166,8 @@
 
             <!-- R1 C1 — btnCancelTouch (HeadlandDeletePoints). Handler: btnCancelTouch_Click -->
             <Button x:Name="btnCancelTouch" Classes="imageButton"
+                    AutomationProperties.Name="Delete touch points"
+                    ToolTip.Tip="Delete touch points"
                     Grid.Row="1" Grid.Column="1"
                     Width="72" Height="63"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -170,6 +178,8 @@
             <!-- R2 C0 — cboxIsVisible (TrackVisible; code-behind swaps TracksInvisible when unchecked).
                  WinForms CheckBox Appearance=Button, Checked=true. Handler: cboxIsVisible_Click -->
             <ToggleButton x:Name="cboxIsVisible" Classes="imageToggle visToggle"
+                          AutomationProperties.Name="Toggle track visibility"
+                          ToolTip.Tip="Toggle track visibility"
                           Grid.Row="2" Grid.Column="0"
                           Width="72" Height="68"
                           IsChecked="True"
@@ -180,6 +190,8 @@
 
             <!-- R2 C1 — btnMakeBoundaryCurve (BoundaryCurveLine). Handler: btnMakeBoundaryCurve_Click -->
             <Button x:Name="btnMakeBoundaryCurve" Classes="imageButton"
+                    AutomationProperties.Name="Make boundary curve"
+                    ToolTip.Tip="Make boundary curve"
                     Grid.Row="2" Grid.Column="1"
                     Width="100" Height="68"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -190,6 +202,8 @@
             <!-- R3 C0 — cboxIsZoom (ZoomOGL). WinForms CheckBox Appearance=Button. Handler: cboxIsZoom_Click
                  (source event was cboxIsZoom_CheckedChanged; code-behind reads IsChecked). -->
             <ToggleButton x:Name="cboxIsZoom" Classes="imageToggle zoomToggle"
+                          AutomationProperties.Name="Toggle zoom"
+                          ToolTip.Tip="Toggle zoom"
                           Grid.Row="3" Grid.Column="0"
                           Width="72" Height="68"
                           HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -199,6 +213,8 @@
 
             <!-- R3 C1 — btnDeleteCurve (Trash). Handler: btnDeleteCurve_Click -->
             <Button x:Name="btnDeleteCurve" Classes="imageButton"
+                    AutomationProperties.Name="Delete curve"
+                    ToolTip.Tip="Delete curve"
                     Grid.Row="3" Grid.Column="1"
                     Width="72" Height="52"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -208,6 +224,8 @@
 
             <!-- R4 C0 — btnMakeCurve (ABTrackCurve). Starts disabled. Handler: btnMakeCurve_Click -->
             <Button x:Name="btnMakeCurve" Classes="imageButton"
+                    AutomationProperties.Name="Make curve"
+                    ToolTip.Tip="Make curve"
                     Grid.Row="4" Grid.Column="0"
                     Width="90" Height="80"
                     IsEnabled="False"
@@ -218,6 +236,8 @@
 
             <!-- R4 C1 — btnMakeABLine (ABTrackAB). Starts disabled. Handler: btnMakeABLine_Click -->
             <Button x:Name="btnMakeABLine" Classes="imageButton"
+                    AutomationProperties.Name="Make AB line"
+                    ToolTip.Tip="Make AB line"
                     Grid.Row="4" Grid.Column="1"
                     Width="90" Height="80"
                     IsEnabled="False"
@@ -228,6 +248,8 @@
 
             <!-- R5 C0 — btnSelectCurveBk (ABLineCycleBk). Handler: btnSelectCurveBk_Click -->
             <Button x:Name="btnSelectCurveBk" Classes="imageButton"
+                    AutomationProperties.Name="Previous track"
+                    ToolTip.Tip="Previous track"
                     Grid.Row="5" Grid.Column="0"
                     Width="128" Height="68"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -237,6 +259,8 @@
 
             <!-- R5 C1 — btnSelectCurve (ABLineCycle). Handler: btnSelectCurve_Click -->
             <Button x:Name="btnSelectCurve" Classes="imageButton"
+                    AutomationProperties.Name="Next track"
+                    ToolTip.Tip="Next track"
                     Grid.Row="5" Grid.Column="1"
                     Width="128" Height="68"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -271,6 +295,8 @@
 
             <!-- R7 C1 — btnAddTime (background image JobNameTime). Tahoma 12 Bold. Handler: btnAddTime_Click -->
             <Button x:Name="btnAddTime" Classes="imageButton"
+                    AutomationProperties.Name="Add time to name"
+                    ToolTip.Tip="Add time to name"
                     Grid.Row="7" Grid.Column="1"
                     Width="144" Height="42"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -280,6 +306,8 @@
 
             <!-- R8 C0 — btnCancel (Cancel64). WinForms DialogResult.Cancel. Handler: btnCancel_Click -->
             <Button x:Name="btnCancel" Classes="imageButton"
+                    AutomationProperties.Name="Cancel"
+                    ToolTip.Tip="Cancel"
                     Grid.Row="8" Grid.Column="0"
                     Width="88" Height="56"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -289,6 +317,8 @@
 
             <!-- R8 C1 — btnExit (OK64). Tahoma 15.75 Bold, Foreground 192,64,0. Commits/closes. Handler: btnExit_Click -->
             <Button x:Name="btnExit" Classes="imageButton"
+                    AutomationProperties.Name="Save and close"
+                    ToolTip.Tip="Save and close"
                     Grid.Row="8" Grid.Column="1"
                     Width="88" Height="56"
                     HorizontalAlignment="Center" VerticalAlignment="Center"

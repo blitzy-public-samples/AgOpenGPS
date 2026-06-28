@@ -17,10 +17,11 @@ brief **`VALUE_SUMMARY.md` is on disk**.
 > **Accuracy contract.** This map records the **disposition** (the transformation applied) of every
 > artifact and a **parity status** that reflects the artifact's *actual state in the repository now*.
 > The migrated suite has converged: the full `AgOpenGPS.sln` builds clean in Debug **and** Release
-> (`TreatWarningsAsErrors`) for both `net8.0` and `net8.0-windows`, with **0 errors and 0 new C#
-> warnings** (the only residual notices are 8 pre-existing `AVLN3001` Avalonia-XAML runtime-loader
-> notices in unmodified views — not promoted by `TreatWarningsAsErrors`, out of scope). The local Linux
-> test run is **115 passed / 1 skipped / 0 failed** across all three assemblies, with **all five golden
+> (`TreatWarningsAsErrors`) for both `net8.0` and `net8.0-windows`, with **0 errors and 0
+> warnings** (including **0 `AVLN3001`** Avalonia-XAML runtime-loader notices — the eight views that
+> formerly emitted them now carry the standard public parameterless constructor, and
+> `MSBuildTreatWarningsAsErrors` promotes any such notice to an error). The local Linux
+> test run is **133 passed / 1 skipped / 0 failed** across all three assemblies, with **all five golden
 > suites — PGN, Guidance, ISOXML, Settings, and Field — captured, committed, and enforcing**. A row is
 > therefore marked **`At parity (local)`** when its replacement exists on disk, is integrated/wired, and
 > is build/test-verified green on the local Linux environment, with the shared residual being **tri-OS
@@ -257,7 +258,7 @@ findings.
 
 All five golden-file parity suites are **authored, committed, and enforcing** (each loader checks
 `File.Exists` and **fails** — not Ignores — when a required golden is absent). The local Linux run is
-115 passed / 1 skipped / 0 failed; the single skip is the `FormGPS`-graph-dependent ISOXML **export**
+133 passed / 1 skipped / 0 failed; the single skip is the `FormGPS`-graph-dependent ISOXML **export**
 driver (the import/round-trip ISOXML contract is enforced). Byte-stable fixtures are pinned via
 `.gitattributes` (`-text`). See `PARITY_REPORT.md` for the full proof.
 

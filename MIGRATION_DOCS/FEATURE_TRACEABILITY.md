@@ -30,14 +30,15 @@ sole acceptance criterion.
 > **Current status (read first).** The migration is **integrated**: all twelve projects target
 > `net8.0` (GPS and AgIO multi-target `net8.0;net8.0-windows`), the WinForms/WPF dependencies are
 > removed, and the GPS solution **builds cleanly** in Debug **and** Release (`TreatWarningsAsErrors`)
-> for every declared target — 0 errors (16 pre-existing Avalonia `AVLN3001` advisories on 8 unrelated
-> views, not escalated). The extracted GPS `Services/` (`PositionService`, `PgnDispatcher`,
+> for every declared target — 0 errors and 0 warnings (including **0 `AVLN3001`** — the eight views that formerly emitted these
+> advisories now carry the standard public parameterless constructor, and `MSBuildTreatWarningsAsErrors`
+> promotes any such notice to an error). The extracted GPS `Services/` (`PositionService`, `PgnDispatcher`,
 > `SectionService`, `FieldIoService`, `RenderCoordinator`), the `AvaloniaGeoViewport` OpenGL host, the
 > ~88 Avalonia views, and the `GPS/Classes/**` algorithm recompile are **all on disk and compiled into
 > the normal build**. The GPS shell is **functionally wired** — every operator command, the section
 > controls, the field/guidance dialog navigation, the steer wizard, the field open/close lifecycle, and
 > GPS↔AgIO auto-start/stop. **All five golden-file parity suites** (PGN, Guidance, ISOXML, Settings,
-> **Field**) are committed and **enforcing**, and the full local Linux test run is **115 passed / 1
+> **Field**) are committed and **enforcing**, and the full local Linux test run is **133 passed / 1
 > skipped / 0 failed**. The remaining residuals are **external-evidence / follow-up items** —
 > documented per feature below and consolidated in `PARITY_REPORT.md` → Open Risks.
 
@@ -205,7 +206,7 @@ day/night theme tokens were consolidated in this remediation pass.
 Every feature in the catalog is accounted for — nothing is added and nothing is removed, in keeping
 with the **100% functional-parity** acceptance bar. The byte-equivalence and round-trip proof behind
 each `At parity (local)` claim is recorded in **`PARITY_REPORT.md`** (golden-file suite names, the
-local 115-passed/1-skipped test run, the GL risk, the vulnerability audit, and every open risk); the
+local 133-passed/1-skipped test run, the GL risk, the vulnerability audit, and every open risk); the
 **file-by-file** old→new disposition for every artifact named above is in **`TRANSITION_MAP.md`**; the
 narrative spine is in **`CHANGELOG.md`**; the executive brief is in **`VALUE_SUMMARY.md`**.
 

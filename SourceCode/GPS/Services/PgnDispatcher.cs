@@ -10,7 +10,8 @@
 //
 // The on-wire contract is BYTE-FOR-BYTE preserved (docs/pgn-protocol.md L9–L53): header
 // 0x80 0x81 0x7F, single-byte PGN id, single-byte length, payload, trailing additive-checksum CRC;
-// loopback bind on 127.0.0.1:15555 and the AgIO peer on 127.255.255.255:17777. Verified by the
+// loopback bind on 127.0.0.1:15555 and the AgIO peer on 127.0.0.1:17777 (unicast loopback; the legacy
+// net48 directed-broadcast 127.255.255.255 peer was migrated to unicast — see L530 below and QA F4-C1). Verified by the
 // Parity golden suite (PgnFrameGoldenTests).
 //
 // Decoupling notes (AAP §0.6.1): every former direct FormGPS member access becomes a

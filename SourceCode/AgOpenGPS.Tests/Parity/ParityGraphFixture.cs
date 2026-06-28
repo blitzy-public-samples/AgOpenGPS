@@ -154,13 +154,15 @@ namespace AgOpenGPS.Tests.Parity
             g.Dubins = new CDubins();
             g.Guidance = new CGuidance(g.AppModel, g.Vehicle, g.Tool, g.Ahrs);
 
-            // Wire the cyclic guidance peers (the public post-construct seams). Required so the production
-            // CABLine.GetCurrentABLine pure-pursuit path can be driven without a null youturn/track peer.
-            g.ABLine.SetGuidanceReferences(g.Track, g.YouTurn, g.Bnd, g.Guidance);
-            g.Curve.SetGuidanceReferences(g.Track, g.ABLine, g.YouTurn, g.Bnd, g.Guidance);
-            g.Contour.SetGuidanceReferences(g.YouTurn, g.Guidance);
-            g.Track.SetGuidanceReferences(g.Curve, g.ABLine, g.YouTurn);
-            g.Guidance.SetGuidanceReferences(g.Curve, g.ABLine);
+            // Wire the cyclic guidance peers through the SAME production helper the composition root uses
+            // (GuidanceComposition.WireGuidanceReferences), so the parity graph and SourceCode/GPS/App.axaml.cs
+            // wire all SEVEN seams IDENTICALLY — a single source of truth (QA Issue 9 / PARITY_REPORT Open Risk
+            // #8). This both removes the prior drift (the fixture used to wire only five seams inline) and lets
+            // GuidanceCompositionTests assert the production wiring against the live graph. Required so the
+            // production CABLine.GetCurrentABLine pure-pursuit path can be driven without a null youturn/track/
+            // guidance peer.
+            GuidanceComposition.WireGuidanceReferences(
+                g.ABLine, g.Curve, g.Contour, g.Track, g.YouTurn, g.RecPath, g.Guidance, g.Bnd, g.Vehicle);
 
             return g;
         }

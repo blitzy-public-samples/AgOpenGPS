@@ -59,10 +59,14 @@ GPS/IMU Hardware → AgIO → UDP (127.x.x.x) → AgOpenGPS → Steering Output
 | Parameter | Value |
 |-----------|-------|
 | **AOG Listen Port** | 15555 (loopback) |
-| **AgIO Endpoint** | 127.255.255.255:17777 |
+| **AgIO Endpoint** | 127.0.0.1:17777 (unicast loopback) |
 | **Protocol** | UDP |
 | **Subnet** | 127.x.x.x (loopback) |
 | **Buffer Size** | 1024 bytes |
+
+> **[XPLAT] Loopback addressing.** Frozen ports **15555 / 17777** are unchanged; the destination
+> *address* migrated from the legacy directed-broadcast `127.255.255.255` to the explicit unicast
+> loopback host `127.0.0.1` so delivery works on Linux/macOS as well as Windows (QA F4-C1).
 
 ### PGN Message Format
 

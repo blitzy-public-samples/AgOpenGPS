@@ -80,11 +80,15 @@ jobs:
     - name: Install dependencies
       run: dotnet restore ${{env.SOLUTION_FILE_PATH}}
 
+    # [XPLAT] QA Issue 5: build AND test EXPLICITLY in the Release configuration (env.BUILD_CONFIGURATION)
+    # so the CI gate exercises the same analyzer + TreatWarningsAsErrors settings as the publish step and
+    # the local final-acceptance gate. Both steps pin -c Release in lockstep: the --no-build test run must
+    # match the build configuration, otherwise a Debug-defaulted test would not find the Release output.
     - name: Build
-      run: dotnet build --no-restore ${{env.SOLUTION_FILE_PATH}}
+      run: dotnet build -c ${{ env.BUILD_CONFIGURATION }} --no-restore ${{env.SOLUTION_FILE_PATH}}
 
     - name: Test
-      run: dotnet test --no-restore --no-build ${{env.SOLUTION_FILE_PATH}}
+      run: dotnet test -c ${{ env.BUILD_CONFIGURATION }} --no-restore --no-build ${{env.SOLUTION_FILE_PATH}}
 
     # [XPLAT] Per-RID SELF-CONTAINED publish — replaces the framework-dependent solution-level publish.
     # The output does NOT require a pre-installed .NET runtime on the target machine (cross-platform

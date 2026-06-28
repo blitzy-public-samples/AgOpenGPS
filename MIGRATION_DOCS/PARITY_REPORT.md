@@ -36,11 +36,11 @@ remediation pass — `Field/*.txt`) — they are **no longer `README.md` / `.git
 golden loader now **enforces presence** (`LoadRequired…` checks `File.Exists` and calls `Assert.Fail`
 when a required artifact is absent), so a missing required artifact **fails** the test rather than
 silently self-ignoring; the entire `Parity` suite runs green on the **local Linux development
-environment**, and the full `AgOpenGPS.Tests` assembly reports **93 passed / 1 intentional skip / 0
+environment**, and the full `AgOpenGPS.Tests` assembly reports **97 passed / 1 intentional skip / 0
 failed** (the single skip is the `FormGPS`-graph-dependent ISOXML export driver,
 `IsoXmlExport_DrivenFromDomainGraph_RequiresFormGpsGraph`, **not** a golden loader; the count rose from 79
 to 93 in the QA F5 remediation, which added 14 production-invoking guidance/section/algorithm parity tests).
-Across all three test assemblies the local Linux total is **129 passed / 1 skipped / 0 failed**
+Across all three test assemblies the local Linux total is **133 passed / 1 skipped / 0 failed**
 (`AgOpenGPS.Core.Tests` 33, `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 93). **The desktop-GL request hook is now wired** in both
 composition roots (`SourceCode/GPS/Program.cs` and `SourceCode/AgIO/Source/Program.cs` chain
 `AvaloniaGeoViewport.RequestDesktopGlProfile(...)` into `BuildAvaloniaApp()`), closing the bootstrap half
@@ -117,8 +117,7 @@ N — the running sum `crc += pgn[i]` for `i` in `2 … pgn.Length − 2`, then 
 the trailing CRC byte, dropping the frame on mismatch.
 
 **Ports / network.** AOG listens on loopback port **15555**; AgIO's endpoint is
-**`127.255.255.255:17777`**; all traffic stays on the **`127.x.x.x` loopback subnet**. These remain
-unchanged so the two-program loopback fabric is preserved bit-for-bit. _(See `docs/pgn-protocol.md`
+**`127.0.0.1:17777`** (explicit unicast loopback); all traffic stays on the **`127.x.x.x` loopback subnet**. The frozen loopback **ports 15555 / 17777**, the PGN frame, and the additive CRC are preserved bit-for-bit; only the destination address was migrated from the legacy net48 directed-broadcast baseline `127.255.255.255` to the unicast loopback host `127.0.0.1` (QA F4-C1) so the fabric delivers on Linux and macOS as well as Windows. _(See `docs/pgn-protocol.md`
 L9-22 for the frame structure, L26-35 for the CRC, and L39-53 for the network configuration.)_
 
 **Representative PGNs preserved** (id, decimal, length where fixed):
@@ -290,14 +289,12 @@ and path divergences. All cells below are the **target** end-state.
 | OS runner | RID(s) | Build | Unit + parity tests | Self-contained publish |
 |---|---|---|---|---|
 | `windows-latest` | `win-x64` | Pending CI run | Pending CI run | Pending CI run |
-| `ubuntu-latest` | `linux-x64` | **Green (local dev env): Debug + Release, 0 errors** | **Green (local dev env): 129 passed / 1 skipped / 0 failed** | Pending CI run |
+| `ubuntu-latest` | `linux-x64` | **Green (local dev env): Debug + Release, 0 errors** | **Green (local dev env): 133 passed / 1 skipped / 0 failed** | Pending CI run |
 | `macos-latest` | `osx-x64` **and** `osx-arm64` | Pending CI run | Pending CI run | Pending CI run |
 
 The `ubuntu-latest` Build and Unit+parity cells are recorded as **Green** because the identical
 build/test commands were run in this Linux development environment: `dotnet build SourceCode/AgOpenGPS.sln
--c Debug` and `-c Release` both report 0 errors (16 pre-existing Avalonia `AVLN3001` "no public
-constructor for runtime loader" advisories on 8 unrelated views × 2 TFMs, not escalated to errors under
-Release `TreatWarningsAsErrors`), and the three test assemblies report 129 passed / 1 skipped / 0 failed.
+-c Debug` and `-c Release` both report 0 errors (0 warnings, including 0 Avalonia `AVLN3001` "no public constructor for runtime loader" notices — the 8 views that formerly emitted them now carry the standard public parameterless constructor, and `MSBuildTreatWarningsAsErrors` promotes any such notice to an error), and the three test assemblies report 133 passed / 1 skipped / 0 failed.
 The `windows-latest` and `macos-latest` cells, and **all** self-contained publish cells, remain **Pending
 CI run** — they require GitHub-hosted runners not available in this offline environment.
 
@@ -312,7 +309,7 @@ _The build/release workflow matrix that produces these legs and artifacts is **o
 `.github/workflows/release.yml` declares the per-RID self-contained publish matrix with per-OS upload
 artifacts. What remains **Pending** is the **execution** of that matrix on GitHub-hosted runners and the
 recording of green results here — an external-evidence item (this offline environment cannot dispatch
-GitHub Actions). The local Linux leg is already proven (build + 129 tests green); see the row note
+GitHub Actions). The local Linux leg is already proven (build + 133 tests green); see the row note
 below._
 
 ---
@@ -372,7 +369,7 @@ and is listed first.
      ANGLE/EGL; Linux/X11: `Glx` ahead of EGL; both offer GL 3.2-compatibility then legacy 2.1, software
      last). macOS exposes no per-OS GL-profile knob through Avalonia platform options and relies on the
      runtime gate.
-   **Status: runtime fail-safe ENFORCED and unit-validated; desktop-GL request now WIRED.** The gate state
+   **Status: runtime fail-safe ENFORCED and unit-validated; desktop-GL request WIRED; production GL path RE-VERIFIED PASS end-to-end under software GL (llvmpipe) at the final checkpoint — only real-GPU per-OS confirmation remains (criteria enumerated in (b) below).** The gate state
    machine, one-shot `RenderingGated` event, `RequestDesktopGlProfile` null-builder rejection, and live
    Win32/X11 option-application were all exercised by an ad-hoc `AvaloniaGeoViewport` fixture and pass; the
    host compiles clean on `net8.0` and `net8.0-windows`, Debug + Release. **RESOLVED (a):** the composition
@@ -380,12 +377,52 @@ and is listed first.
    `AvaloniaGeoViewport.RequestDesktopGlProfile(...)` (and `SourceCode/AgIO/Source/Program.cs` applies it
    consistently for shared-bootstrap parity), so a desktop-GL **compatibility** profile is requested ahead
    of ANGLE/EGL on Windows (`Wgl`) and Linux/X11 (`Glx`); macOS exposes no per-OS GL-profile knob and relies
-   on the runtime gate. **STILL OPEN (b):** on-hardware, per-OS confirmation that a desktop-GL compatibility
-   context is actually obtained and that live rendering plus the `glReadPixels` `oglBack` section/lookahead
-   and flag-pick scans render correctly must be run on each target OS/RID and recorded here. This on-hardware
-   confirmation is an **external-evidence item** (it requires real GPUs on `windows` / `ubuntu` / `macos`
-   runners or devices, not available in this environment); it remains the dominant open feasibility risk for
-   the *immediate-mode-vs-GLES* question.
+   on the runtime gate. **STILL OPEN (b) — narrowed to real-GPU hosts only; verified PASS under software GL.**
+   On-hardware, per-OS confirmation on real GPUs remains an **external-evidence item** (it requires real GPUs
+   on `windows` / `ubuntu` / `macos` runners or devices, not available in this single headless Linux
+   container). **This risk was materially reduced by a fresh, independent runtime re-verification at the final
+   acceptance checkpoint**, which drove the **production** `AvaloniaGeoViewport` GL path end-to-end under
+   `xvfb-run` + Mesa software GL (`LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`) and captured a clean
+   two-mode contrast from a single binary:
+   - **Mode A — default production policy (Avalonia's built-in `{ "llvmpipe" }` GLX blacklist active):**
+     `OnOpenGlInit` does **not** fire (`IsContextAudited=False`) and the host logs the exact framework cause —
+     `Renderer 'llvmpipe (LLVM 20.1.8, 256 bits)' is blacklisted by 'llvmpipe'` thrown from
+     `Avalonia.X11.Glx.GlxDisplay..ctor` — after which Avalonia falls back to its CPU compositor. This
+     **reproduces the QA finding's observed `IsContextAudited=False`** and proves the headless-container
+     limitation is **Avalonia's deliberate software-renderer blacklist policy, not an AgOpenGPS defect**: on a
+     real GPU host the GPU renderer is not blacklisted, so the default production config initializes GL with
+     **no code change**.
+   - **Mode B — verification override (blacklist emptied via `X11PlatformOptions.GlxRendererBlacklist` in the
+     test host only):** the **real production** `AvaloniaGeoViewport.OnOpenGlInit` fires; OpenTK 3.3.3 binds
+     (proven by `IsContextAudited=True`, which `HandleOpenGlInit` sets only **after** `EnsureGlBindings`
+     succeeds); the context audits as desktop GL **`4.5 (Compatibility Profile) Mesa 25.2.8` —
+     `IsLikelyOpenGlEs=false`, `IsRenderingGated=false`** (so the immediate-mode `GLW` fixed-function pipeline
+     is supported, directly answering the *immediate-mode-vs-GLES* question for software GL); and the
+     production `GL.ReadPixels` readback path executes with **`GL error = NoError`**, returning a valid RGBA
+     sample. **OVERALL: PASS.**
+   - **Independent environment proof:** a dependency-free `ctypes` GLX **offscreen-pbuffer** probe (no
+     Avalonia, no window/colormap) created a desktop-GL context directly against `libGL.so.1` and reported
+     `GL_VERSION = 4.5 (Compatibility Profile) Mesa 25.2.8`, `GLX 1.4`, 36 FBConfigs, GLSL `4.50`,
+     `desktop_gl=True` — confirming the Mesa stack itself yields a **fixed-function-capable** desktop-GL
+     context, so the only barrier between this container and a firing `OnOpenGlInit` is Avalonia's blacklist
+     policy (cleared trivially on GPU hosts where it does not apply).
+
+   **Remaining real-GPU acceptance criteria** (must be recorded here before final delivery, per target OS/RID
+   `win-x64` / `linux-x64` / `osx-x64` / `osx-arm64`, using the **default** production config with **no**
+   blacklist override):
+   1. `AvaloniaGeoViewport.OnOpenGlInit` fires (host log line "OpenTK 3.3.3 GL entry points bound to Avalonia
+      GL context.").
+   2. `IsContextAudited == true`, with the audited `GlVersion` / `GlRenderer` / `GlVendor` /
+      `GlShadingLanguageVersion` recorded.
+   3. `IsLikelyOpenGlEs == false` and `IsRenderingGated == false` (desktop-GL, immediate-mode pipeline live)
+      — **or**, if a host yields only GLES/ANGLE, that the fail-safe gate engages without crash and the
+      operator-facing one-shot `RenderingGated` warning is raised (the graceful-degradation path).
+   4. Live field render is non-blank, and the three `GL.ReadPixels` readback sites — coverage scan
+      (`RenderCoordinator.cs` ~L1560, `PixelFormat.Green`), zoom-overlap (~L2102), and flag-pick RGB
+      (~L2187) — each return `GL error == NoError` with plausible samples.
+
+   It remains the dominant open feasibility item for the *immediate-mode-vs-GLES* question **on GPU hardware
+   specifically**; under software GL (llvmpipe) it is now **verified PASS** exactly as enumerated above.
    **RESOLVED (c) — OpenTK↔Avalonia GL binding delegate defect (found by QA Checkpoint F10; DISTINCT from the
    GLES/ANGLE context-type risk above).** A defect in `EnsureGlBindings`
    (`SourceCode/GPS/Controls/AvaloniaGeoViewport.cs`) made the OpenTK 3.3.3 binding throw on **every** platform
@@ -467,29 +504,36 @@ and is listed first.
    previously tracked here is also **closed at CP9**: the PGN / Guidance / ISOXML / Settings golden
    fixtures are captured, committed under `Parity/Golden/**`, and **enforced** (each `LoadRequired…`
    loader fails when a required artifact is absent — no silent self-ignore), and the full `Parity` suite
-   is **green on the local Linux environment** (the full `AgOpenGPS.Tests` assembly reports 93 passed / 1 intentional skip / 0 failed; 129 passed / 1 skipped across all three test assemblies). The **only
+   is **green on the local Linux environment** (the full `AgOpenGPS.Tests` assembly reports 97 passed / 1 intentional skip / 0 failed; 133 passed / 1 skipped across all three test assemblies). The **only
    residual parity item** is **tri-OS CI confirmation** (the `windows` / `macos` legs have not yet run);
    that cross-OS confirmation is tracked under **Golden-File Parity Suites** and **Cross-OS CI Matrix**
    above, not here.
-8. **Guidance peer-reference wiring (latent composition-root gap — discovered during the final
-   remediation pass; not part of the 31 reviewed findings).** The guidance classes expose a
-   `SetGuidanceReferences(...)` method (defined on `CABCurve`, `CABLine`, `CContour`, `CTrack`,
-   `CYouTurn`, `CGuidance`, and `CRecordedPath`) intended to wire the cyclic guidance peers to one
-   another, but the **migrated composition root** (`Program.cs` / `App.axaml.cs`) currently has **zero
-   callers** of it and constructs **no live `new CGuidance(...)`**. The guidance **mathematics are present
-   and now production-proven**: the F5 remediation pass added `SourceCode/AgOpenGPS.Tests/Parity/ParityGraphFixture.cs`,
-   which **does** construct a live `CGuidance` and invoke `SetGuidanceReferences(...)` across all cyclic
-   peers (`CABLine`/`CABCurve`/`CContour`/`CTrack`/`CGuidance`), and the production-invoking parity suites
-   exercise the real `DoSteerAngleCalc` / `GetCurrentABLine` / `SectionService` / Dubins / contour / curve /
-   you-turn / recorded-path methods over that wired graph **without NRE** — so the seam itself is proven to
-   work. This does **not** affect the frozen-output contract. What remains is solely that the **composition
-   root** has not yet replicated this wiring, so the **end-to-end live guidance pipeline** (as opposed to the
-   math exercised through the test fixture) is not yet wired at application startup and could
-   `NullReferenceException` on a live guidance path until it is. This is a **pre-existing** gap (the WinForms
-   `FormGPS` god-object performed this wiring implicitly; the decoupling extracted the seam but the root has
-   not yet called it). It is recorded here as an open integration risk for a follow-up wiring task; it is
-   **out of scope of the F5 guidance-parity findings** addressed in this remediation pass (which concern test
-   fidelity/coverage, CI, and documentation — not composition-root wiring) and was not introduced by it.
+8. **Guidance peer-reference wiring (composition-root gap) — RESOLVED (QA Issue 9).** The guidance classes
+   expose `Set*References(...)` seams (on `CABLine`, `CABCurve`, `CContour`, `CTrack`, `CYouTurn`,
+   `CGuidance`, and `CRecordedPath`) that wire the cyclic guidance peers to one another. Previously the
+   migrated composition root (`App.axaml.cs`) constructed the guidance objects but had **zero callers** of
+   those seams and constructed **no live `new CGuidance(...)`**, so a live AutoSteer fix could
+   `NullReferenceException` on `CABLine.GetCurrentABLine` / `CABCurve.GetCurrentCurveLine` (reached from
+   `PositionService` on every fix while AutoSteer is engaged on a track). **This is now fixed at its root
+   cause.** A single source-of-truth helper,
+   `AgOpenGPS.Services.GuidanceComposition.WireGuidanceReferences(...)`
+   (`SourceCode/GPS/Services/GuidanceComposition.cs`), wires **all seven** seams — `CABLine`, `CABCurve`,
+   `CContour`, `CTrack`, `CYouTurn`, `CGuidance`, and `CRecordedPath` (the prior fixture wired only five,
+   omitting `CYouTurn.SetGuidanceReferences` and `CRecordedPath.SetReferences`). The composition root
+   (`SourceCode/GPS/App.axaml.cs`, step 9) now constructs a live `CGuidance(appModel, vehicle, tool, ahrs)`
+   and calls that helper; `SourceCode/AgOpenGPS.Tests/Parity/ParityGraphFixture.cs` was refactored to call
+   the **same** helper, so the production graph and the parity graph wire the peers **identically** (single
+   source of truth). A new composition suite,
+   `SourceCode/AgOpenGPS.Tests/Parity/GuidanceCompositionTests.cs`, enforces the contract:
+   `CompositionRoot_ConstructsLiveGuidance` (a live `CGuidance` is built),
+   `WireGuidanceReferences_WiresEveryGuidancePeer_NoNullPeer` (every one of the seven seams' peer fields is
+   non-null after composition, asserted by reflection), `WiredGraph_CanInvokeRealDoSteerAngleCalc_WithoutNullPeer`
+   (the real private `CGuidance.DoSteerAngleCalc()` runs over the composed graph **without NRE** — the exact
+   path the finding flagged), and `WireGuidanceReferences_NullCollaborator_ThrowsArgumentNullException` (the
+   helper fails fast on an incomplete graph rather than deferring to a runtime NRE). The four new tests pass
+   and the guidance/section production-parity suites remain green, so **no guidance output changed**
+   (frozen-output contract preserved, AAP §0.2.2/§0.7.1). **Status: RESOLVED — the live guidance pipeline is
+   constructed and fully peer-wired at application startup, verified by an executable composition-root test.**
 
 **Accepted capability gaps (feature-completeness, not parity, risks).** The following are
 **Feature-gated (per-OS)** by design — they degrade gracefully where no cross-platform equivalent

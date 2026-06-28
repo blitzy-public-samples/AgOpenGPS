@@ -121,6 +121,8 @@
                         VerticalAlignment="Bottom"
                         Spacing="6">
                 <Button x:Name="buttonCancel"
+                        AutomationProperties.Name="Cancel"
+                        ToolTip.Tip="Cancel"
                         Width="105"
                         Height="75"
                         Padding="0"
@@ -133,6 +135,8 @@
                            Stretch="Uniform" />
                 </Button>
                 <Button x:Name="buttonOK"
+                        AutomationProperties.Name="OK"
+                        ToolTip.Tip="OK"
                         Width="105"
                         Height="75"
                         Padding="0"

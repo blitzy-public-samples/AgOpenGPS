@@ -94,8 +94,47 @@ namespace AgLibrary.Settings
                 var enumValue = Enum.Parse(fieldType, value, ignoreCase: true);
                 pinfo.SetValue(obj, enumValue);
             }
-            else if (fieldType.IsPrimitive || fieldType == typeof(decimal))
+            else if (fieldType == typeof(double) || fieldType == typeof(float) || fieldType == typeof(decimal))
             {
+                // [XPLAT] Cross-platform/culture hardening (QA Issue 8) — see MIGRATION_DOCS/TRANSITION_MAP.md.
+                // Parse floating-point / decimal scalars with a STRICT, culture-invariant policy instead of
+                // Convert.ChangeType. Convert.ToDouble/ToSingle/ToDecimal apply NumberStyles.Float |
+                // NumberStyles.AllowThousands, so under a comma-decimal locale (e.g. de-DE) a CORRUPT value
+                // such as "0,64" was silently re-interpreted as the thousands-grouped "064" => 64 — a
+                // different magnitude for a safety-sensitive setting (maxAngularVelocity=0.64°/s). NumberStyles.Float
+                // deliberately EXCLUDES AllowThousands, so a stray comma is rejected; on failure we throw so the
+                // caller (LoadXMLFile) records LoadResult.Failed and the field keeps its existing default
+                // (fail closed). Files this writer produces always use the invariant '.' separator
+                // (SaveXMLFile -> Convert.ToString(value, InvariantCulture)), so valid round-trips are
+                // unaffected and the frozen settings-XML round-trip contract (AAP §0.2.2) is preserved.
+                object parsedValue;
+                if (fieldType == typeof(double))
+                {
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleValue))
+                        throw new FormatException($"Invalid invariant Double value '{value}'.");
+                    parsedValue = doubleValue;
+                }
+                else if (fieldType == typeof(float))
+                {
+                    if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatValue))
+                        throw new FormatException($"Invalid invariant Single value '{value}'.");
+                    parsedValue = floatValue;
+                }
+                else // decimal
+                {
+                    if (!decimal.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out decimal decimalValue))
+                        throw new FormatException($"Invalid invariant Decimal value '{value}'.");
+                    parsedValue = decimalValue;
+                }
+
+                pinfo.SetValue(obj, parsedValue);
+            }
+            else if (fieldType.IsPrimitive)
+            {
+                // [XPLAT] Non-floating primitives (int/long/short/byte/bool/char/…). Convert.ChangeType with
+                // InvariantCulture already fails closed for these on a corrupt comma value: the integer
+                // converters use NumberStyles.Integer (no decimal point / no thousands), so "0,64" throws
+                // here too and LoadXMLFile records LoadResult.Failed — behaviour preserved exactly.
                 object parsedValue = Convert.ChangeType(value, fieldType, CultureInfo.InvariantCulture);
                 pinfo.SetValue(obj, parsedValue);
             }

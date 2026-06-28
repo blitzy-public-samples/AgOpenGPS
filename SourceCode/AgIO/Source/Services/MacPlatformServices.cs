@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using AgOpenGPS.Core.Platform;
 
 namespace AgIO.Services
@@ -19,7 +20,8 @@ namespace AgIO.Services
     /// <c>~/Library/Application Support</c> (not <c>~/.config</c>), and serial ports are discovered from
     /// the <c>/dev/cu.*</c> call-out device nodes. Monitor brightness is intentionally feature-gated to a
     /// no-op (AAP §0.6.3), preserving the <c>-1</c> "not available" contract of the former WMI controller,
-    /// and single-instance is guarded with an exclusive lockfile (macOS has no named <c>Mutex</c>).
+    /// and single-instance is guarded with an exclusive lockfile (macOS has no named <c>Mutex</c>) plus an
+    /// explicit advisory <c>flock(2)</c> lock that fails closed (QA Issue 4 — parity with GPS).
     /// Every member degrades gracefully and never throws on environmental failure (AAP §0.6.5).
     /// </remarks>
     public sealed class MacPlatformServices : IPlatformServices
@@ -29,6 +31,20 @@ namespace AgIO.Services
         /// identifier that sanitises to an empty string. Keeps the guard usable even for degenerate input.
         /// </summary>
         private const string DefaultLockName = "AgIO_instance";
+
+        // [XPLAT] macOS-supported advisory whole-file lock flock(2) (QA Issue 4 — parity with the GPS
+        // MacPlatformServices single-instance guard; see SourceCode/GPS/Platform/MacPlatformServices.cs and
+        // MIGRATION_DOCS/TRANSITION_MAP.md). FileStream.Lock (an fcntl byte-range lock) is unsupported on
+        // macOS and throws there, so the BSD advisory whole-file lock flock(2) is used instead, applied to
+        // the lock-file handle's file descriptor. LOCK_EX (exclusive) | LOCK_NB (non-blocking) acquire;
+        // LOCK_UN release. This gives AgIO the same explicit, stronger cross-process semantics as GPS rather
+        // than relying on FileShare.None alone.
+        private const int LOCK_EX = 2;
+        private const int LOCK_NB = 4;
+        private const int LOCK_UN = 8;
+
+        [DllImport("libc", EntryPoint = "flock", SetLastError = true)]
+        private static extern int Flock(int handle, int operation);
 
         /// <summary>
         /// Absolute path to the per-user AgOpenGPS application-data / configuration root on macOS,
@@ -122,10 +138,12 @@ namespace AgIO.Services
             {
                 var stream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
 
-                // [XPLAT] Advisory byte-range lock as an extra signal on platforms that support it.
-                // FileStream.Lock is unsupported on macOS (CA1416) and would throw at runtime there, so
-                // it is only attempted on Windows/Linux; on macOS the FileShare.None handle is the real
-                // cross-process guard. The call remains best-effort even where supported.
+                // [XPLAT] Advisory whole-file lock as an explicit, stronger cross-process signal on top of
+                // the FileShare.None handle. FileStream.Lock (fcntl byte-range) is unsupported on macOS
+                // (CA1416) and would throw at runtime there, so it is used only on Windows/Linux; on macOS
+                // we instead take an explicit flock(2) advisory lock (QA Issue 4 — parity with GPS), which
+                // FAILS CLOSED: if the advisory lock cannot be acquired we never permit a second instance
+                // (a second AgIO could drive conflicting serial/UDP hardware operations).
                 if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
                 {
                     try
@@ -135,6 +153,18 @@ namespace AgIO.Services
                     catch
                     {
                         // advisory lock failed — FileShare.None already guarantees exclusivity.
+                    }
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    // [XPLAT] Explicit macOS advisory lock via flock(2) on the lock-file descriptor. A
+                    // non-zero return means the advisory lock could not be acquired -> FAIL CLOSED.
+                    int fd = stream.SafeFileHandle.DangerousGetHandle().ToInt32();
+                    if (Flock(fd, LOCK_EX | LOCK_NB) != 0)
+                    {
+                        stream.Dispose();
+                        instanceLock = new NoOpDisposable();
+                        return false;
                     }
                 }
 
@@ -213,7 +243,10 @@ namespace AgIO.Services
                 _disposed = true;
 
                 // [XPLAT] Mirror the acquisition guard: FileStream.Unlock is unsupported on macOS
-                // (CA1416), so only release the advisory lock on the platforms where it was taken.
+                // (CA1416), so the byte-range advisory lock is released only on Windows/Linux; on macOS the
+                // flock(2) advisory lock is released explicitly with LOCK_UN (QA Issue 4 — parity with GPS).
+                // Closing the descriptor also releases the lock, but the explicit unlock documents intent
+                // and is harmless if redundant.
                 if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
                 {
                     try
@@ -223,6 +256,18 @@ namespace AgIO.Services
                     catch
                     {
                         // the advisory lock may never have been applied — ignore.
+                    }
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    try
+                    {
+                        int fd = _stream.SafeFileHandle.DangerousGetHandle().ToInt32();
+                        Flock(fd, LOCK_UN);
+                    }
+                    catch
+                    {
+                        // advisory unlock; ignore — closing the stream releases the lock anyway.
                     }
                 }
 

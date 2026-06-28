@@ -34,26 +34,73 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 > reach every `avares://` view; and the Release gate now promotes Avalonia/MSBuild-task warnings (not
 > just Roslyn `CS####`) to errors, so the zero-warning acceptance bar is actually enforced in Release
 > and on the tri-OS CI matrix (see the **Build/CI** area, **F1-001**).
-> The local Linux test run is **129 passed / 1 skipped / 0 failed** across all three assemblies
-> (`AgOpenGPS.Core.Tests` 33, `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 93 — the latter raised from 79 by the
-> QA F5 production-invoking parity additions), and **all five golden-file
+> The local Linux test run is **133 passed / 1 skipped / 0 failed** across all three assemblies
+> (`AgOpenGPS.Core.Tests` 33, `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 97 — the latter raised from 79 by the
+> QA F5 production-invoking parity additions, plus a further +4 by the QA final_alt guidance composition-root tests), and **all five golden-file
 > parity suites — PGN, Guidance, ISOXML, Settings, and Field — are authored, committed, and enforcing**
 > (each loader fails, not skips, when a required golden is absent). There is **no remaining
 > `<Compile Remove>` / `<AvaloniaXaml Remove>` gating** in any project; the `FormGPS`→services decoupling
 > is complete (the only residual `FormGPS` tokens are `// [XPLAT]` provenance comments). The honest
 > residuals carried in `PARITY_REPORT.md` are: **(1) tri-OS CI execution** on GitHub-hosted runners (the
-> matrices are on disk; execution is the external-evidence step); **(2) on-hardware desktop-GL
-> confirmation (Open Risk #1)** — the `RequestDesktopGlProfile` hook is wired and the GLES/ANGLE
-> runtime fail-safe enforced, with per-OS hardware confirmation the residual; **(3) the latent live
-> `SetGuidanceReferences` peer-wiring (Open Risk #8)**, a pre-existing composition gap outside the 31
-> review findings; and **(4)** the single skipped `FormGPS`-graph-dependent ISOXML **export** driver
-> (the ISOXML import/round-trip contract is enforced).
+> matrices are on disk; execution is the external-evidence step); **(2) real-GPU desktop-GL
+> confirmation (Open Risk #1)** — the `RequestDesktopGlProfile` hook is wired, the GLES/ANGLE runtime
+> fail-safe enforced, and the production GL path is now **re-verified PASS end-to-end under software GL**
+> (`OnOpenGlInit` fires, OpenTK binds, desktop-GL `4.5 (Compatibility Profile)`, `GL.ReadPixels` = `NoError`),
+> leaving only per-OS **real-GPU** confirmation as the external-evidence residual (criteria enumerated in
+> Open Risk #1); and **(3)** the single skipped `FormGPS`-graph-dependent ISOXML **export** driver
+> (the ISOXML import/round-trip contract is enforced). _Open Risk #8 (guidance peer-wiring) was closed by
+> this pass via `GuidanceComposition.WireGuidanceReferences` + `GuidanceCompositionTests`._
 
 ---
 
 ## [Unreleased] — net48/WinForms → net8.0/Avalonia cross-platform migration
 
 _Single-phase migration within the one solution; converged at the final code-review remediation pass._
+
+> **[XPLAT] QA Checkpoint final_alt remediation — final end-to-end delivery gate (9 findings: 0
+> Critical, 1 Major, 8 Minor; all resolved + verified).** Static gate after this pass: the full
+> `AgOpenGPS.sln` (all twelve projects, `net8.0` + `net8.0-windows`) builds **0 errors / 0 warnings**
+> under `TreatWarningsAsErrors` + `MSBuildTreatWarningsAsErrors` (including **0 `AVLN3001`**); the three
+> test assemblies report **133 passed / 1 skipped / 0 failed** (`AgOpenGPS.Core.Tests` 33,
+> `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 97 — the +4 over the prior 129/93 is the new guidance
+> composition-root suite), culture-invariant on a `de-DE` re-run. Changes by area:
+> >
+> > - **Guidance composition (C2 / Open Risk #8) — Minor:** added `GPS/Services/GuidanceComposition.cs`
+> >   (`WireGuidanceReferences`) as the single source of truth for the seven late guidance peer-wirings
+> >   (`CABLine`/`CABCurve`/`CContour`/`CTrack`/`CYouTurn`/`CRecordedPath`/`CGuidance`); `App.axaml.cs`
+> >   now constructs the live `CGuidance` and calls it, and `AgOpenGPS.Tests/Parity/ParityGraphFixture`
+> >   calls the same helper. New `GuidanceCompositionTests` assert every late-wired peer is non-null.
+> >   _Open Risk #8 → RESOLVED._
+> > - **Steer wizard (F-020) — Minor:** `FormSteerView`'s Wizard button now routes through an injected
+> >   real-adapter launcher (`App.axaml.cs` `OpenSteerConfig` passes `openSteerWizard`); the inert
+> >   Null-adapter `FormSteerWizView()` path is confined to the designer/previewer ctor. Verified at
+> >   runtime on Avalonia.Headless — the production button invokes the real launcher.
+> > - **Settings (G5 / G7) — Minor:** `AgLibrary/Settings/XmlSettingsHandler` parses floating-point
+> >   settings with strict `TryParse(NumberStyles.Float, InvariantCulture)` and fails the load on an
+> >   invalid numeric, so a corrupt comma-decimal `0,64` no longer silently coerces to `64` under a
+> >   comma-decimal locale (verified under `de-DE`).
+> > - **Platform services (G4) — Minor:** AgIO macOS single-instance now P/Invokes `flock(2)` (parity
+> >   with GPS) instead of relying on `FileShare.None` alone.
+> > - **Accessibility (G2) — Minor:** 19 image-only `Button`/`ToggleButton` controls across
+> >   `FormInputDialogView` / `FormDialogView` / `FormABDrawView` gained `AutomationProperties.Name` +
+> >   `ToolTip.Tip` (verified live via Avalonia.Headless).
+> > - **Build / CI (G6) — Minor:** `build.yml` + `release.yml` build/test steps now pin
+> >   `-c ${{ env.BUILD_CONFIGURATION }}` (Release) so the CI gate matches the analyzer/warning gate.
+> > - **Docs (G8) — Minor:** test-count and `AVLN3001` figures reconciled to the final 0-warning state;
+> >   the loopback *address* docs (`docs/pgn-protocol.md`, `docs/architecture.md`, this file) now
+> >   distinguish the legacy directed-broadcast `127.255.255.255` baseline from the migrated explicit
+> >   unicast `127.0.0.1` (frozen ports **15555 / 17777** unchanged).
+> > - **Rendering (G3 / Open Risk #1) — Major:** the production `AvaloniaGeoViewport` GL path was
+> >   **re-verified PASS end-to-end under software GL** (`xvfb` + Mesa `llvmpipe`). A single harness binary
+> >   captured both states: with Avalonia's default `{"llvmpipe"}` GLX blacklist active, `OnOpenGlInit` does
+> >   not fire (`IsContextAudited=False`; framework logs `Renderer 'llvmpipe …' is blacklisted by 'llvmpipe'`)
+> >   — reproducing the QA observation and proving the limitation is **Avalonia's policy, not an AgOpenGPS
+> >   defect**; with the blacklist emptied in the **test host only**, the **real** `OnOpenGlInit` fires, OpenTK
+> >   3.3.3 binds (`IsContextAudited=True`), the context audits as desktop GL **`4.5 (Compatibility Profile)`,
+> >   `IsRenderingGated=False`** (non-GLES — immediate-mode `GLW` supported), and `GL.ReadPixels` returns
+> >   `NoError`. An independent `ctypes` GLX off-screen-pbuffer probe corroborates a desktop-GL `4.5` context
+> >   is obtainable from the same Mesa stack. **Real-GPU per-OS confirmation remains the only residual**, now
+> >   with precise enumerated acceptance criteria recorded in `PARITY_REPORT.md` Open Risk #1.
 
 > **[XPLAT] QA Checkpoint F10 remediation — End-to-end MVVM wiring, OpenGL re-host & cross-layer flow (2
 > findings: 0 Critical, 1 Major, 0 Minor, 1 Info; all resolved + runtime-verified on Linux).** F10 confirmed

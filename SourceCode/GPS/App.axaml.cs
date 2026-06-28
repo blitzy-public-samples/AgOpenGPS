@@ -266,6 +266,21 @@ namespace AgOpenGPS
                 CYouTurn yt = new CYouTurn(appModel, vehicle, tool, mc, sounds);
                 CTrack trk = new CTrack(tool, appModel);
                 CRecordedPath recPath = new CRecordedPath(appModel, sim);
+
+                // [XPLAT] QA Issue 9 / PARITY_REPORT Open Risk #8 — construct the live Stanley steering-angle
+                // calculator (CGuidance) and wire every cyclic guidance peer reference. The net48/WinForms
+                // build resolved these peers implicitly through the shared FormGPS (`mf`) god-object; the
+                // migration removed that back-reference, so CGuidance must be constructed here and the seven
+                // Set*References seams wired explicitly. Without this, CABLine.GetCurrentABLine() and
+                // CABCurve.GetCurrentCurveLine() — reached from PositionService on every fix while AutoSteer is
+                // engaged on a track — would dereference a null guidance peer (`gyd`) and throw
+                // NullReferenceException. Wiring is delegated to GuidanceComposition.WireGuidanceReferences so
+                // the production composition graph and the behavioural-parity fixture (ParityGraphFixture) wire
+                // the peers IDENTICALLY (single source of truth). Behaviour-frozen (AAP §0.2.2/§0.7.1): only the
+                // wiring location moved; no guidance output changes.
+                CGuidance gyd = new CGuidance(appModel, vehicle, tool, ahrs);
+                GuidanceComposition.WireGuidanceReferences(ABLine, curve, ct, trk, yt, recPath, gyd, bnd, vehicle);
+
                 CFieldData fd = new CFieldData(appModel, tool, bnd);
                 CSmartWAS smartWAS = new CSmartWAS(appModel);
 
@@ -902,6 +917,21 @@ namespace AgOpenGPS
                 // The IBoundaryFieldData seam the boundary dialogs use (fd area recompute + render extents).
                 IBoundaryFieldData boundaryFieldData = new BoundaryFieldDataAdapter(fd, render);
 
+                // [XPLAT] QA Issue 3 — single real-adapter factory + launcher for the Steer/WAS calibration
+                // wizard, shared by BOTH production entry points so neither can open an inert Null-adapter
+                // wizard: (1) the MainView AutoSteer button (ShellCommands.OpenSteerWizard) and (2) the
+                // "Wizard" button inside the AutoSteer Configuration dialog (FormSteerView.btnSteerWizard_Click,
+                // which receives `openSteerWizard` below). The factory binds the wizard to the live
+                // PGN/vehicle/AHRS/tram state via the same ISteerWiz* adapters the shell already used.
+                Func<FormSteerWizView> makeSteerWizard = () => new FormSteerWizView(
+                    new SteerWizVehicleAdapter(vehicle, tram),
+                    new SteerWizConfigServiceAdapter(pgn),
+                    new SteerWizTelemetryAdapter(mc, appModel, render, pgn, ahrs),
+                    new SteerWizAhrsAdapter(ahrs),
+                    new SteerWizGuidanceAdapter(),
+                    mainView);
+                Action openSteerWizard = () => ShowEditorDialog(makeSteerWizard());
+
                 ShellCommands shellCommands = new ShellCommands
                 {
                     // --- Guidance / steering toggles (return resulting visual state) ---
@@ -1186,19 +1216,18 @@ namespace AgOpenGPS
                         new SteerSettingsConfigServiceAdapter(pgn, ABLine, vehicle),
                         new SteerSettingsTelemetryAdapter(mc, appModel, render, position),
                         new SteerSettingsSmartWASAdapter(smartWAS),
-                        mainView)),
+                        mainView,
+                        openSteerWizard)),   // [XPLAT] QA Issue 3 — real-adapter wizard launcher (no inert path)
 
                     // Steer/WAS calibration wizard (finding MVC-1/MVC-2, F-020). Fully migrated; the ISteerWiz*
-                    // adapters bind the wizard to the live PGN/vehicle/AHRS state. NOTE: sideHillCompFactor is
-                    // backed by the persisted setting because no live CGuidance peer is wired (latent gap is
-                    // documented in PARITY_REPORT.md), so calibration round-trips through settings, not a NRE.
-                    OpenSteerWizard = () => ShowEditorDialog(new FormSteerWizView(
-                        new SteerWizVehicleAdapter(vehicle, tram),
-                        new SteerWizConfigServiceAdapter(pgn),
-                        new SteerWizTelemetryAdapter(mc, appModel, render, pgn, ahrs),
-                        new SteerWizAhrsAdapter(ahrs),
-                        new SteerWizGuidanceAdapter(),
-                        mainView)),
+                    // adapters bind the wizard to the live PGN/vehicle/AHRS state. NOTE: the wizard's
+                    // sideHillCompFactor is intentionally backed by the persisted VehicleSettings value — which
+                    // is precisely the value CGuidance reads at construction (setAS_sideHillComp) — so wizard
+                    // calibration round-trips through settings, not a live CGuidance instance, and never NREs.
+                    // The former "no live CGuidance peer is wired" latent gap (QA Issue 9 / PARITY_REPORT Open
+                    // Risk #8) is now CLOSED: a live CGuidance is constructed and fully peer-wired in step 9 via
+                    // GuidanceComposition.WireGuidanceReferences, so the PositionService guidance path is safe.
+                    OpenSteerWizard = openSteerWizard,   // [XPLAT] QA Issue 3 — shared real-adapter launcher (see makeSteerWizard above)
 
                     // btnABLine "+" / quick AB add (FormQuickAB). isEasyDriveMode is false in the migrated shell.
                     OpenQuickAB = () => ShowEditorDialog(new FormQuickABView(
