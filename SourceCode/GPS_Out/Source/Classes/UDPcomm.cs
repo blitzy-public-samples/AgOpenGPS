@@ -1,12 +1,19 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Globalization;   // [XPLAT] InvariantCulture for culture-independent log text on all OS locales
+using Avalonia.Threading;     // [XPLAT] Dispatcher.UIThread.Post replaces WinForms Control.Invoke for cross-thread UI marshalling
 
 namespace GPS_Out
 {
     public class UDPComm
     {
-        private readonly frmStart mf;
+        // [XPLAT] the former view back-reference (god-object) was removed; collaborators are now
+        // constructor-injected so this transport no longer depends on the Avalonia view layer.
+        private readonly clsTools tools;
+        private readonly Action<byte[]> routeAgio;
+        private readonly Action<byte[]> routeAog;
         private byte[] buffer = new byte[1024];
         private string cConnectionName;
         private bool cIsUDPSendConnected;
@@ -17,24 +24,25 @@ namespace GPS_Out
         private int cSendToPort;
         private IPAddress cSourceIP;
         private string cSubNet;
-        private HandleDataDelegateObj HandleDataDelegate = null;
         private Socket recvSocket;
         private Socket sendSocket;
 
-        public UDPComm(frmStart CallingForm, int ReceivePort, int SendToPort, int SendFromPort,
-            string ConnectionName, string SourceIPaddress, string DestinationEndPoint = "")
+        public UDPComm(clsTools Tools, int ReceivePort, int SendToPort, int SendFromPort,
+            string ConnectionName, string SourceIPaddress,
+            Action<byte[]> RouteAgio, Action<byte[]> RouteAog, string DestinationEndPoint = "")
         {
-            mf = CallingForm;
+            // [XPLAT] assign injected collaborators BEFORE SetEP/SetSourceIP: those run during
+            // construction and use `tools` for property load and error logging.
+            tools = Tools;
             cReceivePort = ReceivePort;
             cSendToPort = SendToPort;
             cSendFromPort = SendFromPort;
             cConnectionName = ConnectionName;
+            routeAgio = RouteAgio;
+            routeAog = RouteAog;
             SetEP(DestinationEndPoint);
             SetSourceIP(SourceIPaddress);
         }
-
-        // Status delegate
-        private delegate void HandleDataDelegateObj(int port, byte[] msg);
 
         public bool IsUDPSendConnected { get => cIsUDPSendConnected; set => cIsUDPSendConnected = value; }
 
@@ -58,9 +66,6 @@ namespace GPS_Out
         {
             try
             {
-                // initialize the delegate which updates the message received
-                HandleDataDelegate = HandleData;
-
                 // initialize the receive socket
                 recvSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
                 recvSocket.Bind(new IPEndPoint(cSourceIP, cReceivePort));
@@ -81,13 +86,13 @@ namespace GPS_Out
             }
             catch (Exception e)
             {
-                mf.Tls.WriteErrorLog("UDPcomm/StartUDPServer: \n" + e.Message);
+                tools.WriteErrorLog("UDPcomm/StartUDPServer: \n" + e.Message);
             }
         }
 
         private void AddToLog(string NewData)
         {
-            cLog += DateTime.Now.Second.ToString() + "  " + NewData + Environment.NewLine;
+            cLog += DateTime.Now.Second.ToString(CultureInfo.InvariantCulture) + "  " + NewData + Environment.NewLine;
             if (cLog.Length > 100000)
             {
                 cLog = cLog.Substring(cLog.Length - 98000, 98000);
@@ -102,7 +107,7 @@ namespace GPS_Out
                 if (Data.Length > 1)
                 {
                     int PGN = Data[1] << 8 | Data[0];
-                    AddToLog("< " + PGN.ToString());
+                    AddToLog("< " + PGN.ToString(CultureInfo.InvariantCulture));
 
                     switch (PGN)
                     {
@@ -111,11 +116,11 @@ namespace GPS_Out
                             switch (SubPGN)
                             {
                                 case 54908: // 0xD67C, AGIO NEMA translation
-                                    mf.AGIOdata.ParseByteData(Data);
+                                    routeAgio?.Invoke(Data);
                                     break;
 
                                 case 25727: // 0x647F, AOG roll corrected lat,lon
-                                    mf.AOGdata.ParseByteData(Data);
+                                    routeAog?.Invoke(Data);
                                     break;
                             }
                             break;
@@ -124,7 +129,7 @@ namespace GPS_Out
             }
             catch (Exception ex)
             {
-                mf.Tls.WriteErrorLog("UDPcomm/HandleData " + ex.Message);
+                tools.WriteErrorLog("UDPcomm/HandleData " + ex.Message);
             }
         }
 
@@ -145,8 +150,10 @@ namespace GPS_Out
                 recvSocket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref epSender, new AsyncCallback(ReceiveData), epSender);
 
                 int port = ((IPEndPoint)epSender).Port;
-                // Update status through a delegate
-                mf.Invoke(HandleDataDelegate, new object[] { port, localMsg });
+                // [XPLAT] marshal the parsed datagram onto the Avalonia UI thread (was WinForms
+                // Control.Invoke). Preserves the original receive->UI-thread handoff semantics so
+                // PGN parsing that mutates UI-read state stays single-threaded.
+                Dispatcher.UIThread.Post(() => HandleData(port, localMsg));
             }
             catch (ObjectDisposedException)
             {
@@ -154,8 +161,8 @@ namespace GPS_Out
             }
             catch (Exception ex)
             {
-                //mf.Tls.ShowHelp("ReceiveData Error \n" + e.Message, "Comm", 3000, true);
-                mf.Tls.WriteErrorLog("UDPcomm/ReceiveData " + ex.Message);
+                //tools.ShowHelp("ReceiveData Error \n" + e.Message, "Comm", 3000, true);
+                tools.WriteErrorLog("UDPcomm/ReceiveData " + ex.Message);
             }
         }
 
@@ -167,7 +174,7 @@ namespace GPS_Out
             }
             catch (Exception ex)
             {
-                mf.Tls.WriteErrorLog(" UDP Send Data" + ex.ToString());
+                tools.WriteErrorLog(" UDP Send Data" + ex.ToString());
             }
         }
 
@@ -181,7 +188,7 @@ namespace GPS_Out
                 }
                 else
                 {
-                    string EP = mf.Tls.LoadProperty("EndPoint_" + cConnectionName);
+                    string EP = tools.LoadProperty("EndPoint_" + cConnectionName);
                     if (IPAddress.TryParse(EP, out _))
                     {
                         NetworkEP = EP;
@@ -194,7 +201,7 @@ namespace GPS_Out
             }
             catch (Exception ex)
             {
-                mf.Tls.WriteErrorLog("UDPcomm/SetEP " + ex.Message);
+                tools.WriteErrorLog("UDPcomm/SetEP " + ex.Message);
             }
         }
 
@@ -213,7 +220,7 @@ namespace GPS_Out
             }
             catch (Exception ex)
             {
-                mf.Tls.WriteErrorLog("UDPcomm/SetSourceEP " + ex.Message);
+                tools.WriteErrorLog("UDPcomm/SetSourceEP " + ex.Message);
             }
         }
     }

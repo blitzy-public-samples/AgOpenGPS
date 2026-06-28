@@ -1,13 +1,29 @@
 <Project>
 
   <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
+    <!-- [XPLAT] migrated from net48/WinForms to net8.0 (+Avalonia) — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <TargetFramework>net8.0</TargetFramework>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- [XPLAT] Allow the Windows-specific TFM head (net8.0-windows, used by GPS and AgIO for the WMI
+         brightness / Registry migration-read platform code) to be restored and built on the non-Windows
+         legs of the tri-OS CI matrix (ubuntu/macos). Without this, evaluating/building a *-windows TFM
+         on Linux/macOS fails. The Avalonia UI projects do not set UseWindowsForms/UseWPF, so this only
+         enables cross-targeting the Windows reference assemblies; no Windows-only runtime is required to
+         build. See MIGRATION_DOCS/TRANSITION_MAP.md and .github/workflows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- [XPLAT] Close the zero-warning gate hole for Avalonia (and other MSBuild-task) warnings.
+         Plain TreatWarningsAsErrors only escalates Roslyn (CS####) compiler warnings, so an Avalonia
+         build-task warning such as AVLN3001 (a XAML view missing a public parameterless constructor —
+         the cross-platform runtime loader cannot reach it) would pass the Release gate silently. Setting
+         MSBuildTreatWarningsAsErrors escalates those MSBuild-emitted warnings to errors too, so the
+         "all projects build with zero warnings" acceptance bar (AAP §0.7) is actually enforced in
+         Release and on the tri-OS CI matrix. See MIGRATION_DOCS/CHANGELOG.md (F1-001). -->
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
   </PropertyGroup>
 
 </Project>

@@ -1,0 +1,582 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Headland-Line slice / clip editor (Avalonia view).
+
+    1:1 visual + behavioural PARITY reimplementation of the WinForms
+    `Forms/Guidance/FormHeadLine` (source: FormHeadLine.cs + FormHeadLine.Designer.cs). Per AAP
+    §0.3.3 this is a faithful re-platform of the currently rendered Windows Forms surface, never a
+    redesign: every size, position, font and colour below is taken verbatim from
+    FormHeadLine.Designer.cs. WinForms pixels map 1:1 to Avalonia device-independent pixels at
+    96 dpi; WinForms point font sizes are converted pt × 96/72 → DIP so the rendered glyph height
+    matches the original (27.75pt → 37, 15.75pt → 21, 14.25pt → 19) — the established sibling
+    convention (see FormSmoothABView / FormFieldExistingView in this batch).
+
+    What the dialog does (behaviour frozen — owned by the injected domain objects, not this view):
+    the operator taps two points on a field boundary to define a slice arc, sets an offset
+    distance, picks a curve/line build mode, and builds / clips the headland line (hdLine). The math
+    lives in CHeadLine / CABCurve / CBoundary; this view only presents and configures it. It is the
+    same "embedded viewport pattern B" used by FormABDrawView / FormHeadAcheView: a single OpenGL
+    surface on the LEFT and a 2-column × 9-row command panel (tlp1) on the RIGHT.
+
+    CODE-BEHIND CONTRACT — FormHeadLineView.axaml.cs (partial class AgOpenGPS.Views.FormHeadLineView : Window):
+      * This view is IMPERATIVE, not MVVM: there is intentionally NO x:DataType, no DataContext and
+        no {Binding}. The x:Name'd controls below are the entire integration surface and keep their
+        ORIGINAL WinForms names so the migrated code-behind addresses them exactly as
+        FormHeadLine.cs / FormHeadLine.Designer.cs did. The markup wires NO event handlers — the
+        code-behind attaches them by name (reproducing the WinForms handlers), so this view compiles
+        independently of whichever handler names the code-behind chooses.
+      * Runtime assignments reproduced by the code-behind (verified from FormHeadLine_Load):
+          - Title           ← gStr.gsHeadlandForm  (NOT set here, exactly like the WinForms form
+                              whose this.Text was assigned at Load).
+          - lblToolWidth    ← "( <units> )  Tool: <width> <units>" (units / tool-width string).
+          - btnBndLoop      caption ← gStr.gsBuildAround   (Designer placeholder "Build").
+          - btnDeletePoints caption ← gStr.gsReset         (Designer placeholder "Reset").
+          - btnClipLine     caption ← gStr.gsClipLine      (Designer placeholder "Clip Line");
+                              also btnClipLine.IsEnabled is toggled (starts DISABLED at Load).
+          - checkBoxZoomIn  caption ← gStr.gsZoomIn        (Designer placeholder "Zoom In");
+                              IsChecked reset to false at Load.
+          - cboxIsSectionControlled IsChecked ← ToolSettings + its glyph swapped
+                              HeadlandSectionOn ⇄ HeadlandSectionOff.
+          - nudSetDistance  Content ← value.ToString("N1", InvariantCulture); tapping it opens
+                              FormNumeric (the value editor) — the cross-platform replacement for the
+                              WinForms NudlessNumericUpDown (DecimalPlaces = 1, Max 200).
+        Because an Avalonia Button/ToggleButton has no .Text property (its caption lives inside its
+        Content), the four image-over-text captions are exposed as their own named TextBlocks
+        (btnBndLoopText / btnDeletePointsText / btnClipLineText / checkBoxZoomInText) following the
+        proven sibling convention (FormSmoothABView's bntOKText / btnSaveText, etc.).
+      * The OpenGL surface (WinForms oglSelf, OpenTK.GLControl) is hosted by injecting an
+        AgOpenGPS.Controls.AvaloniaGeoViewport — whose .View is a plain Avalonia Control — into the
+        named ViewportHost Border from the code-behind (ViewportHost.Child = _viewport.View). Keeping
+        the host out of XAML mirrors the established Field/Guidance viewport views and lets the
+        code-behind own the GL lifecycle and the dynamic square-aspect resize (the WinForms form
+        forced Width = Height·4/3 with oglSelf = Height − 50).
+
+    Button glyphs are served from the GPS assembly ("AgOpenGPS") via avares:// URIs. PROVENANCE NOTE:
+    the WinForms Designer referenced these as Properties.Resources.<Name> (e.g. Resources.HeadlandSlice);
+    on disk they are the project's AvaloniaResource PNGs under btnImages\ (csproj:
+    <AvaloniaResource Include="btnImages\**\*.png" />), NOT under Resources\ (which holds only .wav
+    audio). One name differs on disk: Resources.back_button is the file btnImages/back-button.png
+    (hyphen). Mapping (Designer Image → avares path, native px):
+      btnBLength   APlusPlusB        → btnImages/APlusPlusB.png        (72×48)
+      btnBShrink   APlusMinusB       → btnImages/APlusMinusB.png       (72×48)
+      btnALength   APlusPlusA        → btnImages/APlusPlusA.png        (72×48)
+      btnAShrink   APlusMinusA       → btnImages/APlusMinusA.png       (72×48)
+      rbtnCurve    ABTrackCurve      → btnImages/ABTrackCurve.png      (80×80)
+      rbtnLine     ABTrackAB         → btnImages/ABTrackAB.png         (80×80)
+      btnBndLoop   HeadlandBuild     → btnImages/HeadlandBuild.png     (64×64)
+      btnDeletePoints HeadlandReset  → btnImages/HeadlandReset.png     (64×64)
+      btnClipLine  HeadlandSlice     → btnImages/HeadlandSlice.png     (64×64)
+      btnUndo      back_button       → btnImages/back-button.png       (64×64)
+      checkBoxZoomIn ZoomOGL         → btnImages/ZoomOGL.png           (52×52)
+      cboxIsSectionControlled HeadlandSectionOn → btnImages/HeadlandSectionOn.png (64×64)
+      btnHeadlandOff SwitchOff       → btnImages/SwitchOff.png         (64×64)
+      btnExit      OK64              → btnImages/OK64.png              (64×64)
+
+    No System.Windows.Forms, no OpenTK.GLControl, no GMap, no ColorPicker types are referenced —
+    Avalonia 11.3 markup only. Colours are the verbatim WinForms named colours (WhiteSmoke == the
+    app's AogLegacyWhiteSmokeBrush #FFF5F5F5; AliceBlue / Lavender / White / Black / Transparent map
+    1:1 to Avalonia named colours), so no new palette is introduced (AAP §0.3.3).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormHeadLineView"
+        Background="WhiteSmoke"
+        CanResize="True"
+        SystemDecorations="Full"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        MinWidth="1022"
+        MinHeight="742"
+        Width="1006"
+        Height="726"
+        FontFamily="Tahoma">
+
+    <!--
+        Styles reproduce the WinForms FlatStyle.Flat + FlatAppearance.BorderSize = 0 face:
+
+        * Button.flatImage — the chrome-less image command buttons (BackColor Transparent). The
+          glyph (and, for the build/reset/clip/zoom buttons, a caption beneath it) shows with no
+          button surface in any interaction state. Type selectors match the EXACT type, so the
+          :pointerover / :pressed template overrides suppress the Fluent hover/press fill that would
+          otherwise box the glyph (the proven FormSmoothABView technique). :disabled dims to 0.5 so
+          btnClipLine reads as disabled at Load (WinForms btnClipLine.Enabled = false).
+
+        * Button.flatValue / RadioButton.imageToggle / ToggleButton.zoomToggle /
+          ToggleButton.sectionToggle — controls that carry a SOLID fixed BackColor (nudSetDistance =
+          White) or a WinForms Appearance=Button look with a checked-state fill. They use a minimal
+          custom template whose ContentPresenter Background is driven by the control's own Background,
+          so the colour holds across hover / pressed automatically and the :checked selector flips it
+          to the WinForms FlatAppearance.CheckedBackColor (the proven copyToggle idiom from
+          FormFieldExistingView / ConfigVehicleControl). RadioButton inherits ToggleButton, so the
+          same template makes the Appearance=Button radios render as flat image toggles (no bullet).
+    -->
+    <Window.Styles>
+
+        <!-- ===== flat transparent image command buttons ===== -->
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+
+        <!-- ===== nudSetDistance: flat button with a solid White face that holds across states ===== -->
+        <Style Selector="Button.flatValue">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      CornerRadius="{TemplateBinding CornerRadius}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- ===== rbtnCurve / rbtnLine: RadioButton Appearance=Button (AliceBlue → checked PaleTurquoise) ===== -->
+        <Style Selector="RadioButton.imageToggle">
+            <Setter Property="Background" Value="AliceBlue" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      CornerRadius="{TemplateBinding CornerRadius}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.imageToggle:checked">
+            <!-- WinForms FlatAppearance.CheckedBackColor = Color.PaleTurquoise -->
+            <Setter Property="Background" Value="PaleTurquoise" />
+        </Style>
+
+        <!-- ===== checkBoxZoomIn: ToggleButton (WhiteSmoke → checked light green) ===== -->
+        <Style Selector="ToggleButton.zoomToggle">
+            <Setter Property="Background" Value="WhiteSmoke" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      CornerRadius="{TemplateBinding CornerRadius}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleButton.zoomToggle:checked">
+            <!-- WinForms FlatAppearance.CheckedBackColor = Color.FromArgb(180, 255, 160) -->
+            <Setter Property="Background" Value="#FFB4FFA0" />
+        </Style>
+
+        <!-- ===== cboxIsSectionControlled: ToggleButton (Transparent; glyph swapped in code-behind) ===== -->
+        <Style Selector="ToggleButton.sectionToggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      CornerRadius="{TemplateBinding CornerRadius}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleButton.sectionToggle:checked">
+            <!-- WinForms FlatAppearance.CheckedBackColor = Color.Transparent (no fill change; the
+                 On/Off state is conveyed by the swapped glyph, handled in code-behind). -->
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+    </Window.Styles>
+
+    <!--
+        Root layout == the WinForms form client area: the OpenGL viewport fills the remaining space
+        on the LEFT (star column) and the fixed-width command panel (tlp1) sits on the RIGHT (auto
+        column). This reproduces the WinForms docking where oglSelf occupied the left and tlp1 was
+        right-anchored.
+    -->
+    <Grid ColumnDefinitions="*,Auto">
+
+        <!-- =================== LEFT: OpenGL viewport host (WinForms oglSelf) =================== -->
+        <!-- The code-behind injects the AvaloniaGeoViewport surface here: ViewportHost.Child =
+             _viewport.View. Black background + crosshair cursor reproduce the WinForms oglSelf
+             (BackColor Black, Cursor Cross). The WinForms decorative empty headingGroupBox
+             (102×229, no children, no behaviour) that overlaid the top-right of the viewport is
+             intentionally OMITTED — it held no controls and had no effect. -->
+        <Border x:Name="ViewportHost"
+                Grid.Column="0"
+                Background="Black"
+                Cursor="Cross"
+                Margin="2" />
+
+        <!-- =================== RIGHT: command panel (WinForms TableLayoutPanel tlp1) =================== -->
+        <!-- ColumnCount = 2, RowCount = 9, Width 298 == the WinForms tlp1.Size.Width. The column and
+             row weights are the VERBATIM WinForms ColumnStyles / RowStyles percentages (not equal):
+             the source deliberately sizes each row to its control. Reproducing them exactly is required
+             for parity AND correctness — the taller fixed-size controls would otherwise overflow equal
+             cells and overlap their neighbours:
+               Columns: 52.30263% / 47.69737%  → col0 ≈ 155.8 px (contains btnClipLine W149 + margins),
+                                                  col1 ≈ 142.2 px (contains btnExit W126 + margins).
+               Rows (RowStyles, RowCount = 9):
+                 r0 9.249717%   r1 9.249715%   r2 16.49281% (fits the 85-px radios)
+                 r3 10.84249%   r4 Auto (= WinForms Absolute 28 px; the tool-width label)
+                 r5 14.90964% / r6 14.90964% (≈100 px each, contain the 93-px Build/Clip buttons)
+                 r7 13.10241% (fits the 81-px Zoom toggle)   r8 11.13218% (fits the 64-px OK button)
+             Star weights are relative, so the source percentages are used directly as `*` weights.
+             Every cell carries Margin="2" for the WinForms inter-control spacing, and controls are
+             centred in their cells (WinForms Anchor = None). -->
+        <Grid x:Name="tlp1"
+              Grid.Column="1"
+              Width="298"
+              ColumnDefinitions="52.30263*,47.69737*"
+              RowDefinitions="9.249717*,9.249715*,16.49281*,10.84249*,Auto,14.90964*,14.90964*,13.10241*,11.13218*">
+
+            <!-- (0,0) btnBLength — append points at the END of the slice (Image APlusPlusB, 94×45). -->
+            <Button x:Name="btnBLength"
+                    Classes="flatImage"
+                    Grid.Column="0" Grid.Row="0"
+                    Width="94" Height="45"
+                    Margin="2"
+                    AutomationProperties.Name="Lengthen end">
+                <Image Source="avares://AgOpenGPS/btnImages/APlusPlusB.png"
+                       Stretch="Uniform" Margin="3" />
+            </Button>
+
+            <!-- (1,0) btnBShrink — shrink the END of the slice (Image APlusMinusB, 94×45). -->
+            <Button x:Name="btnBShrink"
+                    Classes="flatImage"
+                    Grid.Column="1" Grid.Row="0"
+                    Width="94" Height="45"
+                    Margin="2"
+                    AutomationProperties.Name="Shrink end">
+                <Image Source="avares://AgOpenGPS/btnImages/APlusMinusB.png"
+                       Stretch="Uniform" Margin="3" />
+            </Button>
+
+            <!-- (0,1) btnALength — insert points at the START of the slice (Image APlusPlusA, 94×43). -->
+            <Button x:Name="btnALength"
+                    Classes="flatImage"
+                    Grid.Column="0" Grid.Row="1"
+                    Width="94" Height="43"
+                    Margin="2"
+                    AutomationProperties.Name="Lengthen start">
+                <Image Source="avares://AgOpenGPS/btnImages/APlusPlusA.png"
+                       Stretch="Uniform" Margin="3" />
+            </Button>
+
+            <!-- (1,1) btnAShrink — shrink the START of the slice (Image APlusMinusA, 94×43). -->
+            <Button x:Name="btnAShrink"
+                    Classes="flatImage"
+                    Grid.Column="1" Grid.Row="1"
+                    Width="94" Height="43"
+                    Margin="2"
+                    AutomationProperties.Name="Shrink start">
+                <Image Source="avares://AgOpenGPS/btnImages/APlusMinusA.png"
+                       Stretch="Uniform" Margin="3" />
+            </Button>
+
+            <!-- (0,2) rbtnCurve — build mode "Curve" (Image ABTrackCurve, 104×85). Starts checked;
+                 shares GroupName "HeadType" with rbtnLine so exactly one is selected. -->
+            <RadioButton x:Name="rbtnCurve"
+                         Classes="imageToggle"
+                         Grid.Column="0" Grid.Row="2"
+                         GroupName="HeadType"
+                         IsChecked="True"
+                         Width="104" Height="85"
+                         Margin="2"
+                         AutomationProperties.Name="Curve mode">
+                <Image Source="avares://AgOpenGPS/btnImages/ABTrackCurve.png"
+                       Stretch="Uniform" Margin="3" />
+            </RadioButton>
+
+            <!-- (1,2) rbtnLine — build mode "Line" (Image ABTrackAB, 104×85), GroupName "HeadType". -->
+            <RadioButton x:Name="rbtnLine"
+                         Classes="imageToggle"
+                         Grid.Column="1" Grid.Row="2"
+                         GroupName="HeadType"
+                         Width="104" Height="85"
+                         Margin="2"
+                         AutomationProperties.Name="Line mode">
+                <Image Source="avares://AgOpenGPS/btnImages/ABTrackAB.png"
+                       Stretch="Uniform" Margin="3" />
+            </RadioButton>
+
+            <!-- (0,3) nudSetDistance — the slice offset distance (WinForms NudlessNumericUpDown,
+                 DecimalPlaces = 1, Max 200, White face). Reimplemented as a Button that opens
+                 FormNumeric on tap; its Content shows the current value formatted "N1"
+                 (InvariantCulture) — the code-behind sets it. 143×52, anchored to the bottom of the
+                 cell (WinForms Anchor = Bottom), Tahoma 27.75pt → 37 DIP Bold. -->
+            <Button x:Name="nudSetDistance"
+                    Classes="flatValue"
+                    Grid.Column="0" Grid.Row="3"
+                    Width="143" Height="52"
+                    Margin="2"
+                    VerticalAlignment="Bottom"
+                    Background="White"
+                    FontFamily="Tahoma"
+                    FontSize="37"
+                    FontWeight="Bold"
+                    Foreground="Black"
+                    Content="0.0"
+                    AutomationProperties.Name="Set distance" />
+
+            <!-- (1,3) cboxToolWidths — multiplier of tool widths (DropDownList, items 0..10,
+                 Lavender face). 88×53, bottom-anchored, Tahoma 27.75pt → 37 DIP Bold. -->
+            <ComboBox x:Name="cboxToolWidths"
+                      Grid.Column="1" Grid.Row="3"
+                      Width="88" Height="53"
+                      Margin="2"
+                      VerticalAlignment="Bottom"
+                      Background="Lavender"
+                      FontFamily="Tahoma"
+                      FontSize="37"
+                      FontWeight="Bold"
+                      AutomationProperties.Name="Tool widths">
+                <ComboBoxItem Content="0" />
+                <ComboBoxItem Content="1" />
+                <ComboBoxItem Content="2" />
+                <ComboBoxItem Content="3" />
+                <ComboBoxItem Content="4" />
+                <ComboBoxItem Content="5" />
+                <ComboBoxItem Content="6" />
+                <ComboBoxItem Content="7" />
+                <ComboBoxItem Content="8" />
+                <ComboBoxItem Content="9" />
+                <ComboBoxItem Content="10" />
+            </ComboBox>
+
+            <!-- (0,4) lblToolWidth — units / tool-width readout. Spans both columns (WinForms
+                 SetColumnSpan = 2). Tahoma 14.25pt → 19 DIP Bold, Black, centred. The text shown
+                 here is a placeholder; the code-behind sets the live "( <units> )  Tool: <w> <units>"
+                 string at Load (Designer placeholder was "43.56 m"). -->
+            <TextBlock x:Name="lblToolWidth"
+                       Grid.Column="0" Grid.Row="4"
+                       Grid.ColumnSpan="2"
+                       Margin="2"
+                       HorizontalAlignment="Stretch"
+                       VerticalAlignment="Center"
+                       TextAlignment="Center"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       Text="( m )  Tool: 43.56 m" />
+
+            <!-- (0,5) btnBndLoop — "Build" the headland around the boundary (Image HeadlandBuild over
+                 caption). 142×93, Tahoma 14.25pt → 19 DIP caption. Caption exposed as btnBndLoopText
+                 (code-behind sets gStr.gsBuildAround). -->
+            <Button x:Name="btnBndLoop"
+                    Classes="flatImage"
+                    Grid.Column="0" Grid.Row="5"
+                    Width="142" Height="93"
+                    Margin="2"
+                    AutomationProperties.Name="Build around boundary">
+                <StackPanel Orientation="Vertical"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="1">
+                    <Image Source="avares://AgOpenGPS/btnImages/HeadlandBuild.png"
+                           Width="52" Height="52" Stretch="Uniform"
+                           HorizontalAlignment="Center" />
+                    <TextBlock x:Name="btnBndLoopText"
+                               Text="Build"
+                               FontFamily="Tahoma"
+                               FontSize="19"
+                               Foreground="Black"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+                </StackPanel>
+            </Button>
+
+            <!-- (1,5) btnDeletePoints — "Reset" the headland points (Image HeadlandReset over
+                 caption). 104×93. Caption exposed as btnDeletePointsText (gStr.gsReset). -->
+            <Button x:Name="btnDeletePoints"
+                    Classes="flatImage"
+                    Grid.Column="1" Grid.Row="5"
+                    Width="104" Height="93"
+                    Margin="2"
+                    AutomationProperties.Name="Reset points">
+                <StackPanel Orientation="Vertical"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="1">
+                    <Image Source="avares://AgOpenGPS/btnImages/HeadlandReset.png"
+                           Width="52" Height="52" Stretch="Uniform"
+                           HorizontalAlignment="Center" />
+                    <TextBlock x:Name="btnDeletePointsText"
+                               Text="Reset"
+                               FontFamily="Tahoma"
+                               FontSize="19"
+                               Foreground="Black"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+                </StackPanel>
+            </Button>
+
+            <!-- (0,6) btnClipLine — "Clip Line": create the clip lines from the slice (Image
+                 HeadlandSlice over caption). 149×93. STARTS DISABLED (WinForms btnClipLine.Enabled =
+                 false at Load; the code-behind enables it once a slice exists). Caption exposed as
+                 btnClipLineText (gStr.gsClipLine). The WinForms Click handler was btnSlice_Click. -->
+            <Button x:Name="btnClipLine"
+                    Classes="flatImage"
+                    Grid.Column="0" Grid.Row="6"
+                    Width="149" Height="93"
+                    Margin="2"
+                    IsEnabled="False"
+                    AutomationProperties.Name="Clip line">
+                <StackPanel Orientation="Vertical"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="1">
+                    <Image Source="avares://AgOpenGPS/btnImages/HeadlandSlice.png"
+                           Width="52" Height="52" Stretch="Uniform"
+                           HorizontalAlignment="Center" />
+                    <TextBlock x:Name="btnClipLineText"
+                               Text="Clip Line"
+                               FontFamily="Tahoma"
+                               FontSize="19"
+                               Foreground="Black"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+                </StackPanel>
+            </Button>
+
+            <!-- (1,6) btnUndo — restore the headland from the backup list (Image back-button, 99×57). -->
+            <Button x:Name="btnUndo"
+                    Classes="flatImage"
+                    Grid.Column="1" Grid.Row="6"
+                    Width="99" Height="57"
+                    Margin="2"
+                    AutomationProperties.Name="Undo">
+                <Image Source="avares://AgOpenGPS/btnImages/back-button.png"
+                       Stretch="Uniform" Margin="3" />
+            </Button>
+
+            <!-- (0,7) checkBoxZoomIn — zoom-to-point toggle (Image ZoomOGL over caption). 104×81,
+                 WhiteSmoke face, checked → light green. Caption exposed as checkBoxZoomInText
+                 (gStr.gsZoomIn); the code-behind resets IsChecked = false at Load. -->
+            <ToggleButton x:Name="checkBoxZoomIn"
+                          Classes="zoomToggle"
+                          Grid.Column="0" Grid.Row="7"
+                          Width="104" Height="81"
+                          Margin="2"
+                          AutomationProperties.Name="Zoom in">
+                <StackPanel Orientation="Vertical"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="1">
+                    <Image Source="avares://AgOpenGPS/btnImages/ZoomOGL.png"
+                           Width="48" Height="48" Stretch="Uniform"
+                           HorizontalAlignment="Center" />
+                    <TextBlock x:Name="checkBoxZoomInText"
+                               Text="Zoom In"
+                               FontFamily="Tahoma"
+                               FontSize="19"
+                               Foreground="Black"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center" />
+                </StackPanel>
+            </ToggleButton>
+
+            <!-- (1,7) cboxIsSectionControlled — headland section-control toggle (Image
+                 HeadlandSectionOn). 99×71, Transparent face, starts checked. The code-behind swaps
+                 the glyph HeadlandSectionOn ⇄ HeadlandSectionOff to convey state. -->
+            <ToggleButton x:Name="cboxIsSectionControlled"
+                          Classes="sectionToggle"
+                          Grid.Column="1" Grid.Row="7"
+                          IsChecked="True"
+                          Width="99" Height="71"
+                          Margin="2"
+                          AutomationProperties.Name="Section controlled">
+                <Image Source="avares://AgOpenGPS/btnImages/HeadlandSectionOn.png"
+                       Stretch="Uniform" Margin="3" />
+            </ToggleButton>
+
+            <!-- (0,8) btnHeadlandOff — turn the headland off and close (Image SwitchOff, 103×57). -->
+            <Button x:Name="btnHeadlandOff"
+                    Classes="flatImage"
+                    Grid.Column="0" Grid.Row="8"
+                    Width="103" Height="57"
+                    Margin="2"
+                    AutomationProperties.Name="Headland off">
+                <Image Source="avares://AgOpenGPS/btnImages/SwitchOff.png"
+                       Stretch="Uniform" Margin="3" />
+            </Button>
+
+            <!-- (1,8) btnExit — commit and close (Image OK64, 126×64). Tahoma 15.75pt → 21 DIP Bold,
+                 Foreground #FFC04000 (WinForms ForeColor = Color.FromArgb(192, 64, 0)). The WinForms
+                 button carried no text (image-only); the font/colour are preserved for parity. -->
+            <Button x:Name="btnExit"
+                    Classes="flatImage"
+                    Grid.Column="1" Grid.Row="8"
+                    Width="126" Height="64"
+                    Margin="2"
+                    FontFamily="Tahoma"
+                    FontSize="21"
+                    FontWeight="Bold"
+                    Foreground="#FFC04000"
+                    AutomationProperties.Name="OK">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                       Stretch="Uniform" Margin="3" />
+            </Button>
+
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,69 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Updater.Forms.FormDialog"
+        Title="AgOpenGPS Updater"
+        Width="600" MinWidth="600" MinHeight="320"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI">
+    <!--
+        Reusable styled modal dialog (confirm / info / error / success) for the AgOpenGPS Updater.
+        1:1 Avalonia reimplementation of the WinForms FormDialog (Forms/FormDialog.Designer.cs):
+        a colored icon chip + wrapping message over a lavender body, with OK/Cancel buttons on a
+        bottom footer. The icon-chip glyph + background and the OK button content + background are
+        switched per dialog kind by the FormDialog.axaml.cs code-behind; this markup supplies the
+        default (confirm) appearance. Default palette brushes (AccentBrush / SuccessBrush) are pulled
+        from App.axaml via DynamicResource; non-palette colors are inline hex to match the original.
+
+        Layout/sizing parity notes:
+          • SizeToContent="Height" + MinHeight="320" keeps short messages at the original 320px while
+            letting a tall multi-line message (e.g. the install-confirm text) stay fully visible — the
+            WinForms lblMessage was anchored Top|Bottom|Left|Right to stretch. Width is fixed at 600.
+          • CanResize="False" mirrors the WinForms FixedDialog / ControlBox=false fixed dialog.
+          • WindowStartupLocation="CenterOwner" mirrors StartPosition=CenterParent.
+          • The right-aligned StackPanel (Spacing="60") reproduces the WinForms anchored button
+            positions; when BtnCancel is collapsed (IsVisible=false for info/error/success) Avalonia
+            drops it and its spacing, leaving BtnOK alone at the right exactly as the WinForms
+            single-button layout did.
+    -->
+    <DockPanel>
+        <!-- panelButtons: WinForms Dock=Bottom, Height 80, BackColor (180,180,200)=#B4B4C8 -> PanelFooterBrush, Padding 20 -->
+        <Border DockPanel.Dock="Bottom" Height="80" Background="{DynamicResource PanelFooterBrush}" Padding="20">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                        VerticalAlignment="Center" Spacing="60">
+                <!-- btnOK: 200x50, Segoe UI 14 Bold White; default green = SuccessBrush (#28A745) -->
+                <Button x:Name="BtnOK" Content="OK" Width="200" Height="50"
+                        FontSize="14" FontWeight="Bold" Foreground="White"
+                        Background="{DynamicResource SuccessBrush}"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Click="BtnOK_Click" />
+                <!-- btnCancel: 200x50, Segoe UI 14 Bold White; close/danger red (#DC5050)=ButtonDangerBrush, distinct from ErrorBrush -->
+                <Button x:Name="BtnCancel" Content="Cancel" Width="200" Height="50"
+                        FontSize="14" FontWeight="Bold" Foreground="White"
+                        Background="{DynamicResource ButtonDangerBrush}"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Click="BtnCancel_Click" />
+            </StackPanel>
+        </Border>
+        <!-- panelMain: WinForms Dock=Fill, BackColor (210,210,230)=#D2D2E6 lavender -> PanelBrush, Padding 30 -->
+        <Border Background="{DynamicResource PanelBrush}" Padding="30">
+            <Grid ColumnDefinitions="Auto,*">
+                <!-- panelIcon: 40x40 chip; default teal = AccentBrush (#1B97A0) — switched per kind in code-behind -->
+                <Border x:Name="PanelIcon" Grid.Column="0" Width="40" Height="40"
+                        VerticalAlignment="Top" Background="{DynamicResource AccentBrush}">
+                    <!-- lblIcon: Segoe UI 24 Bold White, centered; glyph set per kind (?/i/!/✓) -->
+                    <TextBlock x:Name="LblIcon" Text="!" FontSize="24" FontWeight="Bold"
+                               Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <!-- lblMessage: Segoe UI 14 Regular, ForeColor (10,10,20)=#0A0A14 -> BodyTextBrush, wrapping -->
+                <TextBlock x:Name="LblMessage" Grid.Column="1" Margin="10,0,0,0"
+                           Text="Message text goes here" FontSize="14"
+                           Foreground="{DynamicResource BodyTextBrush}" TextWrapping="Wrap" VerticalAlignment="Top" />
+            </Grid>
+        </Border>
+    </DockPanel>
+</Window>

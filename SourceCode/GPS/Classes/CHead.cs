@@ -1,7 +1,16 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 
 namespace AgOpenGPS
 {
+    // [XPLAT] Headland-build + headland-control partial of CBoundary. Decoupled from the WinForms
+    // FormGPS host god-object: every former `mf.X` access is replaced by a collaborator held by the
+    // CBoundary root (this.tool / this.section / this.vehicle / this.sounds — constructor-injected in
+    // CBoundary.cs) or by the shared AgOpenGPS.Core runtime model (this.appModel). The headland
+    // geometry, the headland-distance proximity gating, the machine PGN 0xEF (p_239) hydraulic-lift
+    // byte semantics and which sound fires on which headland event are all FROZEN — outputs are
+    // byte-for-byte identical to the net48/WinForms original. No FormGPS reference remains, so this
+    // logic is portable across Windows, Linux and macOS. See MIGRATION_DOCS/TRANSITION_MAP.md.
     public partial class CBoundary
     {
         public bool isHeadlandOn;
@@ -14,24 +23,29 @@ namespace AgOpenGPS
 
         public void SetHydPosition()
         {
-            if (mf.vehicle.isHydLiftOn && mf.avgSpeed > 0.2 && !mf.isReverse)
+            // [XPLAT] mf.vehicle -> injected vehicle; mf.avgSpeed / mf.isReverse -> appModel runtime
+            // state (written by the fix/position pipeline); mf.p_239 -> appModel.machinePgnEF (machine
+            // PGN 0xEF, hydraulic-lift command byte at index 7); mf.sounds -> injected cross-platform
+            // CSound. The forward-only gating, the hydLift byte values (2 = raise in headland, 1 = lower)
+            // and which clip plays on which event (up on entering, down on leaving) are unchanged.
+            if (vehicle.isHydLiftOn && appModel.avgSpeed > 0.2 && !appModel.isReverse)
             {
                 if (isToolInHeadland)
                 {
-                    mf.p_239.pgn[mf.p_239.hydLift] = 2;
-                    if (mf.sounds.isHydLiftChange != isToolInHeadland)
+                    appModel.machinePgnEF[appModel.machinePgnEFHydLift] = 2;
+                    if (sounds.isHydLiftChange != isToolInHeadland)
                     {
-                        if (mf.sounds.isHydLiftSoundOn) mf.sounds.sndHydLiftUp.Play();
-                        mf.sounds.isHydLiftChange = isToolInHeadland;
+                        if (sounds.isHydLiftSoundOn) sounds.sndHydLiftUp.Play();
+                        sounds.isHydLiftChange = isToolInHeadland;
                     }
                 }
                 else
                 {
-                    mf.p_239.pgn[mf.p_239.hydLift] = 1;
-                    if (mf.sounds.isHydLiftChange != isToolInHeadland)
+                    appModel.machinePgnEF[appModel.machinePgnEFHydLift] = 1;
+                    if (sounds.isHydLiftChange != isToolInHeadland)
                     {
-                        if (mf.sounds.isHydLiftSoundOn) mf.sounds.sndHydLiftDn.Play();
-                        mf.sounds.isHydLiftChange = isToolInHeadland;
+                        if (sounds.isHydLiftSoundOn) sounds.sndHydLiftDn.Play();
+                        sounds.isHydLiftChange = isToolInHeadland;
                     }
                 }
             }
@@ -43,24 +57,25 @@ namespace AgOpenGPS
             {
                 bool isLeftInWk, isRightInWk = true;
 
-                for (int j = 0; j < mf.tool.numOfSections; j++)
+                // [XPLAT] mf.tool -> injected tool; mf.section -> injected section[]. Geometry unchanged.
+                for (int j = 0; j < tool.numOfSections; j++)
                 {
-                    isLeftInWk = j == 0 ? IsPointInsideHeadArea(mf.section[j].leftPoint) : isRightInWk;
-                    isRightInWk = IsPointInsideHeadArea(mf.section[j].rightPoint);
+                    isLeftInWk = j == 0 ? IsPointInsideHeadArea(section[j].leftPoint) : isRightInWk;
+                    isRightInWk = IsPointInsideHeadArea(section[j].rightPoint);
 
                     //save left side
                     if (j == 0)
-                        mf.tool.isLeftSideInHeadland = !isLeftInWk;
+                        tool.isLeftSideInHeadland = !isLeftInWk;
 
                     //merge the two sides into in or out
-                    mf.section[j].isInHeadlandArea = !isLeftInWk && !isRightInWk;
+                    section[j].isInHeadlandArea = !isLeftInWk && !isRightInWk;
                 }
 
                 //save right side
-                mf.tool.isRightSideInHeadland = !isRightInWk;
+                tool.isRightSideInHeadland = !isRightInWk;
 
                 //is the tool in or out based on endpoints
-                isToolOuterPointsInHeadland = mf.tool.isLeftSideInHeadland && mf.tool.isRightSideInHeadland;
+                isToolOuterPointsInHeadland = tool.isLeftSideInHeadland && tool.isRightSideInHeadland;
             }
         }
 
@@ -70,28 +85,32 @@ namespace AgOpenGPS
             {
                 bool isLookRightIn = false;
 
-                vec3 toolFix = mf.toolPivotPos;
+                // [XPLAT] mf.toolPivotPos -> recomposed from appModel.ToolPivotPosition (easting/
+                // northing) + appModel.ToolPivotHeading (heading; GeoDir keeps [0,2pi), identical to the
+                // original toolPivotPos.heading). Only the heading feeds Sin/Cos here, so the look-on
+                // box is unchanged. mf.tool -> injected tool; mf.section -> injected section[].
+                vec3 toolFix = new vec3(appModel.ToolPivotPosition.Easting, appModel.ToolPivotPosition.Northing, appModel.ToolPivotHeading.AngleInRadians);
                 double sinAB = Math.Sin(toolFix.heading);
                 double cosAB = Math.Cos(toolFix.heading);
 
                 //generated box for finding closest point
                 double pos = 0;
-                double mOn = (mf.tool.lookAheadDistanceOnPixelsRight - mf.tool.lookAheadDistanceOnPixelsLeft) / mf.tool.rpWidth;
+                double mOn = (tool.lookAheadDistanceOnPixelsRight - tool.lookAheadDistanceOnPixelsLeft) / tool.rpWidth;
 
-                for (int j = 0; j < mf.tool.numOfSections; j++)
+                for (int j = 0; j < tool.numOfSections; j++)
                 {
                     bool isLookLeftIn = j == 0 ? IsPointInsideHeadArea(new vec2(
-                        mf.section[j].leftPoint.easting + (sinAB * mf.tool.lookAheadDistanceOnPixelsLeft * 0.1),
-                        mf.section[j].leftPoint.northing + (cosAB * mf.tool.lookAheadDistanceOnPixelsLeft * 0.1))) : isLookRightIn;
+                        section[j].leftPoint.easting + (sinAB * tool.lookAheadDistanceOnPixelsLeft * 0.1),
+                        section[j].leftPoint.northing + (cosAB * tool.lookAheadDistanceOnPixelsLeft * 0.1))) : isLookRightIn;
 
-                    pos += mf.section[j].rpSectionWidth;
-                    double endHeight = (mf.tool.lookAheadDistanceOnPixelsLeft + (mOn * pos)) * 0.1;
+                    pos += section[j].rpSectionWidth;
+                    double endHeight = (tool.lookAheadDistanceOnPixelsLeft + (mOn * pos)) * 0.1;
 
                     isLookRightIn = IsPointInsideHeadArea(new vec2(
-                        mf.section[j].rightPoint.easting + (sinAB * endHeight),
-                        mf.section[j].rightPoint.northing + (cosAB * endHeight)));
+                        section[j].rightPoint.easting + (sinAB * endHeight),
+                        section[j].rightPoint.northing + (cosAB * endHeight)));
 
-                    mf.section[j].isLookOnInHeadland = !isLookLeftIn && !isLookRightIn;
+                    section[j].isLookOnInHeadland = !isLookLeftIn && !isLookRightIn;
                 }
             }
         }
@@ -121,7 +140,10 @@ namespace AgOpenGPS
                 return;
             }
 
-            vec3 vehiclePos = mf.toolPivotPos;
+            // [XPLAT] mf.toolPivotPos -> recomposed from appModel.ToolPivotPosition (easting/northing) +
+            // appModel.ToolPivotHeading (heading). The recomposed vec3 is value-identical to the former
+            // toolPivotPos, so the raycast, distance and AngleDiff results are unchanged.
+            vec3 vehiclePos = new vec3(appModel.ToolPivotPosition.Easting, appModel.ToolPivotPosition.Northing, appModel.ToolPivotHeading.AngleInRadians);
 
             vec2? nearest = glm.RaycastToPolygon(vehiclePos, bndList[0].hdLine);
             if (!nearest.HasValue)
@@ -150,17 +172,20 @@ namespace AgOpenGPS
                 (isInside && headingOk && distance < 20.0) ||
                 (!isInside && headingOk && distance < 5.0);
 
-            if (shouldPlay && mf.isHeadlandDistanceOn)
+            // [XPLAT] mf.isHeadlandDistanceOn -> appModel runtime state; mf.sounds -> injected
+            // cross-platform CSound. The alarm-trigger condition and the one-shot latch
+            // (isBoundAlarming) are unchanged, so the headland proximity sound fires identically.
+            if (shouldPlay && appModel.isHeadlandDistanceOn)
             {
-                if (!mf.sounds.isBoundAlarming)
+                if (!sounds.isBoundAlarming)
                 {
-                    mf.sounds.sndHeadland.Play();
-                    mf.sounds.isBoundAlarming = true;
+                    sounds.sndHeadland.Play();
+                    sounds.isBoundAlarming = true;
                 }
             }
             else
             {
-                mf.sounds.isBoundAlarming = false;
+                sounds.isBoundAlarming = false;
             }
         }
 

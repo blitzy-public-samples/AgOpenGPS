@@ -1,7 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- [XPLAT] migrated from net48 — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- [XPLAT] QA F5 m1: pin major roll-forward so the net8.0 test host launches on a CI runner image
+         that ships only the .NET 9 runtime (global.json pins SDK 9.0.300, which carries no 8.0 runtime).
+         Without this, `dotnet test` aborts with FrameworkNotFound 'Microsoft.NETCore.App' 8.0.0 — see
+         MIGRATION_DOCS/PARITY_REPORT.md. Defense-in-depth alongside setup-dotnet installing 8.0.x in CI. -->
+    <RollForward>Major</RollForward>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,7 +19,6 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
-    <PackageReference Include="System.Memory" Version="4.6.0" />
   </ItemGroup>
 
   <ItemGroup>

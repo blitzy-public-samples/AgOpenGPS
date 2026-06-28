@@ -1,0 +1,154 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — on-screen numeric keypad entry dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the deleted WinForms `Forms/Inputs/FormNumeric`
+    (FormNumeric.cs + FormNumeric.Designer.cs). A fixed-size, borderless modal that displays the
+    current value in a large read-only field, the allowed min/max beneath it, an on-screen
+    NumKeypad for entry, and a pair of up/down nudge buttons. Per AAP §0.3.3 this is parity to the
+    currently rendered Windows Forms UI — never a redesign (no new colors, no relayout).
+
+    WIRING CONTRACT — the partner code-behind (FormNumeric.axaml.cs) owns ALL behaviour, NOT this markup:
+      * This view is IMPERATIVE, not MVVM: it intentionally declares no compiled-binding data type, no
+        bound data context, and no binding markup. The original `FormNumeric(min, max, currentValue)` ctor set
+        tboxNumber/lblMin/lblMax text directly; the code-behind reproduces that by addressing the named
+        controls below. The x:Names MUST stay exactly tboxNumber, lblMin, lblMax, keypad1,
+        btnDistanceUp, btnDistanceDn to match the generated x:Name fields the code-behind references.
+      * keypad1.ButtonPressed (the Keypad.GenericKeypad event, carrying e.KeyChar) is subscribed in the
+        code-behind, reproducing RegisterKeypad1_ButtonPressed. The btnDistanceUp / btnDistanceDn Click
+        handlers reproduce the WinForms MouseDown increment / decrement nudges.
+
+    WINDOW SHELL — mirrors FormNumeric.Designer.cs exactly:
+      Text "Enter a Value"                 -> Title
+      ClientSize 460 x 545                 -> Width / Height (SystemDecorations="None" => client == window)
+      BackColor SystemColors.ActiveCaption -> Background "#99B4D1" (theme-independent parity color)
+      FormBorderStyle.FixedDialog,
+        ControlBox=false, Max/MinimizeBox=false -> SystemDecorations="None", CanResize="False"
+      ShowInTaskbar = false                -> ShowInTaskbar="False"
+      StartPosition.CenterParent           -> WindowStartupLocation="CenterOwner" (shown modally over its owner)
+      Font Tahoma 8.25 (base)              -> FontFamily="Tahoma" (children set their own explicit sizes below)
+
+    LAYOUT — the dialog is fixed-size with no anchoring/resize, so the absolute WinForms coordinates are
+    reproduced verbatim on a Canvas: Canvas.Left / Canvas.Top equal the designer Location values for
+    pixel parity. WinForms points -> Avalonia DIP (x 96/72 ≈ x1.333): 27.75pt -> 37; 14.25pt -> 19.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:keypad="clr-namespace:Keypad;assembly=Keypad"
+        x:Class="AgOpenGPS.Views.FormNumeric"
+        Title="Enter a Value"
+        Width="460"
+        Height="545"
+        CanResize="False"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="#99B4D1">
+
+    <!-- Fixed 460 x 545 client; absolute positioning for 1:1 parity with FormNumeric.Designer.cs. -->
+    <Canvas Width="460" Height="545">
+
+        <!--
+            tboxNumber — WinForms TextBox: Tahoma 27.75pt Bold, Location (173,7), Size 282 x 52,
+            ReadOnly, TextAlign Center. The designer's design-time placeholder value is intentionally
+            DROPPED here (the ctor overwrites it at runtime). Read-only because every
+            edit flows through the on-screen keypad rather than physical keyboard focus.
+        -->
+        <TextBox x:Name="tboxNumber"
+                 Canvas.Left="173" Canvas.Top="7"
+                 Width="282" Height="52"
+                 IsReadOnly="True"
+                 FontSize="37" FontWeight="Bold"
+                 TextAlignment="Center"
+                 VerticalContentAlignment="Center" />
+
+        <!--
+            lblMin — WinForms Label (LEFT): Tahoma 14.25pt Bold, Location (195,62), Size 125 x 36,
+            TextAlign TopCenter. Displays the allowed minimum. The design-time placeholder is DROPPED
+            (assigned at runtime). A TextBlock lays its text out from the top, matching TopCenter.
+        -->
+        <TextBlock x:Name="lblMin"
+                   Canvas.Left="195" Canvas.Top="62"
+                   Width="125"
+                   FontSize="19" FontWeight="Bold"
+                   TextAlignment="Center" />
+
+        <!--
+            lblMax — WinForms Label (RIGHT): Tahoma 14.25pt Bold, Location (332,62), Size 125 x 36,
+            TextAlign TopCenter. Displays the allowed maximum. The design-time placeholder is DROPPED.
+        -->
+        <TextBlock x:Name="lblMax"
+                   Canvas.Left="332" Canvas.Top="62"
+                   Width="125"
+                   FontSize="19" FontWeight="Bold"
+                   TextAlignment="Center" />
+
+        <!--
+            btnDistanceDn — decrement nudge, positioned LEFT of btnDistanceUp. The WinForms control was
+            AgLibrary.Controls.RepeatButton (deleted in this migration) -> the Avalonia built-in
+            RepeatButton, which raises Click repeatedly while held. WinForms: Transparent BackColor,
+            FlatStyle.Flat, FlatAppearance.BorderSize 0, Image Resources.DnArrow64 with ImageLayout.Zoom,
+            Location (2,3), Size 83 x 92. Delay="400" / Interval="62" reproduce the legacy ~16 Hz
+            press-and-hold cadence; the Click handler is wired in the code-behind. Stretch="Uniform"
+            mirrors the WinForms Zoom image layout.
+        -->
+        <RepeatButton x:Name="btnDistanceDn"
+                      Canvas.Left="2" Canvas.Top="3"
+                      Width="83" Height="92" Padding="4"
+                      Background="Transparent" BorderThickness="0"
+                      Delay="400" Interval="62">
+            <!--
+                Keep the flat / transparent face in every interaction state. The Fluent RepeatButton
+                template otherwise paints a hover / pressed fill, which would invent a state the WinForms
+                FlatStyle.Flat + Transparent original never showed. Targets the template content presenter
+                so it overrides the theme's own state setters — the same technique used by the sibling
+                FormYesView.axaml and Keypad/NumKeypad.axaml.
+            -->
+            <RepeatButton.Styles>
+                <Style Selector="RepeatButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                </Style>
+                <Style Selector="RepeatButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                </Style>
+            </RepeatButton.Styles>
+            <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png" Stretch="Uniform" />
+        </RepeatButton>
+
+        <!--
+            btnDistanceUp — increment nudge. WinForms: same flat / transparent styling, Image
+            Resources.UpArrow64 (Zoom), Location (89,3), Size 83 x 92.
+        -->
+        <RepeatButton x:Name="btnDistanceUp"
+                      Canvas.Left="89" Canvas.Top="3"
+                      Width="83" Height="92" Padding="4"
+                      Background="Transparent" BorderThickness="0"
+                      Delay="400" Interval="62">
+            <RepeatButton.Styles>
+                <Style Selector="RepeatButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                </Style>
+                <Style Selector="RepeatButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                </Style>
+            </RepeatButton.Styles>
+            <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png" Stretch="Uniform" />
+        </RepeatButton>
+
+        <!--
+            keypad1 — the migrated Avalonia Keypad.NumKeypad UserControl (4x4 on-screen numeric keypad).
+            WinForms: BackColor ActiveCaption, Location (0,112), Size 454 x 429. Its ButtonPressed event
+            is subscribed in the code-behind (not declared here). The Background matches the dialog's
+            ActiveCaption parity color so the inter-button gutters blend seamlessly with the window.
+        -->
+        <keypad:NumKeypad x:Name="keypad1"
+                          Canvas.Left="0" Canvas.Top="112"
+                          Width="454" Height="429"
+                          Background="#99B4D1" />
+    </Canvas>
+</Window>

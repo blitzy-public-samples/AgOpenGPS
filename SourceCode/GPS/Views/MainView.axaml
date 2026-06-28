@@ -1,0 +1,637 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    AgOpenGPS (GPS program) — MainView: the kiosk-style main shell.
+
+    1:1 PARITY reimplementation of the WinForms FormGPS window (AAP §0.3.3): no
+    relayout, no UX change. Every panel, button, label, the menu, the section/zone
+    buttons and the OpenGL viewport are reproduced at their WinForms source
+    coordinates/sizes/anchors mined from Forms/FormGPS.Designer.cs, GUI.Designer.cs
+    and Controls.Designer.cs on the develop baseline.
+
+    Layout strategy: the root is a single-cell Grid that hosts every control with an
+    explicit Margin + HorizontalAlignment/VerticalAlignment translation of the original
+    WinForms Anchor flags (design baseline 1024x768 client area):
+      Top|Left            -> HAlign=Left,   VAlign=Top,     Margin="L,T,0,0" + Width/Height
+      Top|Right           -> HAlign=Right,  VAlign=Top,     Width/Height + right Margin
+      Bottom|Right        -> HAlign=Right,  VAlign=Bottom,  Width/Height + right/bottom Margin
+      Top|Bottom|Left     -> HAlign=Left,   VAlign=Stretch, Width + top/bottom Margin
+      Top|Left|Right      -> HAlign=Stretch,VAlign=Top,     Height + left/top/right Margin
+      Top|Bottom|Left|Rt  -> HAlign=Stretch,VAlign=Stretch, Margin=L,T,R,B  (the GL field)
+      single-edge anchor  -> recentred on that axis (HAlign/VAlign=Center) per WinForms reflow
+    Document order is back-to-front (Avalonia paints later children on top), reproducing
+    the WinForms z-order: the GL field sits behind all panels/overlays; the top-right
+    control box and the hamburger menu are frontmost.
+
+    MVVM (discipline A): DataContext is appCore.AppViewModel (set in App.axaml.cs);
+    x:DataType enables compiled bindings against ApplicationViewModel. Only the two
+    menu-flow commands are bound here (ShowConfigMenuCommand / ShowSelectFieldMenuCommand);
+    every other interactive control is exposed by x:Name (matching its WinForms name) for
+    the MainView.axaml.cs code-behind to wire handlers imperatively and for the
+    RenderCoordinator to inject the GL host content. Status readouts (lblFix,
+    lblCurrentField, lblGuidanceLine, lblHardwareMessage) have no VM source and are
+    updated from code-behind/services, so they carry x:Name + parity initial values only.
+
+    Theming: day/night is driven app-wide by App.RequestedThemeVariant (toggled by the
+    view-model). Per-control chrome references the App.axaml ThemeDictionaries via
+    {DynamicResource} so Light<->Dark switches live: command panels and the window face use
+    AogFrameBrush, status text uses AogTextBrush. The navigation overlay keeps the fixed
+    WhiteSmoke face (AogLegacyWhiteSmokeBrush) it had in WinForms (deliberately excluded from
+    day/night). The live OpenGL field clear-colour is owned by the viewport/RenderCoordinator,
+    never here.
+
+    [XPLAT] Day/night colour parity (CR finding MV-4): every colour that WinForms
+    FormGPS.SwapDayNightMode() flipped is routed through a {DynamicResource} Aog* token rather
+    than a hard-coded literal, so the day/night switch can never drift. The exact WinForms
+    behaviour (GUI.Designer.cs SwapDayNightMode) is the parity contract:
+      - this.BackColor = frameDay/NightColor                  -> Window Background = AogFrameBrush
+      - ForeColor of the IMMEDIATE children of this, panelRight, panelNavigation and
+        panelControlBox, plus btnChangeMappingColor explicitly  -> Foreground = AogTextBrush
+    Labels that WinForms did NOT theme (those in panelLeft/panelBottom/flp1, or nested inside a
+    button rather than being an immediate panel child, or on the deliberately fixed-light
+    panelNavigation face) keep their fixed literal colour and are tagged inline as intentional
+    legacy exceptions. The two remaining fixed WinForms literals that lacked a token
+    (Color.Gray #FF808080 borders, Color.Bisque #FFFFE4C4 alert face) are now centralized in
+    App.axaml as AogLegacyGrayBrush / AogLegacyBisqueBrush.
+
+    [XPLAT] Layout/DPI parity (CR finding MV-4): the 1024x768 design baseline with
+    MinWidth/MinHeight 1024x768 and WindowState=Maximized is the intentional KIOSK layout —
+    the WinForms FormGPS used the same 1024x768 design baseline and ran maximized. Avalonia
+    scales this single root Grid to the maximized window at runtime and applies DPI scaling
+    automatically; the Min* values guard the smallest usable kiosk size. (Pixel-accurate
+    multi-DPI render validation runs on real desktop displays per MIGRATION_DOCS/PARITY_REPORT.md;
+    it cannot be exercised in the headless CI/container where the desktop-GL surface is gated.)
+
+    Accessibility (CR finding MV-5): every interactive control carries an
+    AutomationProperties.Name (or, for menu items, a Header that supplies the accessible name);
+    the GL field viewport and zoom inset are named; the offscreen back-buffer host is left
+    unnamed by design (non-interactive glReadPixels scratch surface). Focus-visible adorners and
+    keyboard tab order are provided by the Fluent theme over the document-order control tree.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AgOpenGPS.Core.ViewModels"
+        x:Class="AgOpenGPS.Views.MainView"
+        x:DataType="vm:ApplicationViewModel"
+        Title="AgOpenGPS"
+        Width="1024" Height="768"
+        MinWidth="1024" MinHeight="768"
+        Background="{DynamicResource AogFrameBrush}"
+        FontFamily="Tahoma"
+        SystemDecorations="None"
+        WindowState="Maximized">
+
+    <!-- ===================== Styles (parity look for flat image buttons) ===================== -->
+    <Window.Styles>
+        <!-- Flat command buttons: image-only buttons must read like the WinForms FlatStyle
+             buttons, so the Fluent hover/pressed fill is suppressed on the content presenter. -->
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.flat /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flat:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <!-- Image toggles: the WinForms CheckBox(Appearance=Button) controls map to ToggleButton. -->
+        <Style Selector="ToggleButton.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="ToggleButton.flat /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <!-- Section/zone buttons: WinForms BackColor=Silver, FlatStyle=Flat (FlatBorderColor=Gray), Tahoma
+             11.25pt (=15dip). [XPLAT] MV-4: Background "Silver" and Foreground "Black" are the WinForms
+             DESIGN-TIME defaults and are OVERRIDDEN at runtime per section/zone state by
+             MainView.axaml.cs RefreshSectionZoneButtons()/SetSectionColor (Off=Red/Crimson, Auto=Lime/
+             ForestGreen, On=Yellow/DarkGoldenrod; foreground Black/White by day/night) — they are
+             intentional fixed parity defaults, not theme-drift, so they stay literal. The 1px flat border
+             is the fixed Color.Gray (#FF808080), now referenced through the centralized AogLegacyGrayBrush. -->
+        <Style Selector="Button.silverFlat">
+            <Setter Property="Background" Value="Silver" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AogLegacyGrayBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </Window.Styles>
+
+    <!-- ===================== Root single-cell layout grid ===================== -->
+    <Grid x:Name="rootGrid">
+
+        <!-- ============== OpenGL viewport hosts (back of the z-order) ============== -->
+        <!-- oglBack: offscreen back-buffer for the section/lookahead glReadPixels scan.
+             Sits behind the main field (occluded), populated by RenderCoordinator in code-behind.
+             [XPLAT] MV-4: the "Black" backdrop is the fixed GL viewport clear-colour parity face (the
+             live clear-colour is owned by AvaloniaGeoViewport/RenderCoordinator, never themed here) — an
+             intentional fixed literal, not theme-drift. MV-5: intentionally NOT given an
+             AutomationProperties.Name — it is a non-interactive offscreen glReadPixels scratch surface,
+             so announcing it would be screen-reader noise. -->
+        <ContentControl x:Name="oglBackHost"
+                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Margin="122,70,0,0" Width="500" Height="300"
+                        Background="Black" />
+
+        <!-- oglMain: central field viewport. Code-behind sets Content = AvaloniaGeoViewport.View
+             (the control's ctor takes a GeoBoundingBox, hence code-behind insertion not XAML).
+             [XPLAT] MV-4: fixed "Black" GL clear-colour parity face (see oglBack note). MV-5: named so
+             screen-reader users can locate the field area. -->
+        <ContentControl x:Name="glHostContainer"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                        Margin="78,50,74,69"
+                        AutomationProperties.Name="Field Viewport"
+                        Background="Black" />
+
+        <!-- oglZoom: zoom inset host. [XPLAT] MV-4: fixed "Black" GL clear-colour parity face. MV-5: named. -->
+        <ContentControl x:Name="oglZoomHost"
+                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Margin="122,63,0,0" Width="41" Height="44"
+                        AutomationProperties.Name="Field Zoom Inset"
+                        Background="Black" />
+
+        <!-- ============== Status readouts overlaid on the field (x:Name only) ============== -->
+        <!-- lblFix (84,1 87x19) Top|Left, Arial 12pt Bold (=16dip), MiddleRight. -->
+        <TextBlock x:Name="lblFix" Text="Fix sec"
+                   HorizontalAlignment="Left" VerticalAlignment="Top"
+                   Margin="84,1,0,0" Width="87" Height="19"
+                   FontFamily="Arial" FontSize="16" FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   TextAlignment="Right" />
+
+        <!-- lblCurrentField (82,25 140x24) Top|Left|Right, Arial 15.75pt Bold (=21dip). -->
+        <TextBlock x:Name="lblCurrentField" Text="Current Field"
+                   HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                   Margin="82,25,802,0" Height="24"
+                   FontFamily="Arial" FontSize="21" FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}" />
+
+        <!-- lblGuidanceLine (223,66 583x83) Top (recentred), Tahoma 24pt Bold (=32dip), hidden by default. -->
+        <TextBlock x:Name="lblGuidanceLine" Text="This is the line description"
+                   IsVisible="False"
+                   HorizontalAlignment="Center" VerticalAlignment="Top"
+                   Margin="0,66,0,0" Width="583" Height="83"
+                   FontFamily="Tahoma" FontSize="32" FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   TextAlignment="Center" TextWrapping="Wrap" />
+
+        <!-- lblHardwareMessage (74,110 888x43) Top (recentred), Bisque face, Tahoma 20.25pt Bold (=27dip), hidden.
+             [XPLAT] MV-4: Bisque alert face now via centralized AogLegacyBisqueBrush (exact #FFFFE4C4, fixed
+             both modes — WinForms excluded it from day/night). Foreground was an immediate child of the form
+             (this.Controls), which SwapDayNightMode themed, so it uses AogTextBrush to flip with day/night. -->
+        <TextBlock x:Name="lblHardwareMessage" Text=""
+                   IsVisible="False"
+                   HorizontalAlignment="Center" VerticalAlignment="Top"
+                   Margin="0,110,0,0" Width="888" Height="43"
+                   Background="{DynamicResource AogLegacyBisqueBrush}"
+                   FontFamily="Tahoma" FontSize="27" FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   TextAlignment="Center" Padding="0,4,0,0" />
+
+        <!-- ============== Manual section buttons btnSection1Man..16Man (34x25, Silver, disabled by default) ==============
+             Cols: 1-8 @ X=817, 9-16 @ X=777. Rows Y: 56,83,110,136,162,189,216,243. -->
+        <Button x:Name="btnSection1Man"  Classes="silverFlat" Content="1"  AutomationProperties.Name="Manual Section 1" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="817,56,0,0"  Width="34" Height="25" />
+        <Button x:Name="btnSection2Man"  Classes="silverFlat" Content="2"  AutomationProperties.Name="Manual Section 2" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="817,83,0,0"  Width="34" Height="25" />
+        <Button x:Name="btnSection3Man"  Classes="silverFlat" Content="3"  AutomationProperties.Name="Manual Section 3" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="817,110,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection4Man"  Classes="silverFlat" Content="4"  AutomationProperties.Name="Manual Section 4" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="817,136,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection5Man"  Classes="silverFlat" Content="5"  AutomationProperties.Name="Manual Section 5" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="817,162,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection6Man"  Classes="silverFlat" Content="6"  AutomationProperties.Name="Manual Section 6" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="817,189,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection7Man"  Classes="silverFlat" Content="7"  AutomationProperties.Name="Manual Section 7" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="817,216,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection8Man"  Classes="silverFlat" Content="8"  AutomationProperties.Name="Manual Section 8" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="817,243,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection9Man"  Classes="silverFlat" Content="9"  AutomationProperties.Name="Manual Section 9" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="777,56,0,0"  Width="34" Height="25" />
+        <Button x:Name="btnSection10Man" Classes="silverFlat" Content="10" AutomationProperties.Name="Manual Section 10" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="777,83,0,0"  Width="34" Height="25" />
+        <Button x:Name="btnSection11Man" Classes="silverFlat" Content="11" AutomationProperties.Name="Manual Section 11" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="777,110,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection12Man" Classes="silverFlat" Content="12" AutomationProperties.Name="Manual Section 12" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="777,136,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection13Man" Classes="silverFlat" Content="13" AutomationProperties.Name="Manual Section 13" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="777,162,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection14Man" Classes="silverFlat" Content="14" AutomationProperties.Name="Manual Section 14" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="777,189,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection15Man" Classes="silverFlat" Content="15" AutomationProperties.Name="Manual Section 15" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="777,216,0,0" Width="34" Height="25" />
+        <Button x:Name="btnSection16Man" Classes="silverFlat" Content="16" AutomationProperties.Name="Manual Section 16" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="777,243,0,0" Width="34" Height="25" />
+
+        <!-- ============== Zone buttons btnZone1..8 (59x25, Silver) — X=712, Y:56,82,108,134,160,186,212,238 ============== -->
+        <Button x:Name="btnZone1" Classes="silverFlat" Content="1" AutomationProperties.Name="Zone 1" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="712,56,0,0"  Width="59" Height="25" />
+        <Button x:Name="btnZone2" Classes="silverFlat" Content="2" AutomationProperties.Name="Zone 2" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="712,82,0,0"  Width="59" Height="25" />
+        <Button x:Name="btnZone3" Classes="silverFlat" Content="3" AutomationProperties.Name="Zone 3" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="712,108,0,0" Width="59" Height="25" />
+        <Button x:Name="btnZone4" Classes="silverFlat" Content="4" AutomationProperties.Name="Zone 4" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="712,134,0,0" Width="59" Height="25" />
+        <Button x:Name="btnZone5" Classes="silverFlat" Content="5" AutomationProperties.Name="Zone 5" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="712,160,0,0" Width="59" Height="25" />
+        <Button x:Name="btnZone6" Classes="silverFlat" Content="6" AutomationProperties.Name="Zone 6" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="712,186,0,0" Width="59" Height="25" />
+        <Button x:Name="btnZone7" Classes="silverFlat" Content="7" AutomationProperties.Name="Zone 7" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="712,212,0,0" Width="59" Height="25" />
+        <Button x:Name="btnZone8" Classes="silverFlat" Content="8" AutomationProperties.Name="Zone 8" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="712,238,0,0" Width="59" Height="25" />
+
+        <!-- ============================ panelLeft (3,50 72x648 Top|Bottom|Left) ============================
+             WinForms TableLayoutPanel 1col x 8row; reproduced top->bottom as a vertical stack.
+             Command frame uses the day/night AogFrameBrush. -->
+        <Border x:Name="panelLeft" Background="{DynamicResource AogFrameBrush}"
+                HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                Margin="3,50,0,70" Width="72">
+            <!-- [XPLAT] Spacing="0" (was "2"): the 8 toolbar items total 710px, and at the declared
+                 1024x768 kiosk floor panelLeft has only (768 - 50 top - 70 bottom) = 648px of box height.
+                 Inter-item spacing pushed cumulative content to 724px, landing btnStartAgIO's bottom 6px
+                 past the window (QA F9 D5 clipping). Removing the 7x2px gaps yields 710px of content
+                 ending at y=760 -> an 8px clearance at 768, while leaving every button size (hence the
+                 touch-target parity) and the >=800px layouts unchanged. -->
+            <StackPanel Orientation="Vertical" Spacing="0">
+                <!-- [XPLAT] btnNavigationSettings: in WinForms this toggled panelNavigation; in the
+                     Avalonia MVVM port the settings affordance surfaces the Config menu flow. The nav
+                     overlay toggle is wired separately by code-behind. -->
+                <Button x:Name="btnNavigationSettings" Classes="flat" Width="72" Height="67"
+                        Command="{Binding ShowConfigMenuCommand}"
+                        AutomationProperties.Name="Navigation and Config Menu">
+                    <Image Source="avares://AgOpenGPS/btnImages/NavigationSettings.png" Stretch="Uniform" />
+                </Button>
+                <Border x:Name="statusStripLeft" HorizontalAlignment="Center" Width="67" Height="109"
+                        BorderBrush="{DynamicResource AogLegacyGrayBrush}" BorderThickness="1" Background="Transparent">
+                    <TextBlock Text="UDP" FontSize="13" Foreground="{DynamicResource AogTextBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0" />
+                </Border>
+                <Border x:Name="statusStrip2" HorizontalAlignment="Center" Width="67" Height="74"
+                        BorderBrush="{DynamicResource AogLegacyGrayBrush}" BorderThickness="1" Background="Transparent">
+                    <TextBlock Text="UDP" FontSize="13" Foreground="{DynamicResource AogTextBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0" />
+                </Border>
+                <!-- [XPLAT] btnJobMenu -> Select-Field flow (FormJob/FormFieldDir in WinForms). -->
+                <Button x:Name="btnJobMenu" Classes="flat" Width="72" Height="103"
+                        Command="{Binding ShowSelectFieldMenuCommand}"
+                        AutomationProperties.Name="Field / Job Menu">
+                    <Image Source="avares://AgOpenGPS/btnImages/JobActive.png" Stretch="Uniform" />
+                </Button>
+                <!-- [XPLAT] btnFieldTools -> field-tools dropdown (WinForms toolStripBtnFieldTools + the Tools-menu
+                     boundary tool). Each MenuItem is wired in WireButtonHandlers to the matching ShellCommands.Open*
+                     delegate; the composition root opens the migrated Field/Guidance editor with the original
+                     job-started / boundary / guidance-line gating. Restores BNDY-1/BBT-1/HL-1/HA-1/TL-1/BND-1. -->
+                <Button x:Name="btnFieldTools" Classes="flat" Width="72" Height="103"
+                        AutomationProperties.Name="Field Tools">
+                    <Image Source="avares://AgOpenGPS/btnImages/FieldTools.png" Stretch="Uniform" />
+                    <Button.Flyout>
+                        <MenuFlyout>
+                            <MenuItem x:Name="menuBoundaries" Header="Boundaries" AutomationProperties.Name="Boundaries" />
+                            <MenuItem x:Name="menuHeadland" Header="Headland" AutomationProperties.Name="Headland" />
+                            <MenuItem x:Name="menuHeadlandBuild" Header="Headland (Build)" AutomationProperties.Name="Headland Build" />
+                            <MenuItem x:Name="menuTramLines" Header="Tram Lines" AutomationProperties.Name="Tram Lines" />
+                            <MenuItem x:Name="menuBoundaryTool" Header="Boundary Tool" AutomationProperties.Name="Boundary Tool" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+                <Border x:Name="statusStrip1" HorizontalAlignment="Center" Width="67" Height="84"
+                        BorderBrush="{DynamicResource AogLegacyGrayBrush}" BorderThickness="1" Background="Transparent">
+                    <TextBlock Text="UDP" FontSize="13" Foreground="{DynamicResource AogTextBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0" />
+                </Border>
+                <Button x:Name="btnAutoSteerConfig" Classes="flat" Width="72" Height="82"
+                        AutomationProperties.Name="AutoSteer Configuration">
+                    <Grid>
+                        <Image Source="avares://AgOpenGPS/btnImages/AutoSteerConf.png" Stretch="Uniform" />
+                        <!-- [XPLAT] MV-4: intentional fixed legacy colour. This label is nested inside a button
+                             in panelLeft, which WinForms SwapDayNightMode did NOT iterate, so its overlay text on
+                             the AutoSteerConf icon stayed fixed black in both day and night — preserved verbatim. -->
+                        <TextBlock x:Name="lblSteerAngleConfig" Text="-38.8." FontSize="13" FontWeight="Bold"
+                                   Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                    </Grid>
+                </Button>
+                <Button x:Name="btnStartAgIO" Classes="flat" Width="72" Height="88"
+                        AutomationProperties.Name="Start AgIO">
+                    <Image Source="avares://AgOpenGPS/btnImages/AgIO.png" Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- ============================ panelRight (950,37 70x714 Bottom|Right) ============================
+             WinForms used absolute child positions; reproduced with an inner Canvas. All buttons 64x64. -->
+        <Border x:Name="panelRight" Background="{DynamicResource AogFrameBrush}"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="0,0,4,17" Width="70" Height="714">
+            <Canvas>
+                <!-- [XPLAT] MV-4: immediate child of the themed panelRight (WinForms panelRight.Controls
+                     ForeColor flipped day/night) -> AogTextBrush so the readout stays legible in night mode. -->
+                <TextBlock x:Name="lblNumCu" Text="12/24" Canvas.Left="6" Canvas.Top="0" Width="58" Height="26"
+                           FontFamily="Tahoma" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource AogTextBrush}" TextAlignment="Center" />
+                <Button x:Name="btnContourLock" Classes="flat" Canvas.Left="3" Canvas.Top="29" Width="64" Height="64" AutomationProperties.Name="Contour Lock">
+                    <Image x:Name="imgContourLock" Source="avares://AgOpenGPS/btnImages/ColorUnlocked.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnContour" Classes="flat" Canvas.Left="3" Canvas.Top="99" Width="64" Height="64" AutomationProperties.Name="Contour">
+                    <Image x:Name="imgContour" Source="avares://AgOpenGPS/btnImages/ContourOff.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnCycleLines" Classes="flat" Canvas.Left="3" Canvas.Top="169" Width="64" Height="64" AutomationProperties.Name="Cycle AB Lines">
+                    <Image Source="avares://AgOpenGPS/btnImages/ABLineCycle.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnCycleLinesBk" Classes="flat" Canvas.Left="3" Canvas.Top="239" Width="64" Height="64" AutomationProperties.Name="Cycle AB Lines Backward">
+                    <Image Source="avares://AgOpenGPS/btnImages/ABLineCycleBk.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnAutoTrack" Classes="flat" Canvas.Left="3" Canvas.Top="309" Width="64" Height="64" AutomationProperties.Name="Auto Track">
+                    <Image x:Name="imgAutoTrack" Source="avares://AgOpenGPS/btnImages/AutoTrackOff.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnIsobusSectionControl" Classes="flat" Canvas.Left="3" Canvas.Top="379" Width="64" Height="64" AutomationProperties.Name="ISOBUS Section Control">
+                    <Image Source="avares://AgOpenGPS/btnImages/IsobusSectionControlOff.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnSectionMasterManual" Classes="flat" Canvas.Left="3" Canvas.Top="449" Width="64" Height="64" AutomationProperties.Name="Section Master Manual">
+                    <Image x:Name="imgSectionMasterManual" Source="avares://AgOpenGPS/btnImages/ManualOff.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnSectionMasterAuto" Classes="flat" Canvas.Left="3" Canvas.Top="516" Width="64" Height="64" AutomationProperties.Name="Section Master Auto">
+                    <Image x:Name="imgSectionMasterAuto" Source="avares://AgOpenGPS/btnImages/SectionMasterOff.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnAutoYouTurn" Classes="flat" Canvas.Left="3" Canvas.Top="583" Width="64" Height="64" AutomationProperties.Name="Auto U-Turn">
+                    <Image x:Name="imgAutoYouTurn" Source="avares://AgOpenGPS/btnImages/YouTurnNo.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnAutoSteer" Classes="flat" Canvas.Left="3" Canvas.Top="650" Width="64" Height="64" AutomationProperties.Name="AutoSteer">
+                    <Image x:Name="imgAutoSteer" Source="avares://AgOpenGPS/btnImages/AutoSteerOff.png" Stretch="Uniform" />
+                </Button>
+            </Canvas>
+        </Border>
+
+        <!-- ============================ panelBottom (-30,700 974x62 Bottom|Right) ============================
+             WinForms absolute child layout; reproduced with an inner Canvas. Buttons 72x56 unless noted. -->
+        <Border x:Name="panelBottom" Background="{DynamicResource AogFrameBrush}"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="0,0,80,6" Width="974" Height="62">
+            <Canvas>
+                <ComboBox x:Name="cboxpRowWidth" Canvas.Left="2" Canvas.Top="7" Width="52" Height="47"
+                          AutomationProperties.Name="Row Skip Width" />
+                <Button x:Name="btnYouSkipEnable" Classes="flat" Canvas.Left="59" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="You Skip Enable">
+                    <Image x:Name="imgYouSkip" Source="avares://AgOpenGPS/btnImages/YouSkipOff.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnChangeMappingColor" Classes="flat" Canvas.Left="134" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Change Mapping Color">
+                    <Grid>
+                        <Image Source="avares://AgOpenGPS/btnImages/SectionMapping.png" Stretch="Uniform" />
+                        <!-- [XPLAT] MV-4: WinForms SwapDayNightMode set btnChangeMappingColor.ForeColor =
+                             textColorDay/Night explicitly, so this readout uses AogTextBrush to flip day/night. -->
+                        <TextBlock x:Name="lblMappingColor" Text="5.8.4" FontSize="12" FontWeight="Bold"
+                                   Foreground="{DynamicResource AogTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                    </Grid>
+                </Button>
+                <Button x:Name="btnResetToolHeading" Classes="flat" Canvas.Left="206" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Reset Tool Heading">
+                    <Image Source="avares://AgOpenGPS/btnImages/ResetTool.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnTramDisplayMode" Classes="flat" Canvas.Left="281" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Tram Display Mode">
+                    <Image x:Name="imgTram" Source="avares://AgOpenGPS/btnImages/TramOff.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnHydLift" Classes="flat" Canvas.Left="359" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Hydraulic Lift">
+                    <Image x:Name="imgHydLift" Source="avares://AgOpenGPS/btnImages/HydraulicLiftOff.png" Stretch="Uniform" />
+                </Button>
+                <!-- WinForms CheckBox(Appearance=Button) -> ToggleButton. -->
+                <ToggleButton x:Name="cboxIsSectionControlled" Classes="flat" Canvas.Left="437" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Headland Section Control">
+                    <Image x:Name="imgHeadlandSection" Source="avares://AgOpenGPS/btnImages/HeadlandSectionOn.png" Stretch="Uniform" />
+                </ToggleButton>
+                <Button x:Name="btnHeadlandOnOff" Classes="flat" Canvas.Left="515" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Headland On/Off">
+                    <Image x:Name="imgHeadland" Source="avares://AgOpenGPS/btnImages/HeadlandOff.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnFlag" Classes="flat" Canvas.Left="593" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Flag">
+                    <Grid>
+                        <Image Source="avares://AgOpenGPS/btnImages/FlagRed.png" Stretch="Uniform" />
+                        <!-- [XPLAT] MV-4: intentional fixed legacy colour — overlay text nested inside btnFlag in
+                             panelBottom (not iterated by SwapDayNightMode and not the explicitly-themed
+                             btnChangeMappingColor), so it stayed fixed black on the flag icon. -->
+                        <TextBlock x:Name="lblFlagNumber" Text="P" FontFamily="Tahoma" FontSize="19" FontWeight="Bold"
+                                   Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                    </Grid>
+                </Button>
+                <Button x:Name="btnAdjLeft" Classes="flat" Canvas.Left="671" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Adjust Left">
+                    <Image Source="avares://AgOpenGPS/btnImages/SnapLeft.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnAdjRight" Classes="flat" Canvas.Left="749" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Adjust Right">
+                    <Image Source="avares://AgOpenGPS/btnImages/SnapRight.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnSnapToPivot" Classes="flat" Canvas.Left="827" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Snap To Pivot">
+                    <Image Source="avares://AgOpenGPS/btnImages/SnapToPivot.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnTrack" Classes="flat" Canvas.Left="902" Canvas.Top="3" Width="72" Height="56" AutomationProperties.Name="Track">
+                    <Image Source="avares://AgOpenGPS/btnImages/TrackOn.png" Stretch="Uniform" />
+                </Button>
+            </Canvas>
+        </Border>
+
+        <!-- ============================ panelControlBox (532,4 489x43 Top|Right) ============================
+             Transparent top-right control box: field stats, charge, GPS quality, speed readout,
+             window minimize/maximize/close. -->
+        <Border x:Name="panelControlBox" Background="Transparent"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,4,3,0" Width="489" Height="43">
+            <Canvas>
+                <Button x:Name="btnFieldStats" Classes="flat" Canvas.Left="2" Canvas.Top="2" Width="75" Height="38" AutomationProperties.Name="Field Statistics">
+                    <Image Source="avares://AgOpenGPS/btnImages/FieldStats.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnChargeStatus" Classes="flat" Canvas.Left="86" Canvas.Top="5" Width="25" Height="32" AutomationProperties.Name="Charge Status">
+                    <Image Source="avares://AgOpenGPS/btnImages/ChargeIndicator.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnGPSData" Classes="flat" Canvas.Left="124" Canvas.Top="2" Width="52" Height="38" AutomationProperties.Name="GPS Data">
+                    <Image Source="avares://AgOpenGPS/btnImages/GPSQuality.png" Stretch="Uniform" />
+                </Button>
+                <!-- [XPLAT] MV-4: immediate child of the themed panelControlBox (WinForms panelControlBox.Controls
+                     ForeColor flipped day/night) -> AogTextBrush. -->
+                <TextBlock x:Name="lblSpeed" Text="88.88" Canvas.Left="193" Canvas.Top="7" Width="87" Height="35"
+                           FontFamily="Arial" FontSize="29" FontWeight="Bold" Foreground="{DynamicResource AogTextBrush}" TextAlignment="Center" />
+                <Button x:Name="btnMinimizeMainForm" Classes="flat" Canvas.Left="290" Canvas.Top="3" Width="52" Height="38" AutomationProperties.Name="Minimize">
+                    <Image Source="avares://AgOpenGPS/btnImages/WindowMinimize.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnMaximizeMainForm" Classes="flat" Canvas.Left="361" Canvas.Top="3" Width="52" Height="38" AutomationProperties.Name="Maximize / Restore">
+                    <Image Source="avares://AgOpenGPS/btnImages/WindowMaximize.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnShutdown" Classes="flat" Canvas.Left="434" Canvas.Top="3" Width="52" Height="38" AutomationProperties.Name="Close">
+                    <Image Source="avares://AgOpenGPS/btnImages/WindowClose.png" Stretch="Uniform" />
+                </Button>
+            </Canvas>
+        </Border>
+
+        <!-- ============================ flp1 (800,48 86x571 Top|Left) ============================
+             WinForms FlowLayoutPanel, FlowDirection=BottomUp: the first-added child (btnNudge) sits at
+             the BOTTOM and each subsequent child stacks upward, so the top->bottom visual order is the
+             reverse of the add order. Reproduced as a vertical stack in that visual order. -->
+        <StackPanel x:Name="flp1" Orientation="Vertical" Spacing="4"
+                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Margin="800,48,0,0" Width="86" Height="571">
+            <Button x:Name="btnRefNudge" Classes="flat" Width="80" Height="77" AutomationProperties.Name="Reference Nudge Menu">
+                <Grid>
+                    <Image Source="avares://AgOpenGPS/btnImages/ABSnapNudgeMenuRef.png" Stretch="Uniform" />
+                    <!-- [XPLAT] MV-4: intentional fixed legacy colour — overlay text nested inside btnRefNudge in
+                         flp1 (not iterated by SwapDayNightMode), so it stayed fixed black on the nudge icon. -->
+                    <TextBlock Text="Ref" FontSize="13" FontWeight="Bold" Foreground="Black"
+                               HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                </Grid>
+            </Button>
+            <!-- WinForms CheckBox(Appearance=Button) -> ToggleButton. -->
+            <ToggleButton x:Name="cboxAutoSnapToPivot" Classes="flat" Width="80" Height="77" AutomationProperties.Name="Auto Snap To Pivot">
+                <Image Source="avares://AgOpenGPS/btnImages/AutoSteerSnapToPivot.png" Stretch="Uniform" />
+            </ToggleButton>
+            <Button x:Name="btnTracksOff" Classes="flat" Width="80" Height="77" AutomationProperties.Name="Tracks Off">
+                <Image Source="avares://AgOpenGPS/btnImages/SwitchOff.png" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="btnBuildTracks" Classes="flat" Width="80" Height="77" AutomationProperties.Name="Build Tracks">
+                <Image Source="avares://AgOpenGPS/btnImages/ABTracks.png" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="btnPlusAB" Classes="flat" Width="80" Height="77" AutomationProperties.Name="Add New Track">
+                <Image Source="avares://AgOpenGPS/btnImages/AddNew.png" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="btnABDraw" Classes="flat" Width="80" Height="72" AutomationProperties.Name="AB Draw">
+                <Image Source="avares://AgOpenGPS/btnImages/ABDraw.png" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="btnNudge" Classes="flat" Width="80" Height="72" AutomationProperties.Name="Nudge Menu">
+                <Image Source="avares://AgOpenGPS/btnImages/ABSnapNudgeMenu.png" Stretch="Uniform" />
+            </Button>
+        </StackPanel>
+
+        <!-- ============================ panelSim (313,642 615x42 Bottom) ============================
+             Simulator control bar (transparent). WinForms TableLayoutPanel 9col x 1row; columns 2 and 4
+             are empty spacers around the single steer-angle slider (there is no speed slider). -->
+        <StackPanel x:Name="panelSim" Orientation="Horizontal" Spacing="6"
+                    HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                    Margin="313,0,0,84" Width="615" Height="42" Background="Transparent">
+            <Button x:Name="btnResetSim" Content="Reset" Width="59" Height="34" Padding="2" FontSize="12"
+                    AutomationProperties.Name="Reset Simulator" />
+            <Button x:Name="btnResetSteerAngle" Content="&gt;0&lt;" Width="59" Height="34" Padding="2" FontSize="12"
+                    AutomationProperties.Name="Reset Steer Angle" />
+            <Border Width="10" Background="Transparent" />
+            <Slider x:Name="hsbarSteerAngle" Orientation="Horizontal" Width="153" Height="40"
+                    Minimum="-100" Maximum="100" Value="0" VerticalAlignment="Center"
+                    AutomationProperties.Name="Simulator Steer Angle" />
+            <Border Width="10" Background="Transparent" />
+            <Button x:Name="btnSpeedDn" Classes="flat" Width="67" Height="34" AutomationProperties.Name="Speed Down">
+                <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="btnSimSetSpeedToZero" Classes="flat" Width="50" Height="34" AutomationProperties.Name="Set Speed To Zero">
+                <Image Source="avares://AgOpenGPS/btnImages/AutoStop.png" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="btnSimSpeedUp" Classes="flat" Width="67" Height="34" AutomationProperties.Name="Speed Up">
+                <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="btnSimReverseDirection" Classes="flat" Width="35" Height="34" AutomationProperties.Name="Reverse Direction">
+                <Image Source="avares://AgOpenGPS/btnImages/YouTurn80.png" Stretch="Uniform" />
+            </Button>
+        </StackPanel>
+
+        <!-- ============================ panelNavigation (505,63 179x460) — hidden overlay ============================
+             WinForms fixed WhiteSmoke face (excluded from day/night). TableLayoutPanel 2col x 5row. -->
+        <Border x:Name="panelNavigation" Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+                IsVisible="False"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Margin="505,63,0,0" Width="179" Height="460">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Button x:Name="btnTiltDn" Grid.Row="0" Grid.Column="0" Classes="flat" Width="57" Height="55" AutomationProperties.Name="Tilt Down">
+                    <Image Source="avares://AgOpenGPS/btnImages/TiltDown.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnTiltUp" Grid.Row="0" Grid.Column="1" Classes="flat" Width="57" Height="55" AutomationProperties.Name="Tilt Up">
+                    <Image Source="avares://AgOpenGPS/btnImages/TiltUp.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btn2D" Grid.Row="1" Grid.Column="0" Classes="flat" Width="57" Height="55" AutomationProperties.Name="2D View">
+                    <Image Source="avares://AgOpenGPS/btnImages/Camera2D64.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btn3D" Grid.Row="1" Grid.Column="1" Classes="flat" Width="57" Height="55" AutomationProperties.Name="3D View">
+                    <Image Source="avares://AgOpenGPS/btnImages/Camera3D64.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnN2D" Grid.Row="2" Grid.Column="0" Classes="flat" Width="57" Height="55" AutomationProperties.Name="North 2D View">
+                    <Image Source="avares://AgOpenGPS/btnImages/CameraNorth2D.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnGrid" Grid.Row="2" Grid.Column="1" Classes="flat" Width="80" Height="83" AutomationProperties.Name="Grid / Rotate">
+                    <Image Source="avares://AgOpenGPS/btnImages/GridRotate.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnDayNightMode" Grid.Row="3" Grid.Column="0" Classes="flat" Width="57" Height="55" AutomationProperties.Name="Day / Night Mode">
+                    <Image x:Name="imgDayNight" Source="avares://AgOpenGPS/btnImages/WindowNightMode.png" Stretch="Uniform" />
+                </Button>
+                <!-- [XPLAT] MV-4: intentional fixed legacy colour. panelNavigation keeps the WinForms fixed-light
+                     WhiteSmoke face (AogLegacyWhiteSmokeBrush, deliberately excluded from day/night), so its text
+                     is held fixed black to stay legible on that light face. Routing it through AogTextBrush would
+                     render near-white-on-WhiteSmoke at night; fixed black is the coherent parity choice here. -->
+                <TextBlock x:Name="lblHz" Grid.Row="3" Grid.Column="1" Text="5 Hz 32&#10;PPS" Width="84" Height="79"
+                           FontFamily="Tahoma" FontSize="13" FontWeight="Bold" Foreground="Black"
+                           TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Button x:Name="btnBrightnessDn" Grid.Row="4" Grid.Column="0" Classes="flat" Width="83" Height="75" AutomationProperties.Name="Brightness Down">
+                    <Grid>
+                        <Image Source="avares://AgOpenGPS/btnImages/BrightnessDn.png" Stretch="Uniform" />
+                        <!-- [XPLAT] MV-4: intentional fixed legacy colour — nested inside btnBrightnessDn on the
+                             fixed-light panelNavigation face; held fixed black for the same reason as lblHz above. -->
+                        <TextBlock x:Name="lblBrightness" Text="20%" FontSize="13" FontWeight="Bold" Foreground="Black"
+                                   HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                    </Grid>
+                </Button>
+                <Button x:Name="btnBrightnessUp" Grid.Row="4" Grid.Column="1" Classes="flat" Width="84" Height="75" AutomationProperties.Name="Brightness Up">
+                    <Image Source="avares://AgOpenGPS/btnImages/BrightnessUp.png" Stretch="Uniform" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- ============================ panelDrag (852,58 64x381) — hidden, draggable ============================
+             WinForms fixed White face; draggable behaviour reattached in code-behind. TableLayoutPanel 1col x 5row.
+             [XPLAT] MV-4: the "White" face is an intentional fixed legacy colour (WinForms kept this floating
+             path-record drag bar white in both day and night); preserved verbatim. -->
+        <Border x:Name="panelDrag" Background="White" IsVisible="False"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Margin="852,58,0,0" Width="64" Height="381">
+            <StackPanel Orientation="Vertical" Spacing="0">
+                <Button x:Name="btnPathGoStop" Classes="flat" Width="64" Height="61" AutomationProperties.Name="Path Go / Stop">
+                    <Image x:Name="imgPathGoStop" Source="avares://AgOpenGPS/btnImages/boundaryPlay.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnResumePath" Classes="flat" Width="64" Height="64" AutomationProperties.Name="Resume Path">
+                    <Image x:Name="imgResumePath" Source="avares://AgOpenGPS/btnImages/pathResumeStart.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnPathRecordStop" Classes="flat" Width="64" Height="61" AutomationProperties.Name="Path Record / Stop">
+                    <Image x:Name="imgPathRecordStop" Source="avares://AgOpenGPS/btnImages/BoundaryRecord.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnPickPath" Classes="flat" Width="64" Height="61" AutomationProperties.Name="Pick Path">
+                    <Image Source="avares://AgOpenGPS/btnImages/FileExplorerWindows.png" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnSwapABRecordedPath" Classes="flat" Width="64" Height="61" AutomationProperties.Name="Swap AB Recorded Path">
+                    <Image Source="avares://AgOpenGPS/btnImages/ABSwapPoints.png" Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- ============================ menuStrip1 (20,3 56x44) — hamburger menu (frontmost) ============================
+             WinForms MenuStrip with a single right-aligned hamburger item (Image=fileMenu) whose dropdown
+             holds the 11 file-menu entries. Reproduced as an Avalonia Menu. -->
+        <Menu x:Name="menuStrip1" Background="Transparent"
+              HorizontalAlignment="Left" VerticalAlignment="Top"
+              Margin="20,3,0,0">
+            <MenuItem x:Name="fileToolStripMenuItem" AutomationProperties.Name="Main Menu">
+                <MenuItem.Header>
+                    <Image Source="avares://AgOpenGPS/btnImages/fileMenu.png" Width="48" Height="40" Stretch="Uniform" />
+                </MenuItem.Header>
+                <MenuItem x:Name="loadVehicleToolToolStripMenuItem" Header="Vehicle / Tool...">
+                    <MenuItem.Icon>
+                        <Image Source="avares://AgOpenGPS/btnImages/FileOpen.png" Width="24" Height="24" Stretch="Uniform" />
+                    </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem x:Name="menustripLanguage" Header="Language" />
+                <Separator x:Name="toolStripSeparator11" />
+                <MenuItem x:Name="simulatorOnToolStripMenuItem" Header="Simulator On" />
+                <MenuItem x:Name="enterSimCoordsToolStripMenuItem" Header="Enter Sim Coords" />
+                <Separator x:Name="toolStripSeparator4" />
+                <MenuItem x:Name="kioskModeToolStrip" Header="Kiosk Mode" />
+                <MenuItem x:Name="resetALLToolStripMenuItem" Header="Reset All">
+                    <MenuItem x:Name="resetEverythingToolStripMenuItem" Header="Reset To Default" />
+                </MenuItem>
+                <MenuItem x:Name="AgShareApiMenuItem" Header="AgShare API" />
+                <MenuItem x:Name="checkForUpdatesToolStripMenuItem" Header="Check for Updates" />
+                <MenuItem x:Name="helpMenuItem" Header="Help" />
+            </MenuItem>
+        </Menu>
+
+    </Grid>
+</Window>

@@ -1,0 +1,348 @@
+<!-- [XPLAT] migrated from net48/WinForms FormNewProfile — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Create New Profile" dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Profiles/FormNewProfile`
+    (FormNewProfile.cs + FormNewProfile.Designer.cs). It prompts the operator for a new
+    environment-profile name and lets them choose what to copy the new profile FROM: a fresh
+    "<Empty Profile>" reset, the current profile, or any existing *.xml profile in the
+    environment directory. Per AAP §0.3.3 this is a faithful parity reimplementation of the
+    currently rendered Windows Forms UI — never a redesign: no new colours, no relayout, no UX
+    changes. Every size, font and colour below is taken verbatim from FormNewProfile.Designer.cs.
+
+    WINDOW SHELL — mirrors FormNewProfile.Designer.cs exactly:
+      Text "Create New Profile"   -> Title (runtime gStr.gsCreateNewProfile is assigned by the
+                                     code-behind; hidden by the borderless shell but kept for
+                                     taskbar / automation).
+      ClientSize 637 x 390        -> Width / Height (SystemDecorations="None" => client == window;
+                                     MinWidth=650 clamps the effective start width to 650, exactly
+                                     as the WinForms MinimumSize 650 x 370 over-rode the 637 client).
+      BackColor WhiteSmoke        -> Background="#FFF5F5F5" (WinForms Color.WhiteSmoke == #FFF5F5F5).
+                                     Hard-coded for parity and intentionally theme-independent —
+                                     like the sibling utility dialogs (FormInputDialogView /
+                                     FormEventViewerView) — so App.axaml's day/night brushes are
+                                     NOT consumed here. App.axaml's FluentTheme still supplies the
+                                     default TextBox / Button / ListBox control templates.
+      ControlBox = false          -> covered by the borderless (SystemDecorations="None") shell +
+                                     a 1px root Border; the dialog is dismissed only via its own
+                                     in-window Cancel / Create buttons (sibling-dialog convention).
+      MinimumSize 650 x 370       -> MinWidth="650" MinHeight="370".
+      (default Sizable border)    -> CanResize="True" (the designer never set FormBorderStyle, so
+                                     the WinForms default — a sizable window — is preserved).
+      ShowInTaskbar = false       -> ShowInTaskbar="False".
+      StartPosition.CenterParent  -> WindowStartupLocation="CenterOwner" (shown owned over FormGPS).
+      Font Tahoma 14.25pt         -> FontFamily="Tahoma" FontSize="19" (14.25pt x 96/72 = 19 DIP).
+      (NOT TopMost — the designer never set TopMost, so this dialog is intentionally not topmost.)
+
+    WIRING CONTRACT — this view is a CODE-BEHIND dialog, NOT MVVM (exactly like the sibling
+    FormInputDialogView / FormFilePickerView):
+      * There is intentionally NO DataContext and NO {Binding} to a view-model. The partner
+        code-behind (FormNewProfileView.axaml.cs, partial class
+        AgOpenGPS.Views.Profiles.FormNewProfileView : Window) owns ALL behaviour and addresses
+        every control imperatively BY x:Name. The x:Names below MUST stay exactly as written —
+        the code-behind references each one: labelName, textBoxName, labelCopyFrom,
+        listViewProfiles, buttonCancel, textCancel, buttonCreate, textCreate.
+      * Event handlers wired here as XAML attributes (the code-behind defines matching handlers,
+        reproducing the WinForms Designer's `this.ctrl.Event += ...` wiring):
+            textBoxName.Tapped       -> TextBoxName_Tapped        (WinForms textBoxName_Click: shows
+                                        the on-screen keyboard when isKeyboardOn and no job started).
+            textBoxName.TextChanged  -> TextBoxName_TextChanged    (WinForms textBoxName_TextChanged:
+                                        glm.fileRegex sanitisation + enables buttonCreate when the
+                                        name is non-empty).
+            buttonCancel.Click       -> ButtonCancel_Click         (WinForms DialogResult.Cancel).
+            buttonCreate.Click       -> ButtonCreate_Click         (WinForms buttonOK_Click /
+                                        DialogResult.OK — creates the profile).
+      * The translated caption strings are assigned at runtime by the code-behind
+        (FormNewProfile_Load): labelName = gStr.gsName + ":", labelCopyFrom = gStr.gsCopyFrom + ":",
+        textCreate = gStr.gsCreate, textCancel = gStr.gsCancel. The literal strings below are the
+        designer's design-time placeholders.
+      * buttonCreate starts DISABLED (WinForms buttonCreate.Enabled = false) -> IsEnabled="False";
+        the code-behind re-enables it from TextBoxName_TextChanged once a name is typed.
+
+    THE "COPY FROM" LIST (listViewProfiles):
+      WinForms used a Details ListView with HeaderStyle=None and two columns — "Profiles" (Width
+      450) and an unlabelled current-marker column (Width 150) — FullRowSelect, MultiSelect=false,
+      HideSelection=false, BackColor InactiveCaption, Tahoma 18pt Bold. Avalonia has no Details
+      ListView, so this is an Avalonia ListBox (SelectionMode="Single") whose ItemTemplate renders
+      the same two columns. The code-behind fills listViewProfiles with a small item type exposing
+      `Display` (column 1 — the profile name, e.g. "<Empty Profile>" or a *.xml file name) and
+      `CurrentMarker` (column 2 — "(current)" for the active profile, otherwise empty). Because this
+      is a code-behind dialog with NO x:DataType, the two {Binding Display} / {Binding CurrentMarker}
+      slots are classic REFLECTION bindings against that item object; the root therefore sets
+      x:CompileBindings="False" (the canonical opt-out, as in the sibling FormFilePickerView) so the
+      template binds regardless of the project's compiled-bindings default. This binds to the item
+      object only — there is no view-model involved.
+
+    Button glyphs are served from the GPS assembly via avares:// URIs
+    (avares://AgOpenGPS/btnImages/{Cancel64,OK64}.png — both 64 x 64 on disk), matching the file
+    casing and the avares:// convention already used by the sibling GPS views.
+
+    No System.Windows.Forms, no OpenTK, no Win32 / Windows-only types are referenced — Avalonia
+    11.3 markup only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.Profiles.FormNewProfileView"
+        x:CompileBindings="False"
+        Title="Create New Profile"
+        Width="637"
+        Height="390"
+        MinWidth="650"
+        MinHeight="370"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+        SystemDecorations="None"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19">
+
+    <Window.Styles>
+        <!--
+            Shared flat / transparent image-button face. The WinForms buttons were FlatStyle.Flat
+            with FlatAppearance.BorderSize = 0 and an image-over-caption face on the WhiteSmoke form.
+            This class reproduces that: a transparent, border-less button that stays transparent
+            through pointerover / pressed (the Fluent Button template otherwise paints its own
+            hover / press fill over the flat face). The pointerover / pressed setters target the
+            Fluent template's content presenter — the same technique used by the sibling
+            FormFilePickerView / FormRecordPickerView and Keypad/NumKeypad.axaml. ContentAlignment is
+            stretched so the inner image+caption Grid fills the whole 80 x 92 button face.
+        -->
+        <Style Selector="Button.flatBtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.flatBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatBtn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <!--
+            Keep the flat face transparent in the DISABLED state too. buttonCreate starts disabled
+            (WinForms buttonCreate.Enabled = false), and the Fluent Button template otherwise paints
+            a grey disabled fill over the flat face — WinForms instead left the disabled button's
+            background transparent (only the glyph greys out). This override restores that parity.
+        -->
+        <Style Selector="Button.flatBtn:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!--
+            Tighten the Fluent ListBoxItem to the WinForms ListView row rhythm: no extra item
+            min-height / corner radius and stretch the row content full width so the selection
+            highlight spans the whole row (WinForms FullRowSelect = true, HideSelection = false).
+        -->
+        <Style Selector="ListBox#listViewProfiles ListBoxItem">
+            <Setter Property="Padding" Value="2,1" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        ControlBox=false -> borderless shell. A 1px neutral-grey root Border draws the window edge
+        (the sibling-dialog convention) since SystemDecorations="None" removes the OS frame.
+    -->
+    <Border BorderBrush="#FF808080" BorderThickness="1">
+
+        <!--
+            The WinForms form is a resizable window whose controls use Anchors: the name textbox
+            anchors Top/Left/Right (stretches horizontally), the "copy from" list anchors all four
+            sides (fills the centre), and the two command buttons anchor Bottom/Right. A Grid
+            reproduces that anchor behaviour faithfully and reflows on resize:
+              Row 0 (64) — name label + textbox    (designer: label @ y25, textbox @ y20 h33)
+              Row 1 (38) — "copy from" label        (designer: label @ y68)            => list top y102
+              Row 2 (*)  — the profile list         (designer: list @ y102, h166)      => fills centre
+              Row 3 (Auto) — bottom-right buttons    (designer: buttons @ y268, 80x92)
+            64 + 38 + (92 + 30 bottom) = 224 fixed, so at the 390 design height the list resolves to
+            166 px — identical to the WinForms list height.
+        -->
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="64" />
+                <RowDefinition Height="38" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!--
+                Row 0 — name row. A 150 / * column split: the right-aligned label occupies the first
+                150 px (its text right edge lands at x≈150, the WinForms label's right edge) and the
+                textbox fills the rest. textBoxName Margin "10,0,42,0" reproduces the designer gap
+                (textbox left x160 = 150 + 10) and its 42 px right inset (637 client - 595 textbox
+                right edge), so at the 637 design width the textbox is 435 px wide — its designer Size.
+            -->
+            <Grid Grid.Row="0" ColumnDefinitions="150,*">
+                <!-- labelName: WinForms Label (15,25) 135x23, Tahoma 14.25pt Bold, ForeColor Black,
+                     TextAlign MiddleRight. Runtime text = gStr.gsName + ":" (placeholder below). -->
+                <TextBlock x:Name="labelName"
+                           Grid.Column="0"
+                           Text="Name:"
+                           FontFamily="Tahoma"
+                           FontSize="19"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           TextAlignment="Right"
+                           HorizontalAlignment="Stretch"
+                           VerticalAlignment="Center" />
+
+                <!-- textBoxName: WinForms TextBox (160,20) 435x33, anchor Top/Left/Right, BackColor
+                     White, Tahoma 15.75pt (= 21 DIP). Tapped -> on-screen keyboard; TextChanged ->
+                     filename sanitisation + enable Create (both handled in the code-behind). -->
+                <TextBox x:Name="textBoxName" AutomationProperties.Name="New profile name"
+                         Grid.Column="1"
+                         Margin="10,0,42,0"
+                         Height="33"
+                         Background="White"
+                         FontFamily="Tahoma"
+                         FontSize="21"
+                         VerticalAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         Tapped="TextBoxName_Tapped"
+                         TextChanged="TextBoxName_TextChanged" />
+            </Grid>
+
+            <!-- Row 1 — labelCopyFrom: WinForms Label (15,68) 135x23, Tahoma 14.25pt Bold, ForeColor
+                 Black, TextAlign MiddleRight. Pinned left at the same x15 / 135-wide column as
+                 labelName so the two captions align. Runtime text = gStr.gsCopyFrom + ":". -->
+            <TextBlock x:Name="labelCopyFrom"
+                       Grid.Row="1"
+                       Text="Copy from:"
+                       Width="135"
+                       Margin="15,0,0,0"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       TextAlignment="Right"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Center" />
+
+            <!--
+                Row 2 — listViewProfiles: the "copy from" list. WinForms ListView (Details,
+                HeaderStyle=None) @ (13,102) 611x166, BackColor InactiveCaption (~#FFBFCDDB),
+                Tahoma 18pt Bold (= 24 DIP), FullRowSelect, MultiSelect=false, HideSelection=false.
+                Avalonia ListBox: Background #FFBFCDDB, SelectionMode="Single", BorderThickness 0
+                (the root Border already frames the dialog). Margin "13,0,13,0" reproduces the
+                designer's 13 px left inset and matching right inset (list right edge x624 of the
+                637 client). The horizontal scrollbar is disabled (LabelWrap=false / single line).
+                ItemsSource and the item objects (Display / CurrentMarker) are supplied by the
+                code-behind.
+            -->
+            <ListBox x:Name="listViewProfiles" AutomationProperties.Name="Copy-from profile list"
+                     Grid.Row="2"
+                     Margin="13,0,13,0"
+                     Background="#FFBFCDDB"
+                     BorderThickness="0"
+                     FontFamily="Tahoma"
+                     FontSize="24"
+                     FontWeight="Bold"
+                     SelectionMode="Single"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <!--
+                            One row = two columns matching the WinForms ColumnHeader widths
+                            (Profiles 450 / current-marker 150). NO x:DataType is set (code-behind
+                            dialog), so {Binding Display} / {Binding CurrentMarker} are classic
+                            reflection bindings against the item object the code-behind supplies —
+                            the only bindings in this file, and no view-model is involved.
+                        -->
+                        <Grid ColumnDefinitions="450,150">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding Display}"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding CurrentMarker}"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!--
+                Row 3 — bottom-right command buttons. WinForms: buttonCancel @ (461,268) 80x92 then
+                buttonCreate @ (546,268) 80x92, both anchored Bottom/Right. Reproduced as a
+                right-aligned horizontal StackPanel (Cancel first, Create second — designer order)
+                with Spacing 5 (the 5 px designer gap: 546 - 541) and a 11 px right / 30 px bottom
+                inset (buttons right edge x626 of the 637 client; 390 - 360 button bottom = 30).
+                Each button: a flat/transparent face with the 64 px glyph on top (WinForms
+                ImageAlign TopCenter) and the caption beneath (WinForms TextAlign BottomCenter).
+            -->
+            <StackPanel Grid.Row="3"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,0,11,30"
+                        Spacing="5">
+
+                <!-- buttonCancel: WinForms DialogResult.Cancel, image Cancel64, caption "Cancel"
+                     (runtime gStr.gsCancel via textCancel). -->
+                <Button x:Name="buttonCancel"
+                        Classes="flatBtn"
+                        Width="80"
+                        Height="92"
+                        Click="ButtonCancel_Click"
+                        AutomationProperties.Name="Cancel">
+                    <Grid RowDefinitions="Auto,*">
+                        <Image Grid.Row="0"
+                               Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                               Width="64"
+                               Height="64"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Top" />
+                        <TextBlock x:Name="textCancel"
+                                   Grid.Row="1"
+                                   Text="Cancel"
+                                   FontFamily="Tahoma"
+                                   FontSize="19"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Bottom" />
+                    </Grid>
+                </Button>
+
+                <!-- buttonCreate: WinForms DialogResult.OK (buttonOK_Click), image OK64, caption
+                     "Create" (runtime gStr.gsCreate via textCreate). Starts DISABLED; the
+                     code-behind enables it once a non-empty name is typed. -->
+                <Button x:Name="buttonCreate"
+                        Classes="flatBtn"
+                        Width="80"
+                        Height="92"
+                        IsEnabled="False"
+                        Click="ButtonCreate_Click"
+                        AutomationProperties.Name="Create">
+                    <Grid RowDefinitions="Auto,*">
+                        <Image Grid.Row="0"
+                               Source="avares://AgOpenGPS/btnImages/OK64.png"
+                               Width="64"
+                               Height="64"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Top" />
+                        <TextBlock x:Name="textCreate"
+                                   Grid.Row="1"
+                                   Text="Create"
+                                   FontFamily="Tahoma"
+                                   FontSize="19"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Bottom" />
+                    </Grid>
+                </Button>
+
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -1,5 +1,7 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Newtonsoft.Json;
 
 namespace AgOpenGPS.Updater.Models
@@ -54,7 +56,7 @@ namespace AgOpenGPS.Updater.Models
                 if (!Prerelease) return "Stable";
 
                 // Try to determine pre-release type from tag or name
-                string tagLower = TagName?.ToLower() ?? "";
+                string tagLower = TagName?.ToLowerInvariant() ?? "";
                 if (tagLower.Contains("beta") || tagLower.Contains("b")) return "Beta";
                 if (tagLower.Contains("alpha") || tagLower.Contains("a")) return "Alpha";
                 if (tagLower.Contains("rc")) return "Release Candidate";
@@ -102,8 +104,8 @@ namespace AgOpenGPS.Updater.Models
                 if (Size < KB)
                     return $"{Size} B";
                 if (Size < MB)
-                    return $"{Size / (double)KB:F2} KB";
-                return $"{Size / (double)MB:F2} MB";
+                    return $"{(Size / (double)KB).ToString("F2", CultureInfo.InvariantCulture)} KB";
+                return $"{(Size / (double)MB).ToString("F2", CultureInfo.InvariantCulture)} MB";
             }
         }
 

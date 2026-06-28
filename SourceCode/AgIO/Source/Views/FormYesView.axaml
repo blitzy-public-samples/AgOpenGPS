@@ -1,0 +1,57 @@
+<!-- [XPLAT] migrated from net48/WinForms Forms/FormYes — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormYesView"
+        x:DataType="vm:FormYesViewModel"
+        Title="AgIO Message"
+        Width="598" Height="352"
+        Background="#F0C8C8"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms `Forms/FormYes`
+        confirmation dialog. Window shell mirrors FormYes.designer.cs:
+          Text "AgIO Message"; ClientSize 598x352; BackColor ARGB(240,200,200)=#F0C8C8;
+          FixedSingle -> CanResize=False; CenterScreen; Tahoma 14.25.
+        Bound to FormYesViewModel (MessageText, ShowCancel). The dialog outcome (DialogResult.OK
+        vs Cancel) is owned by the code-behind via Close(true)/Close(false) for ShowDialog<bool>.
+    -->
+    <Grid Margin="0">
+        <!-- WinForms lblMessage2: (46,23) 528x280, Tahoma 18 Bold, MiddleCenter -->
+        <TextBlock Text="{Binding MessageText}"
+                   FontFamily="Tahoma" FontSize="18" FontWeight="Bold"
+                   TextWrapping="Wrap"
+                   TextAlignment="Center"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Margin="46,23,46,96" />
+
+        <!-- WinForms btnCancel: (363,266) 105x90 — visible only when ShowCancel -->
+        <Button x:Name="btnCancel"
+                Content="Cancel"
+                IsVisible="{Binding ShowCancel}"
+                Width="105" Height="90"
+                FontFamily="Tahoma" FontSize="12"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,133,-4"
+                Click="OnCancelClick" />
+
+        <!-- WinForms btnSerialOK: (490,266) 105x90, DialogResult.OK -->
+        <Button x:Name="btnSerialOK"
+                Content="Ok"
+                Width="105" Height="90"
+                FontFamily="Tahoma" FontSize="12"
+                IsDefault="True"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,3,-4"
+                Click="OnOkClick" />
+    </Grid>
+</Window>

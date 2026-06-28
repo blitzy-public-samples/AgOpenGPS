@@ -1,6 +1,6 @@
-﻿using System;
-using System.Drawing;
-using System.Drawing.Imaging;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
+using System.Runtime.InteropServices;
 using AgOpenGPS.Core.Models;
 using OpenTK.Graphics.OpenGL;
 
@@ -8,15 +8,26 @@ namespace AgOpenGPS.Core.DrawLib
 {
     public class Texture2D : IDisposable
     {
-        private readonly Bitmap _bitmap;
+        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+        // Portable RGBA pixel source replaces the former GDI+ image backing
+        // (GDI+ imaging is Windows-only on net8/9 and throws at runtime on Linux/macOS).
+        // _pixels: tightly-packed RGBA (R,G,B,A), 4 bytes/pixel, width*height*4 bytes, row-major; MAY be null (deferred).
+        private readonly byte[] _pixels;
+        private readonly int _width;
+        private readonly int _height;
         private int _textureId;
         private bool isDisposed;
 
-        public Texture2D(Bitmap bitmap)
+        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+        // rgbaPixels: tightly-packed RGBA (R,G,B,A), 4 bytes/pixel, width*height*4 bytes, row-major.
+        // rgbaPixels MAY be null to create a deferred/empty texture that is filled later via SetPixels(...).
+        public Texture2D(byte[] rgbaPixels, int width, int height)
         {
-            _bitmap = bitmap;
-            // To avoid crashes during start-upup (when no OpenGL context has been created yet),
-            // delay creation of texture to the first call to Bind() 
+            _pixels = rgbaPixels;
+            _width = width;
+            _height = height;
+            // To avoid crashes during start-up (when no OpenGL context exists yet),
+            // delay creation of the GL texture until the first call to Bind().
         }
 
         public void Bind()
@@ -58,33 +69,42 @@ namespace AgOpenGPS.Core.DrawLib
             Draw(center - centerToU1V1, center + centerToU1V1);
         }
 
-        public void SetBitmap(Bitmap bitmap)
+        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+        // Uploads a tightly-packed RGBA pixel buffer (4 bytes/pixel, row-major) as the texture image.
+        // Replaces the former GDI+ image-upload method: the locked-pixel path is gone and the GL source
+        // format flips from .Bgra (GDI+ ARGB-in-memory) to .Rgba (portable RGBA bytes).
+        public void SetPixels(byte[] rgbaPixels, int width, int height)
         {
             Bind();
-            BitmapData bitmapData = bitmap.LockBits(
-                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
-                ImageLockMode.ReadOnly,
-                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            GL.TexImage2D(
-                TextureTarget.Texture2D,
-                0,
-                PixelInternalFormat.Rgba,
-                bitmapData.Width,
-                bitmapData.Height,
-                0,
-                OpenTK.Graphics.OpenGL.PixelFormat.Bgra,
-                PixelType.UnsignedByte,
-                bitmapData.Scan0);
-            bitmap.UnlockBits(bitmapData);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, 9729);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, 9729);
+            GCHandle handle = GCHandle.Alloc(rgbaPixels, GCHandleType.Pinned);
+            try
+            {
+                GL.TexImage2D(
+                    TextureTarget.Texture2D,
+                    0,
+                    PixelInternalFormat.Rgba,
+                    width,
+                    height,
+                    0,
+                    OpenTK.Graphics.OpenGL.PixelFormat.Rgba,   // [XPLAT] was .Bgra (GDI+ ARGB-in-memory); now RGBA source bytes
+                    PixelType.UnsignedByte,
+                    handle.AddrOfPinnedObject());
+            }
+            finally
+            {
+                handle.Free();
+            }
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, 9729); // GL_LINEAR — preserve EXACTLY
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, 9729); // GL_LINEAR — preserve EXACTLY
             GL.BindTexture(TextureTarget.Texture2D, 0);
         }
 
         private void CreateTexture()
         {
             _textureId = GL.GenTexture();
-            if (_bitmap != null) SetBitmap(_bitmap);
+            // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+            // Upload the constructor-provided pixels only when present (mirrors the former deferred-image guard).
+            if (_pixels != null) SetPixels(_pixels, _width, _height);
         }
 
         private void DeleteTexture()

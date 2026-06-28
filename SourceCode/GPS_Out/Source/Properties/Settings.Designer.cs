@@ -7,6 +7,7 @@
 //     the code is regenerated.
 // </auto-generated>
 //------------------------------------------------------------------------------
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 
 namespace GPS_Out.Properties {
     
@@ -50,9 +51,9 @@ namespace GPS_Out.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("210, 220, 230")]
-        public global::System.Drawing.Color DayColour {
+        public string DayColour {
             get {
-                return ((global::System.Drawing.Color)(this["DayColour"]));
+                return ((string)(this["DayColour"]));
             }
             set {
                 this["DayColour"] = value;

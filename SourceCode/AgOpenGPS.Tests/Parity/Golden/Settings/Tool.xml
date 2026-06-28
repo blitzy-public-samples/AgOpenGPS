@@ -1,0 +1,265 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+    <userSettings>
+        <AgOpenGPS.Properties.ToolSettings>
+            <setting name="setVehicle_toolWidth" serializeAs="String">
+                <value>4</value>
+            </setting>
+            <setting name="setVehicle_toolOverlap" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setVehicle_toolOffset" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setVehicle_tankTrailingHitchLength" serializeAs="String">
+                <value>3</value>
+            </setting>
+            <setting name="setVehicle_toolTrailingHitchLength" serializeAs="String">
+                <value>-2.5</value>
+            </setting>
+            <setting name="setVehicle_toolLookAheadOn" serializeAs="String">
+                <value>1</value>
+            </setting>
+            <setting name="setVehicle_toolLookAheadOff" serializeAs="String">
+                <value>0.5</value>
+            </setting>
+            <setting name="setVehicle_hitchLength" serializeAs="String">
+                <value>-1</value>
+            </setting>
+            <setting name="setTool_isToolTrailing" serializeAs="String">
+                <value>True</value>
+            </setting>
+            <setting name="setTool_isToolRearFixed" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setTool_isToolTBT" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setTool_isToolFront" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setTool_isSectionsNotZones" serializeAs="String">
+                <value>True</value>
+            </setting>
+            <setting name="setTool_isSectionOffWhenOut" serializeAs="String">
+                <value>True</value>
+            </setting>
+            <setting name="setTool_isDisplayTramControl" serializeAs="String">
+                <value>True</value>
+            </setting>
+            <setting name="setTool_isTramOuterInverted" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setTool_isDirectionMarkers" serializeAs="String">
+                <value>True</value>
+            </setting>
+            <setting name="setTool_trailingToolToPivotLength" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setVehicle_numSections" serializeAs="String">
+                <value>3</value>
+            </setting>
+            <setting name="setTool_numSectionsMulti" serializeAs="String">
+                <value>20</value>
+            </setting>
+            <setting name="setSection_isFast" serializeAs="String">
+                <value>True</value>
+            </setting>
+            <setting name="setTool_defaultSectionWidth" serializeAs="String">
+                <value>2</value>
+            </setting>
+            <setting name="setTool_sectionWidthMulti" serializeAs="String">
+                <value>0.5</value>
+            </setting>
+            <setting name="setTool_zones" serializeAs="String">
+                <value>2,10,20,0,0,0,0,0,0</value>
+            </setting>
+            <setting name="setSection_position1" serializeAs="String">
+                <value>-2</value>
+            </setting>
+            <setting name="setSection_position2" serializeAs="String">
+                <value>-1</value>
+            </setting>
+            <setting name="setSection_position3" serializeAs="String">
+                <value>1</value>
+            </setting>
+            <setting name="setSection_position4" serializeAs="String">
+                <value>2</value>
+            </setting>
+            <setting name="setSection_position5" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position6" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position7" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position8" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position9" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position10" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position11" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position12" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position13" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position14" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position15" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position16" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setSection_position17" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setColor_sec01" serializeAs="String">
+                <value>249, 22, 10</value>
+            </setting>
+            <setting name="setColor_sec02" serializeAs="String">
+                <value>68, 84, 254</value>
+            </setting>
+            <setting name="setColor_sec03" serializeAs="String">
+                <value>8, 243, 8</value>
+            </setting>
+            <setting name="setColor_sec04" serializeAs="String">
+                <value>233, 6, 233</value>
+            </setting>
+            <setting name="setColor_sec05" serializeAs="String">
+                <value>200, 191, 86</value>
+            </setting>
+            <setting name="setColor_sec06" serializeAs="String">
+                <value>0, 252, 246</value>
+            </setting>
+            <setting name="setColor_sec07" serializeAs="String">
+                <value>144, 36, 246</value>
+            </setting>
+            <setting name="setColor_sec08" serializeAs="String">
+                <value>232, 102, 21</value>
+            </setting>
+            <setting name="setColor_sec09" serializeAs="String">
+                <value>255, 160, 170</value>
+            </setting>
+            <setting name="setColor_sec10" serializeAs="String">
+                <value>205, 204, 246</value>
+            </setting>
+            <setting name="setColor_sec11" serializeAs="String">
+                <value>213, 239, 190</value>
+            </setting>
+            <setting name="setColor_sec12" serializeAs="String">
+                <value>247, 200, 247</value>
+            </setting>
+            <setting name="setColor_sec13" serializeAs="String">
+                <value>253, 241, 144</value>
+            </setting>
+            <setting name="setColor_sec14" serializeAs="String">
+                <value>187, 250, 250</value>
+            </setting>
+            <setting name="setColor_sec15" serializeAs="String">
+                <value>227, 201, 249</value>
+            </setting>
+            <setting name="setColor_sec16" serializeAs="String">
+                <value>247, 229, 215</value>
+            </setting>
+            <setting name="setColor_isMultiColorSections" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setAS_deadZoneDistance" serializeAs="String">
+                <value>1</value>
+            </setting>
+            <setting name="setAS_deadZoneHeading" serializeAs="String">
+                <value>10</value>
+            </setting>
+            <setting name="setAS_deadZoneDelay" serializeAs="String">
+                <value>5</value>
+            </setting>
+            <setting name="setAS_snapDistance" serializeAs="String">
+                <value>20</value>
+            </setting>
+            <setting name="setAS_snapDistanceRef" serializeAs="String">
+                <value>5</value>
+            </setting>
+            <setting name="setHeadland_isSectionControlled" serializeAs="String">
+                <value>True</value>
+            </setting>
+            <setting name="setArdMac_setting0" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setArdMac_isHydEnabled" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setArdMac_hydRaiseTime" serializeAs="String">
+                <value>3</value>
+            </setting>
+            <setting name="setArdMac_hydLowerTime" serializeAs="String">
+                <value>4</value>
+            </setting>
+            <setting name="setArdMac_user1" serializeAs="String">
+                <value>1</value>
+            </setting>
+            <setting name="setArdMac_user2" serializeAs="String">
+                <value>2</value>
+            </setting>
+            <setting name="setArdMac_user3" serializeAs="String">
+                <value>3</value>
+            </setting>
+            <setting name="setArdMac_user4" serializeAs="String">
+                <value>4</value>
+            </setting>
+            <setting name="setRelay_pinConfig" serializeAs="String">
+                <value>1,2,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0</value>
+            </setting>
+            <setting name="purePursuitIntegralGainAB" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="stanleyDistanceErrorGain" serializeAs="String">
+                <value>1</value>
+            </setting>
+            <setting name="stanleyHeadingErrorGain" serializeAs="String">
+                <value>1</value>
+            </setting>
+            <setting name="stanleyIntegralGainAB" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setVehicle_isStanleyUsed" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setVehicle_goalPointLookAheadHold" serializeAs="String">
+                <value>3</value>
+            </setting>
+            <setting name="setVehicle_toolOffDelay" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setVehicle_goalPointLookAheadMult" serializeAs="String">
+                <value>1.5</value>
+            </setting>
+            <setting name="setVehicle_goalPointAcquireFactor" serializeAs="String">
+                <value>0.9</value>
+            </setting>
+            <setting name="setVehicle_slowSpeedCutoff" serializeAs="String">
+                <value>0.5</value>
+            </setting>
+            <setting name="setVehicle_minCoverage" serializeAs="String">
+                <value>100</value>
+            </setting>
+            <setting name="setVehicle_hydraulicLiftLookAhead" serializeAs="String">
+                <value>2</value>
+            </setting>
+            <setting name="setF_isSteerWorkSwitchEnabled" serializeAs="String">
+                <value>False</value>
+            </setting>
+        </AgOpenGPS.Properties.ToolSettings>
+    </userSettings>
+</configuration>

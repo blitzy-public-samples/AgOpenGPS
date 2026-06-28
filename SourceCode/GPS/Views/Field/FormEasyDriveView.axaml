@@ -1,0 +1,301 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Easy Drive" quick-start wizard (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Field/FormEasyDrive`
+    (FormEasyDrive.cs + FormEasyDrive.Designer.cs). There is NO FormEasyDrive.resx — the
+    source had only the .cs + .Designer.cs. A minimal quick-start wizard: the operator enters
+    a tool work width and a hitch/pivot distance, then taps Next to configure a one-section
+    rigid tool and start a temporary "Easy Drive" job. Per AAP §0.3.3 this is a faithful parity
+    reimplementation of the currently rendered Windows Forms look, never a redesign — no new
+    fields, no relayout, no UX changes.
+
+    WINDOW SHELL — mirrors FormEasyDrive.Designer.cs:
+      Text "Easy Drive"                 -> Title (the code-behind keeps "Easy Drive"; the WinForms
+                                           ctor set this.Text = "Easy Drive" literally — there is no
+                                           gStr key for the caption, so it stays a literal).
+      ClientSize 400 x 450              -> Width / Height (sized from the Designer; standard window
+                                           decorations are kept so the "Easy Drive" caption shows —
+                                           the WinForms form was a FixedToolWindow with a caption).
+      FormBorderStyle FixedToolWindow,
+        ControlBox=false, Max/MinimizeBox=false
+                                        -> CanResize="False" (fixed size, no min/max). Avalonia cannot
+                                           hide only the close button while keeping the caption without
+                                           custom chrome; the operator closes via Next / Cancel.
+      ShowInTaskbar = false             -> ShowInTaskbar="False".
+      StartPosition = CenterParent      -> WindowStartupLocation="CenterOwner" (shown modally over
+                                           its owner via ShowDialog<bool>).
+      BackColor Gainsboro               -> Background="{DynamicResource AogFrameBrush}" and
+                                           Foreground="{DynamicResource AogTextBrush}" so the dialog
+                                           tracks the app day/night palette defined in App.axaml.
+                                           These are ThemeDictionary keys, hence {DynamicResource}
+                                           (NOT {StaticResource}) so the Light<->Dark switch is live.
+      Font Tahoma                       -> FontFamily="Tahoma"; each child carries its own point size
+                                           converted to Avalonia DIP as (pt * 96 / 72):
+                                           13pt -> 17, 16pt -> 21, 18pt -> 24, 20pt -> 27, 28pt -> 37.
+
+    WIRING CONTRACT — the partner code-behind (FormEasyDriveView.axaml.cs) owns ALL behaviour:
+      * This view is IMPERATIVE, not MVVM: intentionally NO x:DataType, NO DataContext, NO {Binding}.
+        Every control is addressed by x:Name and keeps its ORIGINAL WinForms name, exactly like the
+        sibling FormSimCoordsView / FormShiftPosView. No event handlers are declared in this markup;
+        the code-behind attaches them by name and assigns the localised gStr text + unit/value
+        captions at runtime (parity with the WinForms ctor + FormEasyDrive_Load).
+      * nudWidth / nudPivotDistance reproduce the WinForms `NudlessNumericUpDown` — a read-only
+        numeric up/down whose spinner is disabled and which pops the on-screen keypad on click. They
+        are declared here as read-only DISPLAY buttons (Classes="numericDisplay"); the code-behind
+        assigns the value text (CultureInfo.InvariantCulture) and wires the click to raise
+        NumericEditRequested so the host opens FormNumeric (Views/Inputs) with the configured
+        min/max/decimals and writes the chosen value back via SetWorkWidth / SetPivotDistance.
+        This is the SAME keypad seam used by the sibling FormSimCoordsView: FormNumeric exposes no
+        cross-assembly configure/result API (its x:Name controls are internal to its own partial
+        class), and per the Dependency-Inversion strategy (AAP §0.3.2) the keypad open + write-back
+        is host-owned — the view never reaches into FormGPS or FormNumeric internals. Avalonia's
+        spinner NumericUpDown is deliberately NOT used (parity = keypad entry, not spin).
+      * btnStart (Next) -> btnStart_Click: raises Accepted(WorkWidth, PivotDistance, IsMetric) then
+        Close(true). The WinForms handler configured a rigid 1-section tool (mf.tool.*),
+        SectionCalcWidths, DefineLocalPlane, JobNew and isEasyDriveMode on the FormGPS god-object;
+        that guidance/field-lifecycle logic is host-owned (AAP §0.3.2), so the view only surfaces
+        the entered values and lets the host perform the tool/job setup.
+      * btnCancel -> btnCancel_Click: Close(false) (WinForms DialogResult.Cancel).
+
+    Button glyphs are served from the GPS assembly via avares:// URIs
+    (avares://AgOpenGPS/btnImages/{OK64,Cancel64}.png), matching the on-disk file casing and the
+    convention already used by the sibling GPS views.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormEasyDriveView"
+        Title="Easy Drive"
+        Width="400"
+        Height="450"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}"
+        Foreground="{DynamicResource AogTextBrush}">
+
+    <Window.Styles>
+        <!-- Read-only numeric DISPLAY fields (nudWidth / nudPivotDistance): reproduce the
+             NudlessNumericUpDown's static AliceBlue face + big bold centred number (the WinForms
+             control set BackColor = AliceBlue, TextAlign = Center, Tahoma 28pt Bold). The AliceBlue
+             fill + black text + thin border stay stable across pointerover/pressed (the WinForms
+             control had no hover recolor — keeping it avoids inventing a state the original never
+             showed). The code-behind assigns the value text and raises NumericEditRequested on click
+             so the host opens the keypad. Targets the template content presenter, the same technique
+             used by the sibling FormSimCoordsView / Keypad views. -->
+        <Style Selector="Button.numericDisplay">
+            <Setter Property="Background" Value="#FFF0F8FF" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="FontSize" Value="37" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.numericDisplay:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFF0F8FF" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+        <Style Selector="Button.numericDisplay:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFF0F8FF" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+
+        <!-- Primary action button (btnStart / "Next"): the WinForms original used a light-green
+             FlatStyle.Flat face with the OK64 glyph before its text. Per the prompt this primary
+             action is routed through the app's teal section accent: Background = AogAccentBrush with
+             AogTextBrush foreground (the accent-button convention established by the sibling
+             CreateFromExistingFieldView). The accent fill is held stable across pointerover/pressed
+             so the Fluent template's own hover fill does not override the accent token. -->
+        <Style Selector="Button.accentButton">
+            <Setter Property="Background" Value="{DynamicResource AogAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AogTextBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.accentButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AogAccentBrush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.accentButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AogAccentBrush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- Flat, transparent, image-only command button (btnCancel): reproduce WinForms
+             FlatStyle.Flat + BorderSize=0 + a transparent face, keeping that face in every interaction
+             state (the Fluent Button template otherwise paints a hover/pressed fill). Targets the
+             template content presenter — the same technique used by the sibling FormSimCoordsView. -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Layout mirrors the Designer's vertical stack inside the 400 x 450 client: info text at top,
+        then the labelled Work Width row (display + unit), then the labelled Hitch Length row, a
+        flexible spacer, and the Next / Cancel buttons at the bottom. The outer Grid margin
+        (20,15,20,20) reproduces the Designer's 20 px side inset and 15 px top inset; the flexible
+        spacer row (*) absorbs the remaining height so the buttons sit at the bottom exactly as the
+        Designer placed them (btnStart/btnCancel top = 350). Per-row top margins reproduce the
+        Designer's inter-control gaps.
+    -->
+    <Grid Margin="20,15,20,20" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+
+        <!-- lblInfo: instructions. WinForms (20,15) 360 x 80, Tahoma 13pt Italic, muted grey
+             (80,80,80). Text assigned at runtime from gStr.gsEasyDriveInfo; the literal here is the
+             design-time caption. Themed text brush so it tracks day/night; italic preserves the
+             original's muted "hint" styling. TextWrapping mirrors the multi-line WinForms label. -->
+        <TextBlock x:Name="lblInfo"
+                   Grid.Row="0"
+                   Height="80"
+                   FontSize="17"
+                   FontStyle="Italic"
+                   TextWrapping="Wrap"
+                   VerticalAlignment="Top"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="info" />
+
+        <!-- lblWidth: "Work Width" caption. WinForms (20,105) 360 x 40, Tahoma 18pt Bold, MiddleLeft.
+             Text assigned at runtime from gStr.gsWorkWidth. -->
+        <TextBlock x:Name="lblWidth"
+                   Grid.Row="1"
+                   Height="40"
+                   Margin="0,10,0,0"
+                   FontSize="24"
+                   FontWeight="Bold"
+                   TextAlignment="Left"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Center"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="Working Width" />
+
+        <!-- Work Width entry row: read-only numeric display (280 wide) + unit label (70 wide) with a
+             10 px gutter, reproducing the Designer's nudWidth (20,150) 280 x 54 and lblUnitWidth
+             (310,150) 70 x 54. -->
+        <Grid Grid.Row="2"
+              Margin="0,5,0,0"
+              ColumnDefinitions="280,70"
+              ColumnSpacing="10">
+            <!-- nudWidth: NudlessNumericUpDown -> read-only display button. Code-behind sets .Content
+                 (InvariantCulture) and raises NumericEditRequested on click to open the keypad. -->
+            <Button x:Name="nudWidth"
+                    Grid.Column="0"
+                    Classes="numericDisplay"
+                    Height="54"
+                    HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Work Width" />
+            <!-- lblUnitWidth: unit ("m" / "ft"). WinForms Tahoma 16pt Bold, MiddleCenter; assigned at
+                 runtime from the metric flag. -->
+            <TextBlock x:Name="lblUnitWidth"
+                       Grid.Column="1"
+                       FontSize="21"
+                       FontWeight="Bold"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       Text="m" />
+        </Grid>
+
+        <!-- lblPivot: "Hitch Length" caption. WinForms (20,220) 360 x 40, Tahoma 18pt Bold,
+             MiddleLeft. Text assigned at runtime from gStr.gsHitchLength. -->
+        <TextBlock x:Name="lblPivot"
+                   Grid.Row="3"
+                   Height="40"
+                   Margin="0,16,0,0"
+                   FontSize="24"
+                   FontWeight="Bold"
+                   TextAlignment="Left"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Center"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="Hitch Length" />
+
+        <!-- Hitch Length entry row: nudPivotDistance (20,265) 280 x 54 + lblUnitPivot (310,265)
+             70 x 54. -->
+        <Grid Grid.Row="4"
+              Margin="0,5,0,0"
+              ColumnDefinitions="280,70"
+              ColumnSpacing="10">
+            <!-- nudPivotDistance: read-only display button; code-behind sets .Content + opens keypad
+                 on click via the host seam. -->
+            <Button x:Name="nudPivotDistance"
+                    Grid.Column="0"
+                    Classes="numericDisplay"
+                    Height="54"
+                    HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Hitch Length" />
+            <!-- lblUnitPivot: unit ("m" / "ft"); assigned at runtime from the metric flag. -->
+            <TextBlock x:Name="lblUnitPivot"
+                       Grid.Column="1"
+                       FontSize="21"
+                       FontWeight="Bold"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       Text="m" />
+        </Grid>
+
+        <!-- Row 5 (*) is the flexible spacer that pushes the button row to the bottom. -->
+
+        <!-- Button row: btnStart (Next, 170 wide, left) + a 20 px gutter + btnCancel (170 wide,
+             right), reproducing the Designer's btnStart (20,350) 170 x 80 and btnCancel (210,350)
+             170 x 80. -->
+        <Grid Grid.Row="6" ColumnDefinitions="170,*,170">
+            <!-- btnStart: primary "Next" action. OK64 glyph before the text (WinForms
+                 TextImageRelation.ImageBeforeText). Text assigned at runtime from gStr.gsNext.
+                 Click wired in code-behind -> Accepted + Close(true). -->
+            <Button x:Name="btnStart"
+                    Grid.Column="0"
+                    Classes="accentButton"
+                    Height="80"
+                    HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Next">
+                <StackPanel Orientation="Horizontal"
+                            Spacing="8"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                           Width="40"
+                           Height="40"
+                           Stretch="Uniform" />
+                    <TextBlock x:Name="lblStart"
+                               FontSize="27"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"
+                               Text="Next" />
+                </StackPanel>
+            </Button>
+            <!-- btnCancel: flat transparent image-only button with the Cancel64 glyph (WinForms
+                 DialogResult.Cancel). Click wired in code-behind -> Close(false). -->
+            <Button x:Name="btnCancel"
+                    Grid.Column="2"
+                    Classes="imageButton"
+                    Height="80"
+                    HorizontalAlignment="Stretch"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                       Width="64"
+                       Height="64"
+                       Stretch="Uniform" />
+            </Button>
+        </Grid>
+
+    </Grid>
+</Window>

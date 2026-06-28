@@ -1,4 +1,4 @@
-﻿using Accord.Imaging.Filters;
+﻿// [XPLAT] removed unused image-filters using directive (package dropped in cross-platform migration) — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.Collections.Generic;
 

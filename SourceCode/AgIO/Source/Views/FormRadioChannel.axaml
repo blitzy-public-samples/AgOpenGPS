@@ -1,0 +1,145 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormRadioChannel"
+        x:DataType="vm:FormRadioChannelViewModel"
+        Title="Radio Channel"
+        Width="465" Height="320"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14">
+    <!-- [XPLAT] migrated from net48/WinForms FormRadioChannel.cs + FormRadioChannel.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms `Forms/FormRadioChannel`
+        single-channel editor (FormRadioChannel.Designer.cs + FormRadioChannel.cs), opened by the
+        migrated FormRadio to add/edit one CRadioChannel record. NO redesign — the layout mirrors the
+        WinForms designer exactly:
+          - Window Text "Radio Channel"; ClientSize 447x269 / MinimumSize 465x310 -> fixed 465x320,
+            CanResize=False (the WinForms form had ControlBox=false / a fixed footprint).
+          - Five label+textbox rows in the original order and with the original visible label text:
+            Id / Name / Frequency / Latitude / Longitude (labels were bold; the textboxes were the
+            tbId / tbName / tbFrequency / tbLat / tbLon controls). Per the agent-prompt the migrated
+            Frequency control is named `tbFreq`.
+          - Command bar bottom-right with Cancel to the LEFT of OK (WinForms btnSerialCancel @x=215,
+            btnSerialOK @x=342), both 88x62.
+
+        Bound to FormRadioChannelViewModel via COMPILED bindings (x:DataType above):
+          - The five editable fields TwoWay-bind to IdText / Name / Frequency / LatText / LonText
+            (Avalonia TextBox.Text defaults to TwoWay, so edits flow back to the view-model).
+          - OK/Cancel bind to OkCommand / CancelCommand (RelayCommand). All validation, the
+            stay-open-on-invalid behaviour (former DialogResult.None), culture-safe Id parsing and the
+            Location compose/preserve logic live in the view-model; the hosting window closes the dialog
+            in response to the view-model's RequestClose / RequestCancel events (code-behind concern).
+
+        Buttons are rendered as TEXT, not the WinForms OK64 / Cancel64 bitmaps: the migrated AgIO.csproj
+        registers no btnImages as <AvaloniaResource>, so every migrated AgIO view uses text affordances
+        (no System.Drawing, no avares imagery) — consistent with the sibling FormYes / FormPGN views.
+
+        The on-screen touch keyboard (former tbox_Click, gated on FormLoop.isKeyboardOn -> the
+        view-model's IsKeyboardOn) is presented by the code-behind via the Controls/TextBoxExtensions
+        .ShowKeyboardAsync helper, which finds these text boxes by their x:Name; the view declares no
+        event attributes so it stays decoupled from that wiring.
+    -->
+
+    <!-- Theme: Avalonia Fluent (Light variant pinned application-wide in App.axaml). -->
+    <Grid Margin="12"
+          ColumnDefinitions="Auto,*"
+          RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+
+        <!-- Row 0 — Id (WinForms labelId "Id" + tbId). -->
+        <TextBlock Grid.Row="0" Grid.Column="0"
+                   Text="Id"
+                   FontWeight="Bold"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Right"
+                   Margin="0,0,10,0" />
+        <TextBox x:Name="tbId" Grid.Row="0" Grid.Column="1"
+                 Text="{Binding IdText}"
+                 MinHeight="34"
+                 VerticalContentAlignment="Center"
+                 Margin="0,4" />
+
+        <!-- Row 1 — Name (WinForms labelName "Name" + tbName). -->
+        <TextBlock Grid.Row="1" Grid.Column="0"
+                   Text="Name"
+                   FontWeight="Bold"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Right"
+                   Margin="0,0,10,0" />
+        <TextBox x:Name="tbName" Grid.Row="1" Grid.Column="1"
+                 Text="{Binding Name}"
+                 MinHeight="34"
+                 VerticalContentAlignment="Center"
+                 Margin="0,4" />
+
+        <!-- Row 2 — Frequency (WinForms label1 "Frequency" + tbFrequency; migrated control named tbFreq). -->
+        <TextBlock Grid.Row="2" Grid.Column="0"
+                   Text="Frequency"
+                   FontWeight="Bold"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Right"
+                   Margin="0,0,10,0" />
+        <TextBox x:Name="tbFreq" Grid.Row="2" Grid.Column="1"
+                 Text="{Binding Frequency}"
+                 MinHeight="34"
+                 VerticalContentAlignment="Center"
+                 Margin="0,4" />
+
+        <!-- Row 3 — Latitude (WinForms labelLat "Latitude" + tbLat). -->
+        <TextBlock Grid.Row="3" Grid.Column="0"
+                   Text="Latitude"
+                   FontWeight="Bold"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Right"
+                   Margin="0,0,10,0" />
+        <TextBox x:Name="tbLat" Grid.Row="3" Grid.Column="1"
+                 Text="{Binding LatText}"
+                 MinHeight="34"
+                 VerticalContentAlignment="Center"
+                 Margin="0,4" />
+
+        <!-- Row 4 — Longitude (WinForms labelLon "Longitude" + tbLon). -->
+        <TextBlock Grid.Row="4" Grid.Column="0"
+                   Text="Longitude"
+                   FontWeight="Bold"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Right"
+                   Margin="0,0,10,0" />
+        <TextBox x:Name="tbLon" Grid.Row="4" Grid.Column="1"
+                 Text="{Binding LonText}"
+                 MinHeight="34"
+                 VerticalContentAlignment="Center"
+                 Margin="0,4" />
+
+        <!-- Row 6 — command bar (Row 5 is a flexible spacer). Cancel sits to the LEFT of OK so OK
+             stays right-aligned, mirroring the WinForms btnSerialCancel/btnSerialOK placement. -->
+        <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Spacing="12"
+                    Margin="0,8,0,0">
+
+            <!-- WinForms btnSerialCancel (DialogResult.Cancel). IsCancel maps Escape to this command. -->
+            <Button x:Name="btnCancel"
+                    Content="Cancel"
+                    Command="{Binding CancelCommand}"
+                    IsCancel="True"
+                    Width="88" Height="62"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+
+            <!-- WinForms btnSerialOK (DialogResult.OK / accept). IsDefault maps Enter to this command. -->
+            <Button x:Name="btnSerialOK"
+                    Content="OK"
+                    Command="{Binding OkCommand}"
+                    IsDefault="True"
+                    Width="88" Height="62"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</Window>

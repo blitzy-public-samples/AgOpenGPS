@@ -1,4 +1,5 @@
-﻿//Please, if you use this, share the improvements
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core;
 
 namespace AgOpenGPS
 {
@@ -8,9 +9,6 @@ namespace AgOpenGPS
 
     public class CSection
     {
-        //copy of the mainform address
-        //private readonly FormGPS mf;
-
         //is this section on or off
         public bool isSectionOn = false;
 

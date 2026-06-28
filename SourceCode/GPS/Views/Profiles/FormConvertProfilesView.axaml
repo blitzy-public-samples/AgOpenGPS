@@ -1,0 +1,452 @@
+<!-- [XPLAT] migrated from net48/WinForms FormConvertProfiles — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Convert Old Profiles" dialog (Avalonia view).
+
+    1:1 VISUAL-PARITY reimplementation of the WinForms `Forms/Profiles/FormConvertProfiles`
+    (FormConvertProfiles.cs + FormConvertProfiles.Designer.cs). The dialog lets the operator pick a
+    legacy single-file profile, choose to extract a Vehicle and/or Tool (with editable target
+    names), and run the behavior-frozen CSettingsMigration round-trip (AAP §0.2.2). This file is UI
+    MARKUP ONLY — all behaviour lives in the partner code-behind FormConvertProfilesView.axaml.cs.
+    Per AAP §0.3.3 this is a faithful parity reimplementation of the current Windows Forms look —
+    never a redesign: no new colors, no relayout, no UX changes.
+
+    WIRING CONTRACT (the code-behind owns ALL behaviour, NOT this markup):
+      * Imperative / code-behind-driven exactly like the sibling FormFilePickerView / FormYesView:
+        intentionally NO x:DataType, NO DataContext and NO MVVM binding on the controls. Every
+        control is addressed by its x:Name; the code-behind attaches the handlers (reproducing the
+        WinForms Designer's `this.ctl.Event += ...` wiring) and assigns the translated gStr.* text
+        at runtime. The x:Names below MUST stay exactly as written — the code-behind references each
+        one: labelTitle, labelExplanation, labelStep1, listViewFiles, labelStatus, panelDetails,
+        labelStep2, panelVehicle, btnToggleVehicle, labelVehicleName, textBoxVehicleName, panelTool,
+        btnToggleTool, labelToolName, textBoxToolName, buttonConvert, buttonClose, textClose.
+      * The list ROWS are the only bound surface: each item object exposes Name + IsConverted (a
+        plain record the code-behind fills — NO view-model). The ItemTemplate binds {Binding Name}
+        for the row text and toggles the "converted" style class via Classes.converted="{Binding
+        IsConverted}" so converted files paint LightGreen (WinForms ListViewItem.BackColor =
+        Color.LightGreen). To keep these classic REFLECTION bindings regardless of the project's
+        compiled-bindings default, the root sets x:CompileBindings="False".
+
+    WINDOW SHELL — mirrors FormConvertProfiles.Designer.cs exactly:
+      Text "Convert Old Profiles"   -> Title (runtime gStr.gsConvertOldProfiles; hidden by the
+                                       borderless shell, kept for taskbar / automation).
+      ClientSize 1008 x 650         -> Width / Height (SystemDecorations="None" => client == window).
+      BackColor WhiteSmoke          -> Background="#FFF5F5F5" (Color.WhiteSmoke == #FFF5F5F5).
+      ControlBox = false            -> covered by the borderless (SystemDecorations="None") shell.
+      MinimumSize 900 x 650         -> MinWidth / MinHeight.
+      (Sizable form, anchors used)  -> CanResize="True" (the root Grid reproduces every WinForms
+                                       anchor via alignment + margin, below).
+      ShowInTaskbar = false         -> ShowInTaskbar="False".
+      StartPosition.CenterParent    -> WindowStartupLocation="CenterOwner".
+      Font Tahoma 11pt              -> FontFamily="Tahoma" FontSize="15" (11pt x 96/72 = ~15 DIP);
+                                       children override per the designer's per-control fonts.
+      RequestedThemeVariant="Light" : the WinForms form hard-coded BackColor=WhiteSmoke and was
+                                      ALWAYS light (never day/night themed) even while FormGPS ran
+                                      in night mode, so this dialog is pinned to the Light Fluent
+                                      variant for faithful, theme-independent parity (white text
+                                      boxes, light list chrome, dark text). Colors below are the
+                                      fixed WinForms colors, not the app's Aog* day/night brushes.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.Profiles.FormConvertProfilesView"
+        x:CompileBindings="False"
+        Title="Convert Old Profiles"
+        Width="1008"
+        Height="650"
+        MinWidth="900"
+        MinHeight="650"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+        RequestedThemeVariant="Light"
+        SystemDecorations="None"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="15">
+
+    <Window.Styles>
+        <!--
+            Shared flat / border-less button face for every button on the dialog (the WinForms
+            FlatStyle.Flat + FlatAppearance.BorderSize=0 buttons). The pointerover / pressed /
+            disabled setters target the Fluent Button template's content presenter and rebind its
+            Background to the BUTTON's own Background ($parent[Button].Background) so the theme's
+            hover/press fill never paints over the flat face: transparent image buttons stay
+            transparent, and the LightGreen/LightGray toggle buttons keep their (inline / runtime-
+            set) color in every state. Same template-targeting technique used by the sibling
+            FormFilePickerView / FormYesView / Keypad views.
+        -->
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flat:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flat:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!--
+            Converted-file row highlight. The ItemTemplate Border below carries the "converted"
+            class when its item's IsConverted flag is true; this paints it LightGreen
+            (Color.LightGreen == #FF90EE90), reproducing WinForms ListViewItem.BackColor for
+            already-converted files. Un-converted rows keep a Transparent fill so the ListBox's
+            InactiveCaption background shows through.
+        -->
+        <Style Selector="Border.converted">
+            <Setter Property="Background" Value="#FF90EE90" />
+        </Style>
+
+        <!--
+            Tighten the Fluent ListBoxItem to the WinForms ListView row rhythm: no extra item
+            padding / min-height / corner radius, and stretch the row content full width so the
+            selection highlight + the converted-row fill span the whole row (WinForms
+            FullRowSelect=true).
+        -->
+        <Style Selector="ListBox#listViewFiles ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root layout. The WinForms form is SIZABLE and its controls use Anchor flags, so a single-
+        cell Grid reproduces each anchor via HorizontalAlignment / VerticalAlignment + Margin +
+        fixed Width/Height. Inset math is taken from the 1008 x 650 design client
+        (Left=x, Top=y, Right=1008-(x+w), Bottom=650-(y+h)):
+          * Anchor Top|Left            -> HAlign Left,  VAlign Top,    Margin "x,y,0,0".
+          * Anchor Top|Bottom|Left     -> HAlign Left,  VAlign Stretch, fixed Width, Margin "x,y,0,B".
+          * Anchor Top|Bottom|Right    -> HAlign Right, VAlign Stretch, fixed Width, Margin "0,y,R,B".
+          * Anchor Bottom|Left         -> HAlign Left,  VAlign Bottom, Margin "x,0,0,B".
+          * Anchor Bottom|Right        -> HAlign Right, VAlign Bottom, Margin "0,0,R,B".
+          * Anchor Top|Right           -> HAlign Right, VAlign Top,    Margin "0,y,R,0".
+        No controls overlap, so child declaration order is purely top-to-bottom for readability.
+    -->
+    <Grid>
+
+        <!-- labelTitle — WinForms Label @ (20,15) 860 x 35, Tahoma 18pt Bold (= 24 DIP), Top|Left.
+             Runtime gStr.gsConvertOldProfilesTitle; designer static text reproduced here. -->
+        <TextBlock x:Name="labelTitle"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Top"
+                   Margin="20,15,0,0"
+                   Width="860"
+                   Height="35"
+                   FontSize="24"
+                   FontWeight="Bold"
+                   Foreground="Black"
+                   Text="Convert Old Profile Files to New Format" />
+
+        <!-- labelExplanation — WinForms Label @ (20,55) 860 x 40, Tahoma 11pt (= 15 DIP), wrapping,
+             Top|Left. Runtime gStr.gsConvertProfilesExplanation; designer static text reproduced. -->
+        <TextBlock x:Name="labelExplanation"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Top"
+                   Margin="20,55,0,0"
+                   Width="860"
+                   Height="40"
+                   FontSize="15"
+                   Foreground="Black"
+                   TextWrapping="Wrap"
+                   Text="Old profiles contained all settings in one file. New format separates Vehicle, Tool, and Environment. Select what you want to extract." />
+
+        <!-- labelStep1 — WinForms Label @ (20,100) 320 x 25, Tahoma 14pt Bold (= 19 DIP), Top|Left.
+             Runtime gStr.gsConvertStep1 + ": Select an old profile file"; designer text reproduced. -->
+        <TextBlock x:Name="labelStep1"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Top"
+                   Margin="20,100,0,0"
+                   Width="320"
+                   Height="25"
+                   FontSize="19"
+                   FontWeight="Bold"
+                   Foreground="Black"
+                   Text="Step 1: Select an old profile file:" />
+
+        <!--
+            listViewFiles — WinForms ListView (View=Details, single "File Name" column, HeaderStyle
+            None, FullRowSelect, MultiSelect=false, HideSelection=false) @ (20,130) 430 x 380,
+            anchored Top|Bottom|Left. Reimplemented as a ListBox (single column, no header). BackColor
+            InactiveCaption (~#FFBFCDDB), Tahoma 21.75pt Bold (= 29 DIP). Vertical inset:
+            Top=130, Bottom=650-(130+380)=140; fixed Width 430 (Left anchor only).
+        -->
+        <ListBox x:Name="listViewFiles" AutomationProperties.Name="Old profile file list"
+                 HorizontalAlignment="Left"
+                 VerticalAlignment="Stretch"
+                 Margin="20,130,0,140"
+                 Width="430"
+                 Background="#FFBFCDDB"
+                 BorderThickness="0"
+                 FontSize="29"
+                 FontWeight="Bold"
+                 SelectionMode="Single"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 SelectionChanged="ListViewFiles_SelectionChanged">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <!-- One row. Classes.converted reflects the item's IsConverted flag (LightGreen
+                         when true). {Binding Name} / {Binding IsConverted} are classic reflection
+                         bindings (x:CompileBindings="False") against the code-behind's row record. -->
+                    <Border Classes.converted="{Binding IsConverted}"
+                            Padding="4,2">
+                        <TextBlock Text="{Binding Name}"
+                                   FontSize="29"
+                                   FontWeight="Bold"
+                                   Foreground="Black"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!--
+            labelStatus — WinForms Label @ (20,520), AutoSize, Tahoma 12pt Italic (= 16 DIP),
+            anchored Bottom|Left. Bottom inset 650-539=111 (designer Size height 19 => bottom 539).
+            Runtime text is set by RefreshFileList (file counts / "no old files"); empty at design. -->
+        <TextBlock x:Name="labelStatus"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Bottom"
+                   Margin="20,0,0,111"
+                   FontSize="16"
+                   FontStyle="Italic"
+                   Foreground="Black"
+                   Text="" />
+
+        <!--
+            panelDetails — WinForms Panel @ (468,130) 520 x 300, anchored Top|Bottom|Right,
+            Enabled=false initially (enabled by the code-behind when a file is selected). HAlign
+            Right + fixed Width 520; Right inset 1008-(468+520)=20, Top 130, Bottom 650-(130+300)=220.
+            Children are Top|Left anchored within the fixed-width panel, so they keep absolute
+            positions (extra vertical space when the panel stretches falls below them).
+        -->
+        <Grid x:Name="panelDetails"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Stretch"
+              Margin="0,130,20,220"
+              Width="520"
+              IsEnabled="False">
+
+            <!-- labelStep2 — WinForms Label @ (10,5) 500 x 25, Tahoma 14pt Bold (= 19 DIP). -->
+            <TextBlock x:Name="labelStep2"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Top"
+                       Margin="10,5,0,0"
+                       Width="500"
+                       Height="25"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       Text="Step 2: Select to convert (Vehicle and/or Tool):" />
+
+            <!--
+                panelVehicle — WinForms Panel @ (10,48) 500 x 100, BorderStyle FixedSingle
+                (1px neutral border). Holds the Vehicle toggle button, name label and name textbox.
+            -->
+            <Border x:Name="panelVehicle"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Margin="10,48,0,0"
+                    Width="500"
+                    Height="100"
+                    BorderBrush="#FF808080"
+                    BorderThickness="1">
+                <Grid>
+                    <!-- btnToggleVehicle — WinForms button @ (10,10) 125 x 80, BackColor LightGreen,
+                         Tahoma 14pt Bold (= 19 DIP), flat. Toggles Vehicle import on/off (text +
+                         color flip to LightGray driven by the code-behind). -->
+                    <Button x:Name="btnToggleVehicle" AutomationProperties.Name="Toggle vehicle import"
+                            Classes="flat"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Margin="10,10,0,0"
+                            Width="125"
+                            Height="80"
+                            Background="#FF90EE90"
+                            Foreground="Black"
+                            FontSize="19"
+                            FontWeight="Bold"
+                            Content="Convert Vehicle"
+                            Click="BtnToggleVehicle_Click" />
+
+                    <!-- labelVehicleName — WinForms Label @ (145,10) 345 x 30, Tahoma 11pt (= 15 DIP).
+                         Runtime gStr.gsVehicleProfileName + ":". -->
+                    <TextBlock x:Name="labelVehicleName"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Top"
+                               Margin="145,10,0,0"
+                               Width="345"
+                               Height="30"
+                               FontSize="15"
+                               Foreground="Black"
+                               Text="Vehicle profile name:" />
+
+                    <!-- textBoxVehicleName — WinForms TextBox @ (145,48) 345 x 36, Tahoma 18pt Bold
+                         (= 24 DIP). White field / black text (fixed, theme-independent). Tapped shows
+                         the on-screen keyboard (when enabled); TextChanged strips invalid filename
+                         characters and re-evaluates the Convert button (code-behind). -->
+                    <TextBox x:Name="textBoxVehicleName" AutomationProperties.Name="Vehicle profile name"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Top"
+                             Margin="145,48,0,0"
+                             Width="345"
+                             Height="36"
+                             FontSize="24"
+                             FontWeight="Bold"
+                             Background="White"
+                             Foreground="Black"
+                             VerticalContentAlignment="Center"
+                             Tapped="TextBox_Tapped"
+                             TextChanged="TextBoxName_TextChanged" />
+                </Grid>
+            </Border>
+
+            <!--
+                panelTool — WinForms Panel @ (10,172) 500 x 100, BorderStyle FixedSingle.
+                Holds the Tool toggle button, name label and name textbox (mirror of panelVehicle).
+            -->
+            <Border x:Name="panelTool"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Margin="10,172,0,0"
+                    Width="500"
+                    Height="100"
+                    BorderBrush="#FF808080"
+                    BorderThickness="1">
+                <Grid>
+                    <!-- btnToggleTool — WinForms button @ (10,10) 125 x 80, BackColor LightGreen,
+                         Tahoma 14pt Bold (= 19 DIP), flat. -->
+                    <Button x:Name="btnToggleTool" AutomationProperties.Name="Toggle tool import"
+                            Classes="flat"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Margin="10,10,0,0"
+                            Width="125"
+                            Height="80"
+                            Background="#FF90EE90"
+                            Foreground="Black"
+                            FontSize="19"
+                            FontWeight="Bold"
+                            Content="Convert Tool"
+                            Click="BtnToggleTool_Click" />
+
+                    <!-- labelToolName — WinForms Label @ (145,10) 345 x 30, Tahoma 11pt (= 15 DIP).
+                         Runtime gStr.gsToolProfileName + ":". -->
+                    <TextBlock x:Name="labelToolName"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Top"
+                               Margin="145,10,0,0"
+                               Width="345"
+                               Height="30"
+                               FontSize="15"
+                               Foreground="Black"
+                               Text="Tool profile name:" />
+
+                    <!-- textBoxToolName — WinForms TextBox @ (145,48) 345 x 36, Tahoma 18pt Bold
+                         (= 24 DIP). -->
+                    <TextBox x:Name="textBoxToolName" AutomationProperties.Name="Tool profile name"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Top"
+                             Margin="145,48,0,0"
+                             Width="345"
+                             Height="36"
+                             FontSize="24"
+                             FontWeight="Bold"
+                             Background="White"
+                             Foreground="Black"
+                             VerticalContentAlignment="Center"
+                             Tapped="TextBox_Tapped"
+                             TextChanged="TextBoxName_TextChanged" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!--
+            buttonConvert — WinForms button @ (741,539) 120 x 99, anchored Bottom|Right, image
+            Resources.boundaryPlay (ImageAlign TopCenter) with caption "Convert" (TextAlign
+            BottomCenter), Tahoma 16pt Bold (= 21 DIP), flat, Enabled=false initially. The image-
+            above-text layout is a Grid (Image row "*", caption row "Auto"). Insets:
+            Right=1008-(741+120)=147, Bottom=650-(539+99)=12. NOTE: FormConvertProfiles_Load does
+            NOT localize this caption, so the designer's static "Convert" text is reproduced as-is.
+        -->
+        <Button x:Name="buttonConvert"
+                Classes="flat"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,147,12"
+                Width="120"
+                Height="99"
+                FontSize="21"
+                FontWeight="Bold"
+                Foreground="Black"
+                IsEnabled="False"
+                Click="ButtonConvert_Click"
+                AutomationProperties.Name="Convert">
+            <Grid RowDefinitions="*,Auto">
+                <Image Grid.Row="0"
+                       Source="avares://AgOpenGPS/btnImages/boundaryPlay.png"
+                       Width="64"
+                       Height="64"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+                <TextBlock Grid.Row="1"
+                           Text="Convert"
+                           FontSize="21"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           HorizontalAlignment="Center" />
+            </Grid>
+        </Button>
+
+        <!--
+            buttonClose — WinForms button @ (905,539) 91 x 99, anchored Top|Right, embedded .resx
+            close bitmap (TextImageRelation ImageAboveText) with caption "Close", Tahoma 14pt
+            (= 19 DIP), flat, DialogResult.Cancel. The embedded resx image is not auto-packaged as
+            an Avalonia resource, so the packaged btnImages/WindowClose.png close glyph (52 x 33,
+            shown at native size) stands in for parity. textClose carries the runtime gStr.gsClose
+            caption. Insets: Right=1008-(905+91)=12, Top=539.
+        -->
+        <Button x:Name="buttonClose"
+                Classes="flat"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,539,12,0"
+                Width="91"
+                Height="99"
+                FontSize="19"
+                Foreground="Black"
+                Click="ButtonClose_Click"
+                AutomationProperties.Name="Close">
+            <Grid RowDefinitions="*,Auto">
+                <Image Grid.Row="0"
+                       Source="avares://AgOpenGPS/btnImages/WindowClose.png"
+                       Width="52"
+                       Height="33"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+                <TextBlock x:Name="textClose"
+                           Grid.Row="1"
+                           Text="Close"
+                           FontSize="19"
+                           Foreground="Black"
+                           HorizontalAlignment="Center" />
+            </Grid>
+        </Button>
+
+    </Grid>
+</Window>

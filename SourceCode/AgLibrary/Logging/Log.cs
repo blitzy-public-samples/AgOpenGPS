@@ -1,4 +1,5 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.Globalization;
 using System.IO;
 using System.Text;

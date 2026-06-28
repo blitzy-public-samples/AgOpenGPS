@@ -1,8 +1,22 @@
-﻿using AgOpenGPS.Core.DrawLib;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Properties;
+using Avalonia.Media.Imaging;
+using SkiaSharp;
+using System.IO;
 
 namespace AgOpenGPS.Classes
 {
+    // [XPLAT] Lazy-init holder of the on-screen HUD/overlay OpenGL textures (compass, speedo, steer
+    // pointer, you-turn glyphs, zoom controls, headland icons, etc.). Behaviour is frozen: the 23
+    // texture identities, their lazy "create on first access" semantics, and the backing Resources.*
+    // images are unchanged, so the rendered overlays stay pixel-identical to the net48/WinForms build.
+    // Only the image plumbing is re-platformed: the Core Texture2D now consumes a portable,
+    // tightly-packed RGBA byte buffer (it no longer references the Windows-only System.Drawing.Bitmap),
+    // and the Resources.* members now return cross-platform Avalonia bitmaps packaged as avares://
+    // assets. LoadTexture() bridges those two contracts using the SkiaSharp normalization shared across
+    // the migration (identical to Classes/VehicleTextures.cs), keeping AgOpenGPS.Core free of any
+    // UI-framework dependency.
     public class ScreenTextures
     {
         private Texture2D _compass;
@@ -37,7 +51,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_compass == null) _compass = new Texture2D(Resources.z_Compass);
+                if (_compass == null) _compass = LoadTexture(Resources.z_Compass);
                 return _compass;
             }
         }
@@ -46,7 +60,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_crossTrackBackGround == null) _crossTrackBackGround = new Texture2D(Resources.CrossTrackBackground);
+                if (_crossTrackBackGround == null) _crossTrackBackGround = LoadTexture(Resources.CrossTrackBackground);
                 return _crossTrackBackGround;
             }
         }
@@ -55,7 +69,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_font == null) _font = new Texture2D(Resources.z_Font);
+                if (_font == null) _font = LoadTexture(Resources.z_Font);
                 return _font;
             }
         }
@@ -64,7 +78,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_lateralManual == null) _lateralManual = new Texture2D(Resources.z_LateralManual);
+                if (_lateralManual == null) _lateralManual = LoadTexture(Resources.z_LateralManual);
                 return _lateralManual;
             }
         }
@@ -73,7 +87,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_lift == null) _lift = new Texture2D(Resources.z_Lift);
+                if (_lift == null) _lift = LoadTexture(Resources.z_Lift);
                 return _lift;
             }
         }
@@ -82,7 +96,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_menuShowHide == null) _menuShowHide = new Texture2D(Resources.MenuHideShow);
+                if (_menuShowHide == null) _menuShowHide = LoadTexture(Resources.MenuHideShow);
                 return _menuShowHide;
             }
         }
@@ -91,7 +105,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_noGps == null) _noGps = new Texture2D(Resources.z_NoGPS);
+                if (_noGps == null) _noGps = LoadTexture(Resources.z_NoGPS);
                 return _noGps;
             }
         }
@@ -100,7 +114,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_pan == null) _pan = new Texture2D(Resources.Pan);
+                if (_pan == null) _pan = LoadTexture(Resources.Pan);
                 return _pan;
             }
         }
@@ -109,7 +123,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_speedo == null) _speedo = new Texture2D(Resources.z_Speedo);
+                if (_speedo == null) _speedo = LoadTexture(Resources.z_Speedo);
                 return _speedo;
             }
         }
@@ -118,7 +132,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_speedoNeedle == null) _speedoNeedle = new Texture2D(Resources.z_SpeedoNeedle);
+                if (_speedoNeedle == null) _speedoNeedle = LoadTexture(Resources.z_SpeedoNeedle);
                 return _speedoNeedle;
             }
         }
@@ -127,7 +141,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_steerDot == null) _steerDot = new Texture2D(Resources.z_SteerDot);
+                if (_steerDot == null) _steerDot = LoadTexture(Resources.z_SteerDot);
                 return _steerDot;
             }
         }
@@ -136,7 +150,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_steerPointer == null) _steerPointer = new Texture2D(Resources.z_SteerPointer);
+                if (_steerPointer == null) _steerPointer = LoadTexture(Resources.z_SteerPointer);
                 return _steerPointer;
             }
         }
@@ -145,7 +159,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_tramDot == null) _tramDot = new Texture2D(Resources.z_TramOnOff);
+                if (_tramDot == null) _tramDot = LoadTexture(Resources.z_TramOnOff);
                 return _tramDot;
             }
         }
@@ -154,7 +168,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_turn == null) _turn = new Texture2D(Resources.z_Turn);
+                if (_turn == null) _turn = LoadTexture(Resources.z_Turn);
                 return _turn;
             }
         }
@@ -163,7 +177,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_turnCancel == null) _turnCancel = new Texture2D(Resources.z_TurnCancel);
+                if (_turnCancel == null) _turnCancel = LoadTexture(Resources.z_TurnCancel);
                 return _turnCancel;
             }
         }
@@ -172,7 +186,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_turnManuel == null) _turnManuel = new Texture2D(Resources.z_TurnManual);
+                if (_turnManuel == null) _turnManuel = LoadTexture(Resources.z_TurnManual);
                 return _turnManuel;
             }
         }
@@ -181,7 +195,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_uTurnU == null) _uTurnU = new Texture2D(Resources.YouTurnU);
+                if (_uTurnU == null) _uTurnU = LoadTexture(Resources.YouTurnU);
                 return _uTurnU;
             }
         }
@@ -190,7 +204,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_uTurnH == null) _uTurnH = new Texture2D(Resources.YouTurnH);
+                if (_uTurnH == null) _uTurnH = LoadTexture(Resources.YouTurnH);
                 return _uTurnH;
             }
         }
@@ -199,7 +213,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_questionMark == null) _questionMark = new Texture2D(Resources.z_QuestionMark);
+                if (_questionMark == null) _questionMark = LoadTexture(Resources.z_QuestionMark);
                 return _questionMark;
             }
         }
@@ -208,7 +222,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_zoomIn == null) _zoomIn = new Texture2D(Resources.ZoomIn48);
+                if (_zoomIn == null) _zoomIn = LoadTexture(Resources.ZoomIn48);
                 return _zoomIn;
             }
         }
@@ -217,7 +231,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_zoomOut == null) _zoomOut = new Texture2D(Resources.ZoomOut48);
+                if (_zoomOut == null) _zoomOut = LoadTexture(Resources.ZoomOut48);
                 return _zoomOut;
             }
         }
@@ -226,7 +240,7 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_headlandLight == null) _headlandLight = new Texture2D(Resources.z_HeadlandLight);
+                if (_headlandLight == null) _headlandLight = LoadTexture(Resources.z_HeadlandLight);
                 return _headlandLight;
             }
         }
@@ -235,8 +249,39 @@ namespace AgOpenGPS.Classes
         {
             get
             {
-                if (_headlandDark == null) _headlandDark = new Texture2D(Resources.z_HeadlandDark);
+                if (_headlandDark == null) _headlandDark = LoadTexture(Resources.z_HeadlandDark);
                 return _headlandDark;
+            }
+        }
+
+        // [XPLAT] Bridges a cross-platform Avalonia bitmap (as returned by Resources.*) to the portable
+        // RGBA contract of the migrated Core Texture2D. The bitmap is re-encoded to PNG (lossless) and
+        // decoded with SkiaSharp, then normalized to a tightly-packed RGBA8888, unpremultiplied byte
+        // buffer (4 bytes/pixel, row-major) — the exact byte order the Texture2D.SetPixels GL upload path
+        // expects (PixelFormat.Rgba). This mirrors the normalization in Classes/VehicleTextures.cs and
+        // AgOpenGPS.Core.Streamers so texture colours stay pixel-identical to the net48 build, while
+        // keeping AgOpenGPS.Core agnostic of any UI framework.
+        private static Texture2D LoadTexture(Bitmap image)
+        {
+            using (MemoryStream png = new MemoryStream())
+            {
+                image.Save(png);
+                png.Position = 0;
+                using (SKBitmap decoded = SKBitmap.Decode(png))
+                {
+                    SKImageInfo info = new SKImageInfo(decoded.Width, decoded.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+                    using (SKBitmap rgba = new SKBitmap(info))
+                    {
+                        using (SKCanvas canvas = new SKCanvas(rgba))
+                        {
+                            canvas.Clear(SKColors.Transparent);
+                            canvas.DrawBitmap(decoded, 0, 0);
+                        }
+                        // rgba.Bytes returns a fresh managed copy, so it remains valid after the SKBitmap
+                        // is disposed at the end of this using block.
+                        return new Texture2D(rgba.Bytes, info.Width, info.Height);
+                    }
+                }
             }
         }
 

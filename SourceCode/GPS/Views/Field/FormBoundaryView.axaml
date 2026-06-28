@@ -1,0 +1,327 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Start / Delete A Boundary" dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Field/FormBoundary`
+    (FormBoundary.cs + FormBoundary.Designer.cs). The operator manages the field's boundary set:
+    review the existing boundaries (outer fence + inner exclusions) with their area and drive-thru
+    flag, delete the selected one, open the field in Google Earth, build a boundary from recorded
+    tracks, or add a new boundary — which branches to a "choose source" sub-screen and then to a
+    "load from KML" sub-screen. Per AAP §0.3.3 this is a faithful parity reimplementation of the
+    current Windows Forms look, never a redesign: no new colours, no relayout, no UX changes.
+
+    WIRING CONTRACT (the partner code-behind FormBoundaryView.axaml.cs owns ALL behaviour, NOT this
+    markup — exactly like the sibling code-behind dialogs FormFilePickerView / FormFieldDirView /
+    FormYesView):
+      * This view is IMPERATIVE / code-behind-driven: there is intentionally NO x:DataType, NO
+        DataContext and NO MVVM binding anywhere. Every control is addressed by its x:Name and the
+        code-behind attaches the Click handlers programmatically (reproducing the WinForms designer's
+        `this.btnX.Click += ...` wiring) and assigns the translated gStr.* strings at runtime. The
+        x:Names below MUST stay exactly as written — the control-name fidelity list in this file's
+        spec is the contract the code-behind binds against.
+      * The window TITLE is a design-time placeholder; the code-behind assigns
+        gStr.gsStartDeleteABoundary in its constructor (FormBoundary.cs: this.Text = ...).
+      * The three header captions (labelBounds / Area / Thru) and the "+" / "+++" KML captions carry
+        readable design-time text; the code-behind assigns gStr.gsBoundary / gStr.gsArea /
+        gStr.gsDriveThru at runtime.
+      * btnDelete starts disabled (FormBoundary ctor: btnDelete.Enabled = false); the code-behind
+        enables it once a deletable boundary row is selected (B_Click).
+
+    PANEL MODEL — mirrors FormBoundary.Designer.cs (three Panels docked Fill, toggled by .Visible):
+      Reproduced as three overlaid Grids sharing the single root-Grid cell, switched by IsVisible
+      from the code-behind (panelMain.IsVisible = true; panelChoose/panelKML = false, etc.). The
+      WinForms code resizes the window between the 600x300 main view and the 245x350 choose/KML
+      sub-views; that programmatic resize stays in the code-behind (CanResize="False" only blocks the
+      USER from resizing, not the code-behind), so this markup just declares the 600x300 default.
+        panelMain   (visible)        — boundary toolbar + 3-column header + scrollable boundary list.
+        panelChoose (IsVisible=False) — "where does the boundary come from" choices + return.
+        panelKML    (IsVisible=False) — load single / multi boundary from a Google-Earth KML + return.
+
+    flp1 — the dynamic boundary list. The WinForms FlowLayoutPanel (AutoScroll) is reproduced as an
+    ItemsControl whose ItemsPanel is a horizontal WrapPanel, hosted in a ScrollViewer. The code-behind
+    rebuilds it (UpdateChart) by adding three Button controls per boundary — name (180w) / area (180w)
+    / drive-thru (110w), each with a 10px margin — which wrap three-per-row exactly like the original
+    FlowLayoutPanel. No ItemTemplate is declared because the items are pre-built Button controls, and
+    the selected-row OrangeRed colouring is applied in the code-behind (no XAML trigger needed).
+
+    THEME / ASSETS (per AAP §0.3.3 — 1:1 visual parity): chrome and text come from App.axaml's
+    day/night ThemeDictionaries via {DynamicResource ...} (so the live Light<->Dark switch is
+    observed) — no WinForms/GDI colours. Button glyphs are served from the GPS assembly
+    (assembly name "AgOpenGPS") via avares:// URIs, the convention used by every sibling GPS view.
+    Pure Avalonia 11.3.0 — no WinForms / OpenTK / GMap / System.Drawing types are referenced.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormBoundaryView"
+        Title="Start / Delete A Boundary"
+        Width="600"
+        Height="300"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Flat, borderless, transparent image buttons — the cross-platform equivalent of the WinForms
+        FlatStyle.Flat + FlatAppearance.BorderSize = 0 carried by every button in
+        FormBoundary.Designer.cs. The Fluent Button template otherwise paints a hover / pressed /
+        disabled fill; these setters keep the face transparent in every interaction state so only the
+        glyph shows (the same technique used by the sibling FormFieldDirView / FormFilePickerView).
+        The :disabled glyph is dimmed via Opacity to reproduce the greyed look WinForms applies to a
+        disabled Button.Image (e.g. the initially-disabled btnDelete).
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- Shared look for the three column-header captions and the "+/+++" KML captions. -->
+        <Style Selector="TextBlock.header">
+            <Setter Property="Foreground" Value="{DynamicResource AogTextBrush}" />
+            <Setter Property="FontSize" Value="19" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Bottom" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root single-cell Grid: the three panels are stacked in the same cell (default Stretch), so
+        each fills the window and only the one with IsVisible="True" is shown. The code-behind flips
+        IsVisible to switch screens (FormBoundary panel-switching: btnAdd -> panelChoose,
+        btnGetKML -> panelKML, the Cancel/return buttons -> panelMain).
+    -->
+    <Grid>
+
+        <!-- ============================ panelMain (default visible) ============================ -->
+        <Grid x:Name="panelMain" Margin="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />   <!-- command toolbar                         -->
+                <RowDefinition Height="Auto" />   <!-- column headers (Boundary | Area | Thru?) -->
+                <RowDefinition Height="*" />      <!-- scrollable boundary list (flp1)          -->
+            </Grid.RowDefinitions>
+
+            <!--
+                Command toolbar. WinForms order (by X): Delete, Open-Google-Earth,
+                Build-From-Tracks, Add on the left; the OK/return button (image OK64, despite its
+                name) on the right. btnDelete starts disabled.
+            -->
+            <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                <Button x:Name="btnCancel"
+                        Classes="flatImage"
+                        DockPanel.Dock="Right"
+                        Width="64" Height="64"
+                        AutomationProperties.Name="OK">
+                    <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                           Width="48" Height="48" Stretch="Uniform" />
+                </Button>
+
+                <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Left">
+                    <Button x:Name="btnDelete"
+                            Classes="flatImage"
+                            Width="64" Height="64"
+                            IsEnabled="False"
+                            AutomationProperties.Name="Delete boundary">
+                        <Image Source="avares://AgOpenGPS/btnImages/Trash.png"
+                               Width="48" Height="48" Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="btnOpenGoogleEarth"
+                            Classes="flatImage"
+                            Width="64" Height="64"
+                            AutomationProperties.Name="Open in Google Earth">
+                        <Image Source="avares://AgOpenGPS/btnImages/GoogleEarth.png"
+                               Width="48" Height="48" Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="btnBuildBoundaryFromTracks"
+                            Classes="flatImage"
+                            Width="64" Height="64"
+                            AutomationProperties.Name="Build boundary from tracks">
+                        <Image Source="avares://AgOpenGPS/btnImages/BoundaryFromTracks.png"
+                               Width="48" Height="48" Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="btnAdd"
+                            Classes="flatImage"
+                            Width="64" Height="64"
+                            AutomationProperties.Name="Add boundary">
+                        <Image Source="avares://AgOpenGPS/btnImages/AddNew.png"
+                               Width="48" Height="48" Stretch="Uniform" />
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+
+            <!--
+                Column headers over the three list columns. Widths track the list buttons
+                (name 180 / area 180 / drive-thru 110, each +10 margin each side -> ~200/200/130);
+                the trailing "*" column absorbs the scrollbar gutter so the captions stay aligned
+                with the rows below. Runtime text = gStr.gsBoundary / gsArea / gsDriveThru.
+            -->
+            <Grid Grid.Row="1" Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="200" />
+                    <ColumnDefinition Width="200" />
+                    <ColumnDefinition Width="130" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="labelBounds" Grid.Column="0" Classes="header" Text="Boundary" />
+                <TextBlock x:Name="Area"        Grid.Column="1" Classes="header" Text="Area" />
+                <TextBlock x:Name="Thru"        Grid.Column="2" Classes="header" Text="Thru?" />
+            </Grid>
+
+            <!--
+                The dynamic boundary list. ScrollViewer + ItemsControl(WrapPanel) reproduces the
+                WinForms FlowLayoutPanel(AutoScroll): the code-behind (UpdateChart) clears and
+                repopulates flp1 with three Buttons per boundary, which wrap three-per-row.
+            -->
+            <ScrollViewer Grid.Row="2"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="flp1">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ============================ panelChoose (hidden by default) ============================ -->
+        <!--
+            "Choose the boundary source" sub-screen (shown by btnAdd_Click; window shrinks to
+            245x350 in the code-behind). btnGetKML opens the KML sub-screen; btnDriveOrExt and
+            btnBingMaps each set their DialogResult and close; btnCancelChoose returns to panelMain.
+        -->
+        <Grid x:Name="panelChoose" Margin="16" IsVisible="False">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="18">
+                <Button x:Name="btnGetKML"
+                        Classes="flatImage"
+                        Width="88" Height="84"
+                        HorizontalAlignment="Center"
+                        AutomationProperties.Name="Get boundary from KML">
+                    <Image Source="avares://AgOpenGPS/btnImages/BoundaryLoadFromGE.png"
+                           Width="64" Height="64" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnDriveOrExt"
+                        Classes="flatImage"
+                        Width="88" Height="84"
+                        HorizontalAlignment="Center"
+                        AutomationProperties.Name="Drive or external boundary">
+                    <Image Source="avares://AgOpenGPS/btnImages/SteerRight.png"
+                           Width="64" Height="64" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnBingMaps"
+                        Classes="flatImage"
+                        Width="64" Height="64"
+                        HorizontalAlignment="Center"
+                        AutomationProperties.Name="Bing maps">
+                    <Image Source="avares://AgOpenGPS/btnImages/bing.png"
+                           Width="48" Height="48" Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+
+            <Button x:Name="btnCancelChoose"
+                    Grid.Row="1"
+                    Classes="flatImage"
+                    Width="72" Height="64"
+                    HorizontalAlignment="Right"
+                    Margin="0,12,0,0"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                       Width="48" Height="48" Stretch="Uniform" />
+            </Button>
+        </Grid>
+
+        <!-- ============================ panelKML (hidden by default) ============================ -->
+        <!--
+            "Load boundary from Google-Earth KML" sub-screen (shown by btnGetKML_Click). The "+"
+            caption (label5) sits beside the single-boundary load, the "+++" caption (label3) beside
+            the multi-boundary load; btnCancelKML returns to panelMain. Both load buttons are wired
+            to the same handler in the code-behind, which distinguishes single vs multi by name.
+        -->
+        <Grid x:Name="panelKML" Margin="16" IsVisible="False">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="18">
+                <!-- single boundary: load button + "+" caption -->
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button x:Name="btnLoadBoundaryFromGE"
+                            Classes="flatImage"
+                            Width="88" Height="84"
+                            AutomationProperties.Name="Load boundary from Google Earth">
+                        <Image Source="avares://AgOpenGPS/btnImages/BoundaryLoadFromGE.png"
+                               Width="64" Height="64" Stretch="Uniform" />
+                    </Button>
+                    <TextBlock x:Name="label5"
+                               Text="+"
+                               FontSize="24"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource AogTextBrush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- multiple boundaries: load button + "+++" caption -->
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button x:Name="btnLoadMultiBoundaryFromGE"
+                            Classes="flatImage"
+                            Width="88" Height="84"
+                            AutomationProperties.Name="Load multiple boundaries from Google Earth">
+                        <Image Source="avares://AgOpenGPS/btnImages/BoundaryLoadMultiFromGE.png"
+                               Width="64" Height="64" Stretch="Uniform" />
+                    </Button>
+                    <TextBlock x:Name="label3"
+                               Text="+++"
+                               FontSize="24"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource AogTextBrush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+
+            <Button x:Name="btnCancelKML"
+                    Grid.Row="1"
+                    Classes="flatImage"
+                    Width="72" Height="64"
+                    HorizontalAlignment="Right"
+                    Margin="0,12,0,0"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                       Width="48" Height="48" Stretch="Uniform" />
+            </Button>
+        </Grid>
+
+    </Grid>
+</Window>

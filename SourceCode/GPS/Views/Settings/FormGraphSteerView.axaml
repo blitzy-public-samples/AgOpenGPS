@@ -1,0 +1,248 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — live AutoSteer steer-angle chart (Avalonia view).
+
+    1:1 visual PARITY reimplementation of the WinForms Forms/Settings/FormGraphSteer
+    (FormGraphSteer.cs + FormGraphSteer.Designer.cs), per AAP §0.3.3 — never a redesign. It plots
+    two real-time series: the SETPOINT (guidance) steer angle and the ACTUAL steer angle, with a
+    Y-gain (zoom) control column on the left and a colour-coded legend along the bottom.
+
+    CHARTING CONTROL REMOVED (cross-platform): the Windows-only WinForms charting control named
+    `unoChart` (see MIGRATION_DOCS/TRANSITION_MAP.md for the exact removed type) is replaced here by
+    a custom Avalonia drawing surface (a black Canvas named `unoChart`). No new NuGet package is
+    introduced. The partner code-behind FormGraphSteerView.axaml.cs renders into that Canvas (see
+    CHART SURFACE CONTRACT below).
+
+    WIRING CONTRACT (the partner code-behind owns ALL behaviour; this markup is imperative):
+      * No MVVM — intentionally NO x:DataType, NO DataContext, NO {Binding}. Matches the sibling
+        imperative views (GPS FormYesView / FormTimedMessageView, ModSim FormYesView). The original
+        FormGraphSteer(Form callingForm) ctor set label5/label1/Title text and a WinForms forms-timer
+        (interval 1000/gpsHz ms) drove DrawChart(); the Avalonia code-behind reproduces this with a
+        DispatcherTimer and assigns the named controls directly.
+      * gStr text (set by the code-behind, exactly as the WinForms ctor did):
+            label5.Text = gStr.gsSetPoint ;  label1.Text = gStr.gsActual ;  Title = gStr.gsSteerChart
+        Placeholder text ("SetPoint" / "Actual" / "AutoSteer Graph") is the original designer text.
+        The gStr xmlns is declared (per the file spec) so the code-behind and any future static
+        binding resolve against AgOpenGPS.Core.Translations.
+      * Gain buttons: the code-behind attaches the WinForms click handlers (btnGainUp_Click /
+        btnGainAuto_Click / btnGainDown_Click) to the named Button fields — no Click= is declared
+        here, so the markup stays decoupled from the handler method names.
+
+    WINDOW SHELL — mirrors FormGraphSteer.Designer.cs:
+      Text "AutoSteer Graph" (= gStr.gsSteerChart) -> Title (semantic window title; SystemDecorations
+                                   ="None" hides the OS title bar, and the WinForms client area had no
+                                   in-window header, so none is added here — layout parity).
+      ClientSize 498 x 312        -> Width / Height (SystemDecorations="None" => client == window).
+      MaximizeBox/MinimizeBox=false, fixed -> CanResize="False".
+      ShowInTaskbar=false         -> ShowInTaskbar="False".
+      StartPosition.CenterParent  -> WindowStartupLocation="CenterOwner" (shown over FormGPS).
+      Background                   -> {DynamicResource AogFrameBrush} (day/night frame chrome from
+                                   App.axaml; DynamicResource so the live theme switch is observed).
+      Font Tahoma                 -> FontFamily / FontSize (children override where the designer did).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gStr="clr-namespace:AgOpenGPS.Core.Translations;assembly=AgOpenGPS.Core"
+        x:Class="AgOpenGPS.Views.Settings.FormGraphSteerView"
+        Title="AutoSteer Graph"
+        Width="498"
+        Height="312"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        Background="{DynamicResource AogFrameBrush}"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+
+    <!--
+        Flat, transparent gain buttons (WinForms FlatStyle.Flat + FlatAppearance.BorderSize=2 +
+        ForeColor White + BackColor Transparent). The Fluent Button template otherwise paints a
+        hover / pressed fill; these setters target the template content presenter so the flat,
+        white-bordered face is kept in every interaction state (same technique as GPS FormYesView).
+    -->
+    <Window.Styles>
+        <Style Selector="Button.gainBtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="White" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.gainBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="White" />
+        </Style>
+        <Style Selector="Button.gainBtn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="White" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Absolute layout via Canvas, reproducing the WinForms designer coordinates pixel-for-pixel
+        (same approach as the ModSim FormYesView sibling). Declaration order == back-to-front
+        z-order: `unoChart` is declared FIRST so it sits at the back (the WinForms designer added
+        unoChart LAST, i.e. at the bottom of the z-order); the gain buttons and labels are declared
+        AFTER so they paint on top of the chart, exactly as in the WinForms Controls collection.
+        The Window Background (AogFrameBrush) shows through wherever the Canvas is empty.
+    -->
+    <Canvas>
+
+        <!--
+            CHART SURFACE — `unoChart` (replaces the Windows-only WinForms charting control).
+            WinForms: unoChart Location (3,12), Size 481 x 274, BackColor Black.
+            CHART SURFACE CONTRACT for the partner code-behind: this is a black Canvas the
+            code-behind renders into — it adds / updates two Polyline shapes for the series and the
+            Y-axis min / max gridlines, capped at the last 30 points exactly like the WinForms
+            DrawChart(): series "S" (ACTUAL steer angle) in OrangeRed (#FFFF4500) and series "PWM"
+            (SETPOINT steer angle) in Lime (#FF00FF00). ClipToBounds keeps the polylines inside the
+            plot rectangle.
+        -->
+        <Canvas x:Name="unoChart"
+                Canvas.Left="3"
+                Canvas.Top="12"
+                Width="481"
+                Height="274"
+                Background="Black"
+                ClipToBounds="True" />
+
+        <!--
+            Y-GAIN (zoom) BUTTON COLUMN — overlays the left edge of the black chart.
+            WinForms btnGainUp (3,13) / btnGainAuto (3,113) / btnGainDown (3,219), each 48 x 55.
+            Per the AAP charting-dialog directive the WinForms "+" / "-" glyphs are hosted as the
+            up / down arrow images; the auto button keeps the designer "A" (no auto-arrow asset).
+        -->
+        <Button x:Name="btnGainUp" AutomationProperties.Name="Gain Up"
+                Classes="gainBtn"
+                Canvas.Left="3"
+                Canvas.Top="13"
+                Width="48"
+                Height="55">
+            <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png"
+                   Width="38"
+                   Height="38"
+                   Stretch="Uniform" />
+        </Button>
+
+        <Button x:Name="btnGainAuto"
+                Classes="gainBtn"
+                Canvas.Left="3"
+                Canvas.Top="113"
+                Width="48"
+                Height="55"
+                FontSize="18"
+                FontWeight="Bold"
+                Content="A" />
+
+        <Button x:Name="btnGainDown" AutomationProperties.Name="Gain Down"
+                Classes="gainBtn"
+                Canvas.Left="3"
+                Canvas.Top="219"
+                Width="48"
+                Height="55">
+            <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png"
+                   Width="38"
+                   Height="38"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!--
+            Y-axis MAX readout. WinForms lblMax (432,1) 57 x 23, White, Tahoma 14.25 Bold,
+            MiddleRight, default text "Auto". Sits on the chart's top-right corner (white on black).
+        -->
+        <TextBlock x:Name="lblMax"
+                   Canvas.Left="432"
+                   Canvas.Top="1"
+                   Width="57"
+                   Height="23"
+                   FontWeight="Bold"
+                   Foreground="White"
+                   TextAlignment="Right"
+                   Text="Auto" />
+
+        <!--
+            Decorative "<" marker. WinForms label2 (472,124), Lime, Tahoma 20.25 Bold, anchored
+            Right (never referenced in code) — included for visual parity, intentionally unnamed.
+            "<" is XML-escaped as &lt;.
+        -->
+        <TextBlock Canvas.Left="472"
+                   Canvas.Top="124"
+                   FontSize="20.25"
+                   FontWeight="Bold"
+                   Foreground="#FF00FF00"
+                   Text="&lt;" />
+
+        <!--
+            BOTTOM LEGEND — two colour-coded entries plus the Y-axis MIN readout.
+            WinForms bottom row at y=286: label5 "SetPoint" (74) + lblPWM value (163, Lime) and
+            label1 "Actual" (237) + lblSteerAng value (314, OrangeRed). Each entry is grouped in a
+            horizontal StackPanel so the AAP-mandated "legend colour square matching the series
+            colour" sits immediately left of its name + value (square colour == that series' line
+            colour: SetPoint / PWM = Lime, Actual / S = OrangeRed). label5 / label1 use the theme
+            text brush (neutral names); the value labels keep the fixed series colours, echoing the
+            chart lines. lblPWM / lblSteerAng carry placeholder "0" (the code-behind sets the live
+            values from mf.SetSteerAngle / mf.ActualSteerAngle each tick).
+        -->
+
+        <!-- SetPoint legend entry (PWM series, Lime). -->
+        <StackPanel Canvas.Left="56"
+                    Canvas.Top="288"
+                    Orientation="Horizontal">
+            <Border Width="14"
+                    Height="14"
+                    Background="#FF00FF00"
+                    VerticalAlignment="Center" />
+            <TextBlock x:Name="label5"
+                       Margin="6,0,0,0"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       Text="SetPoint" />
+            <TextBlock x:Name="lblPWM"
+                       Margin="8,0,0,0"
+                       VerticalAlignment="Center"
+                       FontWeight="Bold"
+                       Foreground="#FF00FF00"
+                       Text="0" />
+        </StackPanel>
+
+        <!-- Actual legend entry (S series, OrangeRed). -->
+        <StackPanel Canvas.Left="219"
+                    Canvas.Top="288"
+                    Orientation="Horizontal">
+            <Border Width="14"
+                    Height="14"
+                    Background="#FFFF4500"
+                    VerticalAlignment="Center" />
+            <TextBlock x:Name="label1"
+                       Margin="6,0,0,0"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       Text="Actual" />
+            <TextBlock x:Name="lblSteerAng"
+                       Margin="8,0,0,0"
+                       VerticalAlignment="Center"
+                       FontWeight="Bold"
+                       Foreground="#FFFF4500"
+                       Text="0" />
+        </StackPanel>
+
+        <!--
+            Y-axis MIN readout. WinForms lblMin (436,286) 53 x 23, White, Tahoma 14.25 Bold,
+            MiddleRight, default text "" (empty). Right-aligned at the far-right of the bottom row.
+        -->
+        <TextBlock x:Name="lblMin"
+                   Canvas.Left="436"
+                   Canvas.Top="286"
+                   Width="53"
+                   Height="23"
+                   FontWeight="Bold"
+                   Foreground="White"
+                   TextAlignment="Right"
+                   Text="" />
+
+    </Canvas>
+</Window>

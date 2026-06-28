@@ -1,0 +1,54 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="AgOpenGPS.Updater.Forms.FormFirmwareUpdate"
+        Title="Firmware Update"
+        Width="600" Height="500"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
+        FontFamily="Segoe UI">
+    <!--
+        [XPLAT] 1:1 placeholder port of the WinForms FormFirmwareUpdate (Forms/FormFirmwareUpdate.Designer.cs).
+        This window is intentionally a PLACEHOLDER: it adds NO firmware-update functionality (AAP parity rule).
+        Three docked regions mirror the original WinForms panels:
+          • header  (Dock=Top,    Height 60, view-local color #286090 == WinForms FromArgb(40,96,144))
+          • buttons (Dock=Bottom, Height 60, Padding 20)
+          • main    (Fill,        Padding 20)
+        Control names (LblTitle / LblInfo / BtnClose) and the BtnClose_Click handler are a fixed coordination
+        contract with FormFirmwareUpdate.axaml.cs. LblInfo is intentionally empty here — its multi-line
+        placeholder text is assigned in the code-behind constructor.
+        FontSize values use the source WinForms point numbers directly (Updater-wide convention).
+    -->
+    <DockPanel LastChildFill="True">
+        <!-- panelHeader: Dock=Top, Height 60, BackColor FromArgb(40,96,144) == #286090 -->
+        <Border DockPanel.Dock="Top" Height="60" Background="#286090">
+            <TextBlock x:Name="LblTitle"
+                       Text="AgOpenGPS Firmware Update"
+                       FontSize="18" FontWeight="Bold"
+                       Foreground="White"
+                       Margin="20,15,0,0"
+                       HorizontalAlignment="Left" VerticalAlignment="Top" />
+        </Border>
+
+        <!-- panelButtons: Dock=Bottom, Height 60, Padding 20; btnClose 100x35 anchored bottom-right -->
+        <Border DockPanel.Dock="Bottom" Height="60" Padding="20">
+            <Button x:Name="BtnClose"
+                    Content="Close"
+                    Width="100" Height="35"
+                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Click="BtnClose_Click" />
+        </Border>
+
+        <!-- panelMain: Dock=Fill, Padding 20; LblInfo text set in code-behind (FormFirmwareUpdate.axaml.cs) -->
+        <Border Padding="20">
+            <TextBlock x:Name="LblInfo"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       HorizontalAlignment="Left" VerticalAlignment="Top" />
+        </Border>
+    </DockPanel>
+</Window>

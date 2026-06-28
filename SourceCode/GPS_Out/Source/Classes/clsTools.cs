@@ -1,41 +1,20 @@
-﻿using RateController;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+// [XPLAT] WinForms/GDI+/Win32 plus the legacy help-popup and audio APIs are purged. Window geometry
+// persistence now flows through the internal IWindowState contract (Avalonia PixelPoint); ShowHelp
+// opens the Avalonia Views.HelpWindow; the constructor is parameterless (no view back-reference).
+// All file/settings logic and the additive CRC primitives are unchanged (behaviour frozen).
 using System;
 using System.Collections;
-using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Printing;
+using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Media;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Windows.Forms;
-using System.Xml.Linq;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using GPS_Out.Views;
 
 namespace GPS_Out
 {
     public class clsTools
     {
-        #region Form Dragging API Support
-
-        // https://www.c-sharpcorner.com/article/transparent-borderless-forms-in-C-Sharp/
-        // add to form:
-        // private void Form1_MouseDown(object sender, MouseEventArgs e)
-        // {
-        //    if (e.Button == MouseButtons.Left) Tls.DragForm(this);
-        // }
-
-        //ReleaseCapture releases a mouse capture
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = false)]
-        public static extern bool ReleaseCapture();
-
-        //The SendMessage function sends a message to a window or windows.
-        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = false)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, int wParam, int lParam);
-
-        #endregion Form Dragging API Support
-
         private static Hashtable HTapp;
         private static Hashtable HTfiles;
         private string cAppName = "GPS_Out";
@@ -43,12 +22,13 @@ namespace GPS_Out
         private string cPropertiesApp;
         private string cPropertiesFile;
         private string cSettingsDir;
-        private frmStart mf;
         private int SentenceCount = 0;
 
-        public clsTools(frmStart CallingForm)
+        // [XPLAT] parameterless: the former view back-reference was removed. Views/MainWindow now
+        // constructs this as 'new clsTools();' and the help-window owner is resolved on demand from
+        // the Avalonia application lifetime (see ShowHelp).
+        public clsTools()
         {
-            mf = CallingForm;
             CheckFolders();
             OpenFile(Properties.Settings.Default.FileName);
         }
@@ -73,52 +53,9 @@ namespace GPS_Out
             return Result;
         }
 
-        public void DragForm(Form Frm)
-        {
-            ReleaseCapture();
-            SendMessage(Frm.Handle, 0xa1, 0x2, 0);
-        }
-
-        public void DrawGroupBox(GroupBox box, Graphics g, Color BackColor, Color textColor, Color borderColor)
-        {
-            // useage:
-            // point the Groupbox paint event to this sub:
-            //private void GroupBoxPaint(object sender, PaintEventArgs e)
-            //{
-            //    GroupBox box = sender as GroupBox;
-            //    mf.Tls.DrawGroupBox(box, e.Graphics, this.BackColor, Color.Black, Color.Blue);
-            //}
-
-            if (box != null)
-            {
-                Brush textBrush = new SolidBrush(textColor);
-                Brush borderBrush = new SolidBrush(borderColor);
-                Pen borderPen = new Pen(borderBrush);
-                SizeF strSize = g.MeasureString(box.Text, box.Font);
-                Rectangle rect = new Rectangle(box.ClientRectangle.X,
-                                               box.ClientRectangle.Y + (int)(strSize.Height / 2),
-                                               box.ClientRectangle.Width - 1,
-                                               box.ClientRectangle.Height - (int)(strSize.Height / 2) - 1);
-
-                // Clear text and border
-                g.Clear(BackColor);
-
-                // Draw text
-                g.DrawString(box.Text, box.Font, textBrush, box.Padding.Left, 0);
-
-                // Drawing Border
-                //Left
-                g.DrawLine(borderPen, rect.Location, new Point(rect.X, rect.Y + rect.Height));
-                //Right
-                g.DrawLine(borderPen, new Point(rect.X + rect.Width, rect.Y), new Point(rect.X + rect.Width, rect.Y + rect.Height));
-                //Bottom
-                g.DrawLine(borderPen, new Point(rect.X, rect.Y + rect.Height), new Point(rect.X + rect.Width, rect.Y + rect.Height));
-                //Top1
-                g.DrawLine(borderPen, new Point(rect.X, rect.Y), new Point(rect.X + box.Padding.Left, rect.Y));
-                //Top2
-                g.DrawLine(borderPen, new Point(rect.X + box.Padding.Left + (int)strSize.Width, rect.Y), new Point(rect.X + rect.Width, rect.Y));
-            }
-        }
+        // [XPLAT] DragForm (user32.dll P/Invoke) and DrawGroupBox (GDI+ Graphics) were WinForms-only
+        // and had zero surviving callers: the Avalonia Views/*.axaml reproduce the group-box frames
+        // declaratively (Border + header TextBlock), and borderless drag is not used. Both removed.
 
         public bool GoodCRC(byte[] Data, byte Start = 0)
         {
@@ -129,23 +66,6 @@ namespace GPS_Out
             return Result;
         }
 
-        public bool IsOnScreen(Form form, bool PutOnScreen = false)
-        {
-            // Create rectangle
-            Rectangle formRectangle = new Rectangle(form.Left, form.Top, form.Width, form.Height);
-
-            // Test
-            bool IsOn = Screen.AllScreens.Any(s => s.WorkingArea.IntersectsWith(formRectangle));
-
-            if (!IsOn & PutOnScreen)
-            {
-                form.Top = 0;
-                form.Left = 0;
-            }
-
-            return IsOn;
-        }
-
         public string LoadAppProperty(string Key)
         {
             string Prop = "";
@@ -153,17 +73,21 @@ namespace GPS_Out
             return Prop;
         }
 
-        public void LoadFormData(Form Frm)
+        // [XPLAT] geometry persistence retargeted from the WinForms Form to the internal IWindowState
+        // contract (Avalonia PixelPoint). The persisted keys remain Name + ".Left" / ".Top" and the
+        // values are parsed with InvariantCulture so saved positions round-trip identically across
+        // locales. Off-screen recovery is now owned by the Avalonia view (window placement).
+        // [XPLAT] internal: the parameter type IWindowState is internal, so this method is internal
+        // too (a public signature would raise CS0051). Only MainWindow (same assembly) calls it.
+        internal void LoadFormData(IWindowState Frm)
         {
             int Leftloc = 0;
-            int.TryParse(LoadAppProperty(Frm.Name + ".Left"), out Leftloc);
-            Frm.Left = Leftloc;
+            int.TryParse(LoadAppProperty(Frm.Name + ".Left"), NumberStyles.Integer, CultureInfo.InvariantCulture, out Leftloc);
 
             int Toploc = 0;
-            int.TryParse(LoadAppProperty(Frm.Name + ".Top"), out Toploc);
-            Frm.Top = Toploc;
+            int.TryParse(LoadAppProperty(Frm.Name + ".Top"), NumberStyles.Integer, CultureInfo.InvariantCulture, out Toploc);
 
-            IsOnScreen(Frm, true);
+            Frm.Position = new PixelPoint(Leftloc, Toploc);
         }
 
         public string LoadProperty(string Key)
@@ -182,13 +106,13 @@ namespace GPS_Out
                 if (FileName == "") PathName = NewFile;     // no file name present, fix path name
                 if (Directory.Exists(PathName)) Properties.Settings.Default.FilesDir = PathName; // set the new files dir
 
-                cPropertiesFile = Properties.Settings.Default.FilesDir + "\\" + FileName;
+                cPropertiesFile = Path.Combine(Properties.Settings.Default.FilesDir, FileName);
                 if (!File.Exists(cPropertiesFile)) File.Create(cPropertiesFile).Dispose();
                 LoadFilesData(cPropertiesFile);
                 Properties.Settings.Default.FileName = FileName;
                 Properties.Settings.Default.Save();
 
-                cPropertiesApp = Properties.Settings.Default.FilesDir + "\\AppData.txt";
+                cPropertiesApp = Path.Combine(Properties.Settings.Default.FilesDir, "AppData.txt");
                 if (!File.Exists(cPropertiesApp)) File.Create(cPropertiesApp).Dispose();
                 LoadAppData(cPropertiesApp);
             }
@@ -217,12 +141,15 @@ namespace GPS_Out
             if (Changed) SaveAppProperties();
         }
 
-        public void SaveFormData(Form Frm)
+        // [XPLAT] internal: the parameter type IWindowState is internal, so this method is internal too;
+        // only MainWindow (same assembly) calls it. Values are written with InvariantCulture so the
+        // persisted Name + ".Left" / ".Top" keys round-trip identically across locales.
+        internal void SaveFormData(IWindowState Frm)
         {
             try
             {
-                SaveAppProperty(Frm.Name + ".Left", Frm.Left.ToString());
-                SaveAppProperty(Frm.Name + ".Top", Frm.Top.ToString());
+                SaveAppProperty(Frm.Name + ".Left", Frm.Position.X.ToString(CultureInfo.InvariantCulture));
+                SaveAppProperty(Frm.Name + ".Top", Frm.Position.Y.ToString(CultureInfo.InvariantCulture));
             }
             catch (Exception)
             {
@@ -234,13 +161,20 @@ namespace GPS_Out
             return cSettingsDir;
         }
 
+        // [XPLAT] opens the Avalonia Views.HelpWindow (replaces the deleted WinForms help popup). The
+        // owner is resolved from the Avalonia application lifetime (no view back-reference); the modal
+        // path uses ShowDialog(owner) discarded fire-and-forget to preserve the non-blocking call
+        // semantics, falling back to a non-owned Show() when no main window is available. The only
+        // caller uses Modal=false (auto-dismissing popup). Error-sound playback is a cross-platform
+        // no-op (the Windows-only system-sounds API was dropped).
         public void ShowHelp(string Message, string Title = "Help",
             int timeInMsec = 30000, bool LogError = false, bool Modal = false, bool PlayErrorSound = false)
         {
-            var Hlp = new frmHelp(mf, Message, Title, timeInMsec);
-            if (Modal)
+            var Hlp = new HelpWindow(Message, Title, timeInMsec);
+            var owner = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+            if (Modal && owner != null)
             {
-                Hlp.ShowDialog();
+                _ = Hlp.ShowDialog(owner);   // fire-and-forget; ShowDialog returns Task (discarded to stay warning-clean)
             }
             else
             {
@@ -248,12 +182,17 @@ namespace GPS_Out
             }
 
             if (LogError) WriteErrorLog(Message);
-            if (PlayErrorSound) SystemSounds.Exclamation.Play();
+
+            // [XPLAT] the Windows-only system-sounds API is gone; audio is non-essential -> no-op on all platforms.
+            if (PlayErrorSound)
+            {
+                // intentional no-op (audio not portable); PlayErrorSound retained for behavioral/signature parity
+            }
         }
 
         public void WriteByteFile(byte[] Data, string DataName)
         {
-            string FileName = cSettingsDir + "\\" + DataName;
+            string FileName = Path.Combine(cSettingsDir, DataName);
             if (SentenceCount < 20)
             {
                 SentenceCount++;
@@ -268,9 +207,9 @@ namespace GPS_Out
         {
             try
             {
-                string FileName = cSettingsDir + "\\Error Log.txt";
+                string FileName = Path.Combine(cSettingsDir, "Error Log.txt");
                 TrimFile(FileName);
-                File.AppendAllText(FileName, DateTime.Now.ToString("MMM-dd hh:mm:ss") + "  -  " + strErrorText + "\r\n\r\n");
+                File.AppendAllText(FileName, DateTime.Now.ToString("MMM-dd hh:mm:ss", CultureInfo.InvariantCulture) + "  -  " + strErrorText + "\r\n\r\n");
             }
             catch (Exception)
             {
@@ -282,16 +221,16 @@ namespace GPS_Out
             try
             {
                 // SettingsDir
-                cSettingsDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\" + cAppName;
+                cSettingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), cAppName);
 
                 if (!Directory.Exists(cSettingsDir)) Directory.CreateDirectory(cSettingsDir);
-                //if (!File.Exists(cSettingsDir + "\\Example.rcs")) File.WriteAllBytes(cSettingsDir + "\\Example.rcs", Properties.Resources.Example);
+                //if (!File.Exists(Path.Combine(cSettingsDir, "Example.rcs"))) File.WriteAllBytes(Path.Combine(cSettingsDir, "Example.rcs"), Properties.Resources.Example);
 
                 string FilesDir = Properties.Settings.Default.FilesDir;
                 if (!Directory.Exists(FilesDir)) Properties.Settings.Default.FilesDir = cSettingsDir;
 
                 // erase old debug file
-                string FileName = cSettingsDir + "\\" + "AGIOdata.txt";
+                string FileName = Path.Combine(cSettingsDir, "AGIOdata.txt");
                 if (File.Exists(FileName)) File.Delete(FileName);
             }
             catch (Exception)

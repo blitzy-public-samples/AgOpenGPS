@@ -1,0 +1,311 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GPS_Out.Views.MainWindow"
+        Title="GPS_Out"
+        Width="626" Height="536"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Microsoft Sans Serif"
+        FontSize="19">
+    <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        Avalonia 1:1 parity reimplementation of the deleted WinForms `frmStart` main window
+        (GPS_Out utility). Declarative layout only — every behaviour, timer and handler body
+        lives in the partner code-behind MainWindow.axaml.cs. Layout reproduces the WinForms
+        designer pixel-for-pixel via absolute Canvas positioning. WinForms point sizes are
+        converted to Avalonia device pixels (pt x 1.3333): 14.25->19, 15.75->21, 18->24, 24->32.
+        No data binding (imperative code-behind updates by x:Name), no x:DataType, no Icon and
+        no Background here (the code-behind applies the DayColour palette at Opened).
+    -->
+    <Window.Styles>
+        <!--
+            WinForms CheckBox/RadioButton used Appearance=Button + FlatStyle.Flat with
+            CheckedBackColor = ARGB(192,255,192) (#C0FFC0, light green). Avalonia's Fluent
+            ToggleButton/RadioButton do not surface that checked colour through the public
+            Background property (it is theme-resource driven) and a RadioButton renders a
+            radio glyph rather than a push button. A single shared flat ControlTemplate keyed
+            off the "optionButton" class reproduces the original flat push-button look for both
+            control types and lets the :checked selector drive the exact light-green fill via
+            {TemplateBinding Background}. RadioButton grouping (GroupName) is preserved.
+        -->
+        <Style Selector="ToggleButton.optionButton, RadioButton.optionButton">
+            <Setter Property="Background" Value="#FFF0F0F0" />
+            <Setter Property="BorderBrush" Value="#FFADADAD" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="2">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <!-- Checked state == WinForms CheckedBackColor ARGB(192,255,192). -->
+        <Style Selector="ToggleButton.optionButton:checked, RadioButton.optionButton:checked">
+            <Setter Property="Background" Value="#C0FFC0" />
+        </Style>
+
+        <!--
+            [XPLAT] m1: the flat ControlTemplate above suppressed the Fluent default visuals, so the
+            interactive-state cues (hover / pressed / keyboard focus / disabled) are restored
+            explicitly here. Order matters: the combined :checked:* selectors follow the plain ones so
+            the checked light-green fill stays dominant while still showing hover/press feedback. The
+            :focus-visible ring is a 2px accent border (the button size is fixed, so it adds no reflow),
+            keeping a WCAG-visible keyboard-focus indicator.
+        -->
+        <Style Selector="ToggleButton.optionButton:pointerover, RadioButton.optionButton:pointerover">
+            <Setter Property="Background" Value="#FFE5F1FB" />
+            <Setter Property="BorderBrush" Value="#FF7EB4EA" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:checked:pointerover, RadioButton.optionButton:checked:pointerover">
+            <Setter Property="Background" Value="#FFB6EFB6" />
+            <Setter Property="BorderBrush" Value="#FF7EB4EA" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:pressed, RadioButton.optionButton:pressed">
+            <Setter Property="Background" Value="#FFCCE4F7" />
+            <Setter Property="BorderBrush" Value="#FF569DE5" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:checked:pressed, RadioButton.optionButton:checked:pressed">
+            <Setter Property="Background" Value="#FF9FE89F" />
+            <Setter Property="BorderBrush" Value="#FF569DE5" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:focus-visible, RadioButton.optionButton:focus-visible">
+            <Setter Property="BorderBrush" Value="#FF005A9E" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="ToggleButton.optionButton:disabled, RadioButton.optionButton:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        tabControl1: WinForms TabControl, Appearance=FlatButtons, Dock=Fill, Tahoma 14.25 Bold
+        (->19px Bold), ItemSize 200x40. Avalonia tabs auto-fill the window; MinWidth approximates
+        the fixed 200-wide tab buttons. The bold tab header font is reset to Normal on each tab's
+        root Canvas so it does not cascade into control text.
+    -->
+    <TabControl x:Name="tabControl1" FontFamily="Tahoma" FontSize="19" FontWeight="Bold">
+
+        <!-- ============================ TAB 1 : Main ============================ -->
+        <TabItem Header="Main" MinWidth="200">
+            <Canvas x:Name="tab1Canvas" TextElement.FontWeight="Normal">
+
+                <!-- groupBox1 "Serial Port": Location 8,13  Size 597x106 (Border + overlaid header). -->
+                <Border Canvas.Left="8" Canvas.Top="13" Width="597" Height="106"
+                        BorderBrush="Gray" BorderThickness="1" CornerRadius="3">
+                    <Canvas>
+                        <TextBlock Text="Serial Port" Canvas.Left="8" Canvas.Top="-2"
+                                   FontFamily="Tahoma" FontSize="19" FontWeight="Bold" />
+
+                        <!-- Group children: coords relative to the group content area. -->
+                        <TextBlock x:Name="lbPort" Text="Port" Canvas.Left="177" Canvas.Top="27"
+                                   Width="127" Height="23" FontFamily="Tahoma" FontSize="19"
+                                   TextAlignment="Center" />
+                        <TextBlock x:Name="lbBaud" Text="Baud" Canvas.Left="327" Canvas.Top="27"
+                                   Width="127" Height="23" FontFamily="Tahoma" FontSize="19"
+                                   TextAlignment="Center" />
+
+                        <!-- DropDownList combos (non-editable by default); items set in code-behind. -->
+                        <ComboBox x:Name="cboPort1" Canvas.Left="175" Canvas.Top="54"
+                                  Width="127" Height="37"
+                                  SelectionChanged="CboPort1_Changed" />
+                        <ComboBox x:Name="cboBaud1" Canvas.Left="323" Canvas.Top="54"
+                                  Width="127" Height="37"
+                                  SelectionChanged="CboBaud1_Changed" />
+
+                        <Button x:Name="btnConnect1" Content="Connect"
+                                Canvas.Left="16" Canvas.Top="54" Width="145" Height="37"
+                                FontFamily="Tahoma" FontSize="24" FontWeight="Bold"
+                                Click="BtnConnect1_Click" />
+
+                        <!-- btnRescan: flat image button (ScanPorts.png is an AvaloniaResource).
+                             [XPLAT] M4: image-only control needs an accessible name + tooltip so screen
+                             readers announce its purpose (the WinForms button conveyed it only visually). -->
+                        <Button x:Name="btnRescan" Canvas.Left="508" Canvas.Top="24"
+                                Width="72" Height="72" Padding="0"
+                                Background="Transparent" BorderThickness="0"
+                                AutomationProperties.Name="Rescan ports"
+                                ToolTip.Tip="Rescan ports"
+                                Click="BtnRescan_Click">
+                            <Image Source="avares://GPS_Out/Resources/ScanPorts.png" Stretch="Uniform" />
+                        </Button>
+
+                        <!-- Port light: Border carries DayColour bg (code-behind); Image source set in code. -->
+                        <!-- [XPLAT] F9 a11y: port connection state is shown by colour/icon only (no text);
+                             AutomationProperties.Name labels the indicator for screen readers. -->
+                        <Border x:Name="PortIndicator1Bg" Canvas.Left="453" Canvas.Top="54"
+                                Width="41" Height="37"
+                                AutomationProperties.Name="Port connection status">
+                            <Image x:Name="PortIndicator1" Stretch="Uniform" />
+                        </Border>
+                    </Canvas>
+                </Border>
+
+                <!-- Telemetry caption labels (Tahoma 19, right-aligned). -->
+                <TextBlock x:Name="label2" Text="Latitude:" Canvas.Left="8" Canvas.Top="126"
+                           Width="119" Height="24" FontFamily="Tahoma" FontSize="19" TextAlignment="Right" />
+                <TextBlock x:Name="label1" Text="Longitude:" Canvas.Left="8" Canvas.Top="156"
+                           Width="119" Height="24" FontFamily="Tahoma" FontSize="19" TextAlignment="Right" />
+                <TextBlock x:Name="label3" Text="Speed:" Canvas.Left="8" Canvas.Top="186"
+                           Width="119" Height="24" FontFamily="Tahoma" FontSize="19" TextAlignment="Right" />
+                <TextBlock x:Name="label4" Text="Quality:" Canvas.Left="8" Canvas.Top="216"
+                           Width="119" Height="24" FontFamily="Tahoma" FontSize="19" TextAlignment="Right" />
+                <TextBlock x:Name="label5" Text="HDOP:" Canvas.Left="372" Canvas.Top="126"
+                           Width="86" Height="24" FontFamily="Tahoma" FontSize="19" TextAlignment="Right" />
+                <TextBlock x:Name="label6" Text="Sats:" Canvas.Left="391" Canvas.Top="156"
+                           Width="67" Height="24" FontFamily="Tahoma" FontSize="19" TextAlignment="Right" />
+                <TextBlock x:Name="label7" Text="Elevation:" Canvas.Left="350" Canvas.Top="186"
+                           Width="108" Height="24" FontFamily="Tahoma" FontSize="19" TextAlignment="Right" />
+                <TextBlock x:Name="label8" Text="Age:" Canvas.Left="391" Canvas.Top="216"
+                           Width="67" Height="24" FontFamily="Tahoma" FontSize="19" TextAlignment="Right" />
+
+                <!-- Telemetry value labels (Microsoft Sans Serif 19 Bold); runtime overwrites Text. -->
+                <TextBlock x:Name="lbLat" Text="" Canvas.Left="119" Canvas.Top="128"
+                           Width="126" Height="24" FontFamily="Microsoft Sans Serif" FontSize="19" FontWeight="Bold" />
+                <TextBlock x:Name="lbLon" Text="" Canvas.Left="119" Canvas.Top="158"
+                           Width="126" Height="24" FontFamily="Microsoft Sans Serif" FontSize="19" FontWeight="Bold" />
+                <TextBlock x:Name="lbSpeed" Text="" Canvas.Left="119" Canvas.Top="188"
+                           Width="126" Height="24" FontFamily="Microsoft Sans Serif" FontSize="19" FontWeight="Bold" />
+                <TextBlock x:Name="lbQuality" Text="RTK Fix" Canvas.Left="120" Canvas.Top="216"
+                           Width="126" Height="24" FontFamily="Microsoft Sans Serif" FontSize="19" FontWeight="Bold" />
+                <TextBlock x:Name="lbSim" Text="Simulated" IsVisible="False" Canvas.Left="244" Canvas.Top="216"
+                           Width="102" Height="24" FontFamily="Microsoft Sans Serif" FontSize="19" FontWeight="Bold" />
+                <TextBlock x:Name="lbHDOP" Text="" Canvas.Left="452" Canvas.Top="128"
+                           Width="126" Height="24" FontFamily="Microsoft Sans Serif" FontSize="19" FontWeight="Bold" />
+                <TextBlock x:Name="lbSats" Text="" Canvas.Left="452" Canvas.Top="158"
+                           Width="126" Height="24" FontFamily="Microsoft Sans Serif" FontSize="19" FontWeight="Bold" />
+                <TextBlock x:Name="lbElev" Text="" Canvas.Left="452" Canvas.Top="188"
+                           Width="126" Height="24" FontFamily="Microsoft Sans Serif" FontSize="19" FontWeight="Bold" />
+                <TextBlock x:Name="lbAge" Text="" Canvas.Left="452" Canvas.Top="218"
+                           Width="126" Height="24" FontFamily="Microsoft Sans Serif" FontSize="19" FontWeight="Bold" />
+
+                <!-- Sentence buttons (Tahoma 21 Bold, 75x47) + read-only multiline preview boxes (512x52). -->
+                <Button x:Name="btnGGA" Content="GGA" Canvas.Left="6" Canvas.Top="257"
+                        Width="75" Height="47" FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                        Click="BtnGGA_Click" />
+                <TextBox x:Name="tbGGA" Canvas.Left="93" Canvas.Top="254" Width="512" Height="52"
+                         FontFamily="Microsoft Sans Serif" FontSize="16"
+                         AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap" />
+
+                <Button x:Name="btnVTG" Content="VTG" Canvas.Left="6" Canvas.Top="315"
+                        Width="75" Height="47" FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                        Click="BtnVTG_Click" />
+                <TextBox x:Name="tbVTG" Canvas.Left="93" Canvas.Top="312" Width="512" Height="52"
+                         FontFamily="Microsoft Sans Serif" FontSize="16"
+                         AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap" />
+
+                <Button x:Name="btnRMC" Content="RMC" Canvas.Left="6" Canvas.Top="373"
+                        Width="75" Height="47" FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                        Click="BtnRMC_Click" />
+                <TextBox x:Name="tbRMC" Canvas.Left="93" Canvas.Top="370" Width="512" Height="52"
+                         FontFamily="Microsoft Sans Serif" FontSize="16"
+                         AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap" />
+
+                <Button x:Name="btnZDA" Content="ZDA" Canvas.Left="6" Canvas.Top="431"
+                        Width="75" Height="47" FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                        Click="BtnZDA_Click" />
+                <TextBox x:Name="tbZDA" Canvas.Left="93" Canvas.Top="428" Width="512" Height="52"
+                         FontFamily="Microsoft Sans Serif" FontSize="16"
+                         AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap" />
+            </Canvas>
+        </TabItem>
+
+        <!-- ========================== TAB 2 : Options ========================== -->
+        <TabItem Header="Options" MinWidth="200">
+            <Canvas x:Name="tab2Canvas" TextElement.FontWeight="Normal">
+
+                <!-- groupBox2 "Transfer Rate": Location 97,6  Size 455x175 (Border + overlaid header). -->
+                <Border Canvas.Left="97" Canvas.Top="6" Width="455" Height="175"
+                        BorderBrush="Gray" BorderThickness="1" CornerRadius="3">
+                    <Canvas>
+                        <TextBlock Text="Transfer Rate" Canvas.Left="8" Canvas.Top="-2"
+                                   FontFamily="Tahoma" FontSize="21" FontWeight="Bold" />
+
+                        <!-- Rate combos: DropDownList, Tahoma 32 Bold, 71x47; items 0/1/5/10 set in code. -->
+                        <TextBlock x:Name="label9" Text="GGA" Canvas.Left="12" Canvas.Top="50"
+                                   FontFamily="Tahoma" FontSize="19" />
+                        <ComboBox x:Name="cboGGA" Canvas.Left="75" Canvas.Top="39" Width="71" Height="47"
+                                  FontFamily="Tahoma" FontSize="32" FontWeight="Bold"
+                                  SelectionChanged="CboGGA_Changed" />
+                        <TextBlock x:Name="label11" Text="Hz" Canvas.Left="150" Canvas.Top="50"
+                                   FontFamily="Tahoma" FontSize="19" />
+
+                        <TextBlock x:Name="label10" Text="VTG" Canvas.Left="15" Canvas.Top="122"
+                                   FontFamily="Tahoma" FontSize="19" />
+                        <ComboBox x:Name="cboVTG" Canvas.Left="75" Canvas.Top="111" Width="71" Height="47"
+                                  FontFamily="Tahoma" FontSize="32" FontWeight="Bold"
+                                  SelectionChanged="CboVTG_Changed" />
+                        <TextBlock x:Name="label16" Text="Hz" Canvas.Left="150" Canvas.Top="122"
+                                   FontFamily="Tahoma" FontSize="19" />
+
+                        <TextBlock x:Name="label18" Text="RMC" Canvas.Left="254" Canvas.Top="50"
+                                   FontFamily="Tahoma" FontSize="19" />
+                        <ComboBox x:Name="cboRMC" Canvas.Left="317" Canvas.Top="39" Width="71" Height="47"
+                                  FontFamily="Tahoma" FontSize="32" FontWeight="Bold"
+                                  SelectionChanged="CboRMC_Changed" />
+                        <TextBlock x:Name="label17" Text="Hz" Canvas.Left="392" Canvas.Top="50"
+                                   FontFamily="Tahoma" FontSize="19" />
+
+                        <TextBlock x:Name="label20" Text="ZDA" Canvas.Left="259" Canvas.Top="122"
+                                   FontFamily="Tahoma" FontSize="19" />
+                        <ComboBox x:Name="cboZDA" Canvas.Left="317" Canvas.Top="111" Width="71" Height="47"
+                                  FontFamily="Tahoma" FontSize="32" FontWeight="Bold"
+                                  SelectionChanged="CboZDA_Changed" />
+                        <TextBlock x:Name="label19" Text="Hz" Canvas.Left="392" Canvas.Top="122"
+                                   FontFamily="Tahoma" FontSize="19" />
+                    </Canvas>
+                </Border>
+
+                <!-- Option push buttons (Tahoma 21 Bold, 182x61); checked == #C0FFC0 via optionButton style. -->
+                <ToggleButton x:Name="ckAutoConnect" Classes="optionButton" Content="Auto Connect"
+                              Canvas.Left="97" Canvas.Top="187" Width="182" Height="61"
+                              FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                              IsChecked="True" IsCheckedChanged="CkAutoConnect_Changed" />
+                <ToggleButton x:Name="ckAutoHide" Classes="optionButton" Content="Auto Hide"
+                              Canvas.Left="370" Canvas.Top="187" Width="182" Height="61"
+                              FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                              IsChecked="True" IsCheckedChanged="CkAutoHide_Changed" />
+
+                <!-- Sentence-prefix radio pair (mutually exclusive via GroupName); only rbGP is wired. -->
+                <RadioButton x:Name="rbGP" Classes="optionButton" GroupName="SentenceStart" Content="Send $GP---"
+                             Canvas.Left="97" Canvas.Top="264" Width="182" Height="61"
+                             FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                             IsChecked="True" IsCheckedChanged="RbGP_Changed" />
+                <RadioButton x:Name="rbGN" Classes="optionButton" GroupName="SentenceStart" Content="Send $GN---"
+                             Canvas.Left="370" Canvas.Top="264" Width="182" Height="61"
+                             FontFamily="Tahoma" FontSize="21" FontWeight="Bold" />
+
+                <ToggleButton x:Name="ckRoll" Classes="optionButton" Content="Roll Corrected"
+                              Canvas.Left="97" Canvas.Top="341" Width="182" Height="61"
+                              FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                              IsCheckedChanged="CkRoll_Changed" />
+                <ToggleButton x:Name="ckGSA" Classes="optionButton" Content="Send empty GSA"
+                              Canvas.Left="370" Canvas.Top="341" Width="182" Height="61"
+                              FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                              IsCheckedChanged="CkGSA_Changed" />
+                <ToggleButton x:Name="ckSimulate" Classes="optionButton" Content="Simulate Data"
+                              Canvas.Left="97" Canvas.Top="418" Width="182" Height="61"
+                              FontFamily="Tahoma" FontSize="21" FontWeight="Bold"
+                              IsCheckedChanged="CkSimulate_Changed" />
+
+                <!-- Decimal precision (Tahoma 32 Bold combo; items 4/5/6/7 set in code). -->
+                <TextBlock x:Name="label12" Text="Decimal Precision" Canvas.Left="367" Canvas.Top="418"
+                           Width="105" Height="61" FontFamily="Tahoma" FontSize="19"
+                           TextAlignment="Center" TextWrapping="Wrap" />
+                <ComboBox x:Name="cboPrecision" Canvas.Left="481" Canvas.Top="425" Width="71" Height="47"
+                          FontFamily="Tahoma" FontSize="32" FontWeight="Bold"
+                          SelectionChanged="CboPrecision_Changed" />
+            </Canvas>
+        </TabItem>
+
+    </TabControl>
+</Window>

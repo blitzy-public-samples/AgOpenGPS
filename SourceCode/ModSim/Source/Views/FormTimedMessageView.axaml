@@ -1,0 +1,70 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    ModSim standalone simulator — auto-closing "toast" message popup.
+
+    Avalonia 11 reimplementation of the deleted WinForms Forms/FormTimedMessage
+    (FormTimedMessage.cs + FormTimedMessage.Designer.cs). It shows a bold title and a
+    message, then auto-closes after a caller-supplied timeout. All visual values below
+    are ported 1:1 from the WinForms designer so the popup looks the same after migration
+    (AAP §0.3.3 — a 1:1 parity reimplementation, not a redesign).
+
+    Scope: ModSim is STANDALONE. This view references no other project (in particular,
+    not AgOpenGPS.Core) and uses no MVVM — it is pure Avalonia, exactly like the rest of
+    the ModSim re-platform.
+
+    Pairs with the code-behind FormTimedMessageView.axaml.cs via
+    x:Class="ModSim.Views.FormTimedMessageView" (namespace ModSim.Views). The code-behind
+    constructor assigns lblTitle.Text / lblMessage2.Text and overrides Width per message
+    length, mirroring the original WinForms ctor; the x:Name values below are that contract.
+
+    Window attribute provenance (WinForms FormTimedMessage.Designer.cs):
+      Title="AgTwo Message"        <- this.Text = "AgTwo Message"
+      Width="272" Height="151"     <- this.ClientSize = 272 x 151 (code-behind overrides Width)
+      Background="LightSalmon"      <- this.BackColor = Color.LightSalmon
+      CanResize="False"            <- this.FormBorderStyle = FixedSingle
+      WindowStartupLocation         <- this.StartPosition = CenterScreen
+      Topmost="True"               <- this.TopMost = true
+      ShowInTaskbar="False"        <- this.ShowInTaskbar = false
+      FontFamily="Tahoma" FontSize="14.25" <- this.Font = new Font("Tahoma", 14.25F)
+    SystemDecorations="Full" is an intentional, cosmetic-only deviation: WinForms
+    ControlBox=false hid the window buttons, which is not portably reproducible; on a
+    2–3 s auto-closing popup this is immaterial and must not block startup.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ModSim.Views.FormTimedMessageView"
+        Title="AgTwo Message"
+        Width="272"
+        Height="151"
+        Background="LightSalmon"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+
+    <!-- Absolute layout mirrors the WinForms designer's fixed control positions. -->
+    <Canvas>
+
+        <!-- WinForms lblTitle @ (12, 20), Tahoma 18 Bold. Text set at runtime by ctor. -->
+        <TextBlock x:Name="lblTitle"
+                   Canvas.Left="12"
+                   Canvas.Top="20"
+                   FontFamily="Tahoma"
+                   FontSize="18"
+                   FontWeight="Bold"
+                   Text="Message" />
+
+        <!-- WinForms lblMessage2 @ (75, 71), Tahoma 18. Text set at runtime by ctor. -->
+        <TextBlock x:Name="lblMessage2"
+                   Canvas.Left="75"
+                   Canvas.Top="71"
+                   FontFamily="Tahoma"
+                   FontSize="18"
+                   Text="Message 2" />
+
+    </Canvas>
+
+</Window>

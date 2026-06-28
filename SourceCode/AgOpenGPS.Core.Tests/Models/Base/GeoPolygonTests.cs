@@ -1,7 +1,7 @@
-﻿using Accord;
-using AgOpenGPS.Core.Models;
+﻿using AgOpenGPS.Core.Models;
 using NUnit.Framework;
 using System;
+// [XPLAT] migrated from net48 — see MIGRATION_DOCS/TRANSITION_MAP.md
 
 namespace AgOpenGPS.Core.Tests.Models
 {
@@ -142,14 +142,14 @@ namespace AgOpenGPS.Core.Tests.Models
             double nLength = polygon.GetLength(3 * nVertices / 4, 1 * nVertices / 4);
 
             // Assert
-            Assert.That(eLength.IsGreaterThan(3.1 * radius));
-            Assert.That(eLength.IsLessThan(Math.PI * radius));
-            Assert.That(sLength.IsGreaterThan(3.1 * radius));
-            Assert.That(sLength.IsLessThan(Math.PI * radius));
-            Assert.That(wLength.IsGreaterThan(3.1 * radius));
-            Assert.That(wLength.IsLessThan(Math.PI * radius));
-            Assert.That(nLength.IsGreaterThan(3.1 * radius));
-            Assert.That(nLength.IsLessThan(Math.PI * radius));
+            Assert.That(eLength, Is.GreaterThan(3.1 * radius));
+            Assert.That(eLength, Is.LessThan(Math.PI * radius));
+            Assert.That(sLength, Is.GreaterThan(3.1 * radius));
+            Assert.That(sLength, Is.LessThan(Math.PI * radius));
+            Assert.That(wLength, Is.GreaterThan(3.1 * radius));
+            Assert.That(wLength, Is.LessThan(Math.PI * radius));
+            Assert.That(nLength, Is.GreaterThan(3.1 * radius));
+            Assert.That(nLength, Is.LessThan(Math.PI * radius));
         }
 
         [Test]

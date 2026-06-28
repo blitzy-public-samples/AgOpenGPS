@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+    <userSettings>
+        <AgOpenGPS.Properties.VehicleSettings>
+            <setting name="setVehicle_wheelbase" serializeAs="String">
+                <value>3.3</value>
+            </setting>
+            <setting name="setVehicle_antennaHeight" serializeAs="String">
+                <value>3</value>
+            </setting>
+            <setting name="setVehicle_antennaPivot" serializeAs="String">
+                <value>0.1</value>
+            </setting>
+            <setting name="setVehicle_antennaOffset" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setVehicle_maxSteerAngle" serializeAs="String">
+                <value>30</value>
+            </setting>
+            <setting name="setVehicle_maxAngularVelocity" serializeAs="String">
+                <value>0.64</value>
+            </setting>
+            <setting name="setVehicle_trackWidth" serializeAs="String">
+                <value>1.9</value>
+            </setting>
+            <setting name="setAS_Kp" serializeAs="String">
+                <value>50</value>
+            </setting>
+            <setting name="setAS_countsPerDegree" serializeAs="String">
+                <value>110</value>
+            </setting>
+            <setting name="setAS_minSteerPWM" serializeAs="String">
+                <value>25</value>
+            </setting>
+            <setting name="setAS_highSteerPWM" serializeAs="String">
+                <value>180</value>
+            </setting>
+            <setting name="setAS_lowSteerPWM" serializeAs="String">
+                <value>30</value>
+            </setting>
+            <setting name="setAS_wasOffset" serializeAs="String">
+                <value>3</value>
+            </setting>
+            <setting name="setAS_sideHillComp" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setAS_ackerman" serializeAs="String">
+                <value>100</value>
+            </setting>
+            <setting name="setAS_ModeXTE" serializeAs="String">
+                <value>0.1</value>
+            </setting>
+            <setting name="setAS_ModeTime" serializeAs="String">
+                <value>1</value>
+            </setting>
+            <setting name="setAS_functionSpeedLimit" serializeAs="String">
+                <value>12</value>
+            </setting>
+            <setting name="setAS_maxSteerSpeed" serializeAs="String">
+                <value>15</value>
+            </setting>
+            <setting name="setAS_minSteerSpeed" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setAS_isSteerInReverse" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setIMU_rollZero" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setIMU_rollFilter" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setIMU_invertRoll" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setIMU_isDualAsIMU" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setIMU_fusionWeight2" serializeAs="String">
+                <value>0.06</value>
+            </setting>
+            <setting name="setGPS_headingFromWhichSource" serializeAs="String">
+                <value>Fix</value>
+            </setting>
+            <setting name="setGPS_forwardComp" serializeAs="String">
+                <value>0.15</value>
+            </setting>
+            <setting name="setGPS_reverseComp" serializeAs="String">
+                <value>0.3</value>
+            </setting>
+            <setting name="setGPS_dualHeadingOffset" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setGPS_dualReverseDetectionDistance" serializeAs="String">
+                <value>0.25</value>
+            </setting>
+            <setting name="setGPS_minimumStepLimit" serializeAs="String">
+                <value>0.05</value>
+            </setting>
+            <setting name="setArdSteer_setting0" serializeAs="String">
+                <value>56</value>
+            </setting>
+            <setting name="setArdSteer_setting1" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setArdSteer_maxPulseCounts" serializeAs="String">
+                <value>3</value>
+            </setting>
+            <setting name="setArdMac_isDanfoss" serializeAs="String">
+                <value>False</value>
+            </setting>
+            <setting name="setBrand_TBrand" serializeAs="String">
+                <value>AGOpenGPS</value>
+            </setting>
+            <setting name="setBrand_HBrand" serializeAs="String">
+                <value>AgOpenGPS</value>
+            </setting>
+            <setting name="setBrand_WDBrand" serializeAs="String">
+                <value>AgOpenGPS</value>
+            </setting>
+            <setting name="setVehicle_vehicleType" serializeAs="String">
+                <value>0</value>
+            </setting>
+            <setting name="setVehicle_panicStopSpeed" serializeAs="String">
+                <value>0</value>
+            </setting>
+        </AgOpenGPS.Properties.VehicleSettings>
+    </userSettings>
+</configuration>

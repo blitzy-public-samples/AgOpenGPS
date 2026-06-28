@@ -1,4 +1,5 @@
-﻿// AgOpenGPS.IO/FieldPlaneFiles.cs
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+// AgOpenGPS.IO/FieldPlaneFiles.cs
 // Purpose: Read/write helpers for Field.txt (StartFix origin + creation).
 using System;
 using System.Globalization;

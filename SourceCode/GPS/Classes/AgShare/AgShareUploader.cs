@@ -1,3 +1,4 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 // This file centralizes all coordinate conversion previously handled in CNMEA
 // Now uses LocalPlane, Wgs84, GeoCoord, and related structs (C# 7.1 compatible)
 
@@ -22,51 +23,18 @@ namespace AgOpenGPS
             _client = client;
         }
 
-        // Create a snapshot from the current GPS session to upload
-        public static FieldSnapshot CreateSnapshot(FormGPS gps)
-        {
-            string dir = Path.Combine(RegistrySettings.fieldsDirectory, gps.currentFieldDirectory);
-            string idPath = Path.Combine(dir, "agshare.txt");
-
-            Guid fieldId;
-            if (File.Exists(idPath))
-            {
-                string raw = File.ReadAllText(idPath).Trim();
-                fieldId = Guid.Parse(raw);
-            }
-            else
-            {
-                fieldId = Guid.NewGuid();
-            }
-
-            List<List<vec3>> boundaries = new List<List<vec3>>();
-            foreach (var b in gps.bnd.bndList)
-            {
-                boundaries.Add(b.fenceLine.ToList());
-            }
-
-            List<CTrk> tracks = gps.trk.gArr.ToList();
-
-            Wgs84 origin = gps.AppModel.LocalPlane.Origin;
-            LocalPlane plane = new LocalPlane(origin, new SharedFieldProperties());
-
-            FieldSnapshot snapshot = new FieldSnapshot
-            {
-                FieldName = gps.displayFieldName,
-                FieldDirectory = dir,
-                FieldId = fieldId,
-                OriginLat = origin.Latitude,
-                OriginLon = origin.Longitude,
-                Convergence = 0,
-                Boundaries = boundaries,
-                Tracks = tracks,
-                Converter = plane
-            };
-            return snapshot;
-        }
+        // [XPLAT] AgShare field-snapshot assembly is performed by the upload view
+        // (FormAgShareUploaderView.LoadFieldSnapshot). The canonical cross-platform factory
+        // CreateSnapshot(ApplicationModel, CTrack, CBoundary, string, string) — see MIGRATION_DOCS/TRANSITION_MAP.md —
+        // is intentionally not declared here yet: although CTrack and CBoundary are themselves decoupled, both remain
+        // excluded from the net8.0 build (Classes\CTrack.cs / CBoundary.cs are <Compile Remove>'d in AgOpenGPS.csproj
+        // until their guidance-pipeline cascade lands), so naming those types in a signature here would not compile.
+        // The factory has no callers, so deferring it is behaviour-neutral; re-add it once those classes are un-gated.
 
         // Upload snapshot to AgShare using boundary with holes
-        public async Task UploadAsync(FieldSnapshot snapshot, FormGPS gps)
+        // [XPLAT] decoupled from the WinForms shell — the unused trailing UI-shell parameter is removed; the body
+        // operates only on the snapshot and _client and is behaviour-frozen. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public async Task UploadAsync(FieldSnapshot snapshot)
         {
             try
             {

@@ -1,4 +1,6 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace AgOpenGPS.Updater.Models
@@ -46,9 +48,9 @@ namespace AgOpenGPS.Updater.Models
             if (!match.Success)
                 throw new FormatException($"Invalid semantic version format: {version}");
 
-            int major = int.Parse(match.Groups["major"].Value);
-            int minor = match.Groups["minor"].Success ? int.Parse(match.Groups["minor"].Value) : 0;
-            int patch = match.Groups["patch"].Success ? int.Parse(match.Groups["patch"].Value) : 0;
+            int major = int.Parse(match.Groups["major"].Value, CultureInfo.InvariantCulture);
+            int minor = match.Groups["minor"].Success ? int.Parse(match.Groups["minor"].Value, CultureInfo.InvariantCulture) : 0;
+            int patch = match.Groups["patch"].Success ? int.Parse(match.Groups["patch"].Value, CultureInfo.InvariantCulture) : 0;
             string prerelease = match.Groups["prerelease"].Success ? match.Groups["prerelease"].Value : null;
             string build = match.Groups["build"].Success ? match.Groups["build"].Value : null;
 
@@ -127,8 +129,8 @@ namespace AgOpenGPS.Updater.Models
                 if (id2 == null) return 1;
 
                 // Numeric identifiers have lower precedence than non-numeric identifiers
-                bool id1Numeric = int.TryParse(id1, out int num1);
-                bool id2Numeric = int.TryParse(id2, out int num2);
+                bool id1Numeric = int.TryParse(id1, NumberStyles.Integer, CultureInfo.InvariantCulture, out int num1);
+                bool id2Numeric = int.TryParse(id2, NumberStyles.Integer, CultureInfo.InvariantCulture, out int num2);
 
                 if (id1Numeric && id2Numeric)
                 {

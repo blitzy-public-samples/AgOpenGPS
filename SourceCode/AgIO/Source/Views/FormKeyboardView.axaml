@@ -1,0 +1,38 @@
+<!-- [XPLAT] migrated from net48/WinForms Forms/FormKeyboard — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        xmlns:keypad="clr-namespace:Keypad;assembly=Keypad"
+        x:Class="AgIO.Views.FormKeyboardView"
+        x:DataType="vm:FormKeyboardViewModel"
+        Title="Keyboard"
+        Width="940" Height="500"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms `Forms/FormKeyboard`
+        on-screen text-entry dialog. Shell mirrors FormKeyboard.Designer.cs:
+          Text "Keyboard"; ClientSize 940x460 (Height bumped slightly for window chrome);
+          keyboardString TextBox (98,4) 751x46 Tahoma 24 Bold; keyboard1 Keypad.Keyboard (5,55) 930x400.
+        TextBox two-way bound to FormKeyboardViewModel.EntryText. Keypad.Keyboard.ButtonPressed is
+        routed in the code-behind: OK ('\u0004') -> Close(true), Cancel ('\u0027') -> Close(false),
+        every other char -> ViewModel.AppendKey (the WinForms RegisterKeyboard1_ButtonPressed logic).
+    -->
+    <Canvas>
+        <!-- WinForms keyboardString: TextBox (98,4) 751x46, Tahoma 24 Bold -->
+        <TextBox x:Name="keyboardString"
+                 Canvas.Left="98" Canvas.Top="4"
+                 Width="751" Height="46"
+                 FontFamily="Tahoma" FontSize="24" FontWeight="Bold"
+                 Text="{Binding EntryText, Mode=TwoWay}" />
+
+        <!-- WinForms keyboard1: Keypad.Keyboard (5,55) -->
+        <keypad:Keyboard x:Name="keyboard1"
+                         Canvas.Left="5" Canvas.Top="55" />
+    </Canvas>
+</Window>

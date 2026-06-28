@@ -7,7 +7,6 @@ using AgOpenGPS.Core.Visuals;
 using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 
 namespace AgOpenGPS.Core
 {
@@ -15,7 +14,12 @@ namespace AgOpenGPS.Core
     {
         private BingMap _bingMap;
         private BingMapVisual _bingMapVisual;
-        private Bitmap _floorBitmap;
+        // [XPLAT] migrated from net48/WinForms — floor-texture source de-Windowsed from a
+        // Windows-only GDI+ raster image to a portable, tightly-packed RGBA byte buffer
+        // (4 bytes/pixel, row-major) plus explicit Width/Height; see MIGRATION_DOCS/TRANSITION_MAP.md
+        private byte[] _floorRgbaPixels;
+        private int _floorWidth;
+        private int _floorHeight;
         private GeoTexture2D _floorTexture;
 
         //Y
@@ -33,9 +37,12 @@ namespace AgOpenGPS.Core
 
         public double gridRotation = 0.0;
 
-        public WorldGrid(Bitmap floorBitmap)
+        // Accepts the floor texture as a portable RGBA buffer + dimensions (see field provenance note above).
+        public WorldGrid(byte[] floorRgbaPixels, int floorWidth, int floorHeight)
         {
-            _floorBitmap = floorBitmap;
+            _floorRgbaPixels = floorRgbaPixels;
+            _floorWidth = floorWidth;
+            _floorHeight = floorHeight;
         }
 
         public double GridStep { private get; set; }
@@ -58,7 +65,7 @@ namespace AgOpenGPS.Core
         {
             get
             {
-                if (null == _floorTexture) _floorTexture = new GeoTexture2D(_floorBitmap);
+                if (null == _floorTexture) _floorTexture = new GeoTexture2D(_floorRgbaPixels, _floorWidth, _floorHeight);
                 return _floorTexture;
             }
         }

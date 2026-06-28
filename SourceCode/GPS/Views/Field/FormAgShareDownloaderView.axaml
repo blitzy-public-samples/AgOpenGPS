@@ -1,0 +1,341 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — AgShare field DOWNLOADER dialog (Avalonia view).
+
+    1:1 parity reimplementation of the WinForms `Forms/Field/FormAgShareDownloader`
+    (FormAgShareDownloader.cs + FormAgShareDownloader.Designer.cs, 334 lines). The dialog lists
+    the user's own AgShare fields on the left, previews the selected field's boundary / AB-line
+    geometry on the right, and offers download controls (get-selected, get-all with a progress
+    bar, and a force-overwrite toggle). Per AAP §0.3.3 this is visual + behavioural FIDELITY to the
+    current Windows Forms look, never a redesign: the same 1157 x 693 client area and the same
+    absolute control layout, field for field.
+
+    Wiring contract — the partner code-behind FormAgShareDownloaderView.axaml.cs
+    (partial class AgOpenGPS.Views.FormAgShareDownloaderView : Window, constructed with the FormGPS
+    context) owns ALL behaviour:
+      * This is a CODE-BEHIND view, NOT MVVM — intentionally NO x:DataType, NO DataContext and
+        NO {Binding} against a view-model. Every control is addressed imperatively by x:Name
+        (mirroring the original WinForms partial, which used direct field access). The code-behind
+        attaches the SelectedIndexChanged / Click handlers and runs the async download work by
+        name, so NO event handlers are wired in this markup (the established sibling convention —
+        see FormAgShareSettingsView, also a code-behind view in this migration).
+      * lbFields is populated by the code-behind: it adds one GetOwnFieldDto per row (the DTO is the
+        item's backing object), and the ItemTemplate below shows each field's Name. Selection is
+        read back via lbFields.SelectedItem (single-select). The {Binding Name} in the template is a
+        classic reflection binding against the row object (no x:DataType), exactly the pattern the
+        sibling list dialogs (e.g. Pickers/FormFilePickerView) use.
+      * previewHost is an intentionally EMPTY Border. The WinForms original hosted an
+        OpenTK.GLControl (glControl1) and cleared it to an anthracite colour, then drew boundaries
+        (lime), curves (red dashed) and AB lines (orange dashed). There is NO GL host control in
+        Avalonia, so per the AAP the code-behind injects a NATIVE Avalonia preview control that
+        renders the same geometry with a DrawingContext and assigns it as this Border's Child. The
+        Border therefore carries only the dark anthracite background (matching the source clear
+        colour) so the area reads correctly before the preview control is attached.
+      * lblDownloading and progressBarDownloadAll start hidden (WinForms constructor set
+        Visible = false); the code-behind reveals them during a get-all download and hides them
+        afterwards. lblSelectedField is recoloured red by the code-behind when a field is selected.
+      * The three command buttons and the force-overwrite checkbox are disabled by the code-behind
+        for the duration of a get-all download, hence the :disabled style override below.
+
+    Window shell mirrors FormAgShareDownloader.Designer.cs:
+      Text "Download Fields From AgShare" -> Title (design-time placeholder; the code-behind sets
+                                             gStr.gsAgShareDownloader at runtime)
+      ClientSize 1157 x 693               -> Width / Height (Canvas matches the client area exactly)
+      FormBorderStyle Fixed3D             -> CanResize="True" (the AAP standard for the re-platformed
+                                             dialogs; the OS supplies the window chrome)
+      StartPosition CenterParent          -> WindowStartupLocation="CenterOwner" (shown owned by FormGPS)
+      ShowInTaskbar = false               -> ShowInTaskbar="False"
+      BackColor (system default)          -> Background="{DynamicResource AogFrameBrush}" per the AAP,
+                                             so the dialog tracks the day/night theme defined in App.axaml.
+
+    Theme + assets:
+      Background and text use the day/night brushes from App.axaml's ThemeDictionaries via
+      DynamicResource (AogFrameBrush window chrome, AogTextBrush legible text in both Light and Dark).
+      previewHost stays a FIXED anthracite (#FF1F1F1F == the source's 0.12 grey GL clear colour), not
+      a theme brush, because it represents the renderer surface. Button glyphs are served from the GPS
+      assembly (assembly name "AgOpenGPS") via avares:// URIs — the same btnImages/ assets the sibling
+      GPS Avalonia views consume; casing verified against the files on disk in SourceCode/GPS/btnImages/
+      (DownloadAll.png, DownloadAndUse.png, ForceOverwrite.png, OK64.png — all native 64 x 64).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormAgShareDownloaderView"
+        x:CompileBindings="False"
+        Title="Download Fields From AgShare"
+        Width="1157"
+        Height="693"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <Window.Styles>
+        <!--
+            Flat, chrome-less image buttons reproduce the WinForms FlatStyle.Flat +
+            FlatAppearance.BorderSize = 0 + transparent surface: only the glyph (and optional caption)
+            shows, with no button fill in any visual state. The :pointerover / :pressed / :disabled
+            template overrides suppress the Fluent hover / press / disabled background that would
+            otherwise box the content. :disabled is included because the code-behind disables these
+            buttons for the duration of a get-all download (same technique as the sibling
+            FormWebCamView, whose buttons also start disabled).
+        -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!--
+            chkForceOverwrite reproduces the WinForms CheckBox with Appearance.Button: a flat,
+            image-above-text toggle with NO separate check glyph and a salmon fill when checked
+            (FlatAppearance.CheckedBackColor = LightSalmon). A minimal control template (a Border
+            wrapping the content presenter) gives the button-like surface while keeping it a real
+            CheckBox, so the code-behind's IsChecked read/write is unaffected. Unchecked == transparent,
+            checked == LightSalmon (#FFFFA07A), exactly mirroring the source.
+        -->
+        <Style Selector="CheckBox.overwriteToggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="tglBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3">
+                        <ContentPresenter Name="PART_ContentPresenter"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          Padding="{TemplateBinding Padding}"
+                                          HorizontalContentAlignment="Center"
+                                          VerticalContentAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="CheckBox.overwriteToggle:checked /template/ Border#tglBorder">
+            <Setter Property="Background" Value="#FFFFA07A" />
+        </Style>
+        <Style Selector="CheckBox.overwriteToggle:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        The WinForms client area is 1157 x 693 with absolute (Location/Size) positioning, so the root
+        is a Canvas and every child is placed by Canvas.Left / Canvas.Top at its exact Designer
+        Width / Height. Point sizes are converted to device-independent pixels (pt x 96/72): the list
+        Tahoma 18pt -> 24, lblSelectedField 15.75pt -> 21, lblDownloading 14.25pt -> 19, and the
+        button/checkbox captions 9.75pt -> 13.
+    -->
+    <Canvas Width="1157" Height="693">
+
+        <!--
+            lbFields — WinForms ListView (View.Details, single "Field" column, MultiSelect = false,
+            BackColor LightGreen, Tahoma 18pt) reimplemented as a single-select ListBox @ (12,12)
+            492 x 567. The code-behind adds GetOwnFieldDto rows; the template shows each field's Name.
+            Item text is forced dark so it stays legible on the fixed LightGreen surface in both themes.
+        -->
+        <ListBox x:Name="lbFields"
+        AutomationProperties.Name="Fields available to download from AgShare"
+                 Canvas.Left="12" Canvas.Top="12"
+                 Width="492" Height="567"
+                 Background="LightGreen"
+                 BorderThickness="0"
+                 FontFamily="Tahoma"
+                 FontSize="24"
+                 SelectionMode="Single">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding Name}"
+                               Foreground="Black"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!--
+            previewHost — replaces the WinForms OpenTK.GLControl (glControl1 @ (510,12) 654 x 567,
+            BorderStyle Fixed3D). Intentionally EMPTY: the code-behind injects a native Avalonia
+            preview control (DrawingContext-based, NOT OpenGL) as this Border's Child. The fixed
+            anthracite background (#FF1F1F1F) matches the source GL clear colour so the surface reads
+            correctly before/behind the injected control.
+        -->
+        <Border x:Name="previewHost"
+                Canvas.Left="510" Canvas.Top="12"
+                Width="654" Height="567"
+                Background="#FF1F1F1F"
+                BorderBrush="#FF555555"
+                BorderThickness="1" />
+
+        <!--
+            lblSelectedField — WinForms Label @ (12,592) 460 x 25, Microsoft Sans Serif 15.75pt Bold,
+            AutoEllipsis. Default text "Selected Field:"; the code-behind replaces it with
+            "Selected Field: <name>" and recolours it red on selection. AogTextBrush keeps the design-time
+            text legible against the themed window background in both day and night.
+        -->
+        <TextBlock x:Name="lblSelectedField"
+                   Canvas.Left="12" Canvas.Top="592"
+                   Width="460" Height="25"
+                   FontFamily="Microsoft Sans Serif"
+                   FontSize="21"
+                   FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="Selected Field:"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" />
+
+        <!--
+            chkForceOverwrite — WinForms CheckBox (Appearance.Button) @ (482,585) 92 x 105, image
+            (ForceOverwrite, 64 x 64) above the "Overwrite" caption (TextImageRelation.ImageAboveText,
+            TextAlign BottomCenter). The code-behind sets the caption from gStr.gsForceOverwrite. The
+            overwriteToggle template (above) gives the flat button look + LightSalmon checked fill.
+        -->
+        <CheckBox x:Name="chkForceOverwrite"
+        AutomationProperties.Name="Force overwrite of existing local fields"
+                  Classes="overwriteToggle"
+                  Canvas.Left="482" Canvas.Top="585"
+                  Width="92" Height="105">
+            <StackPanel Orientation="Vertical"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                <Image Width="64" Height="64"
+                       Source="avares://AgOpenGPS/btnImages/ForceOverwrite.png"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center" />
+                <TextBlock Text="Overwrite"
+                           FontFamily="Microsoft Sans Serif"
+                           FontSize="13"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </CheckBox>
+
+        <!--
+            btnSaveAll — WinForms Button @ (583,585) 94 x 105, flat, image (DownloadAll, 64 x 64) above
+            the "Get All" caption. Click downloads every field (BtnDownloadAll_Click); the code-behind
+            sets the caption from gStr.gsDownloadAll and wires the handler by name.
+        -->
+        <Button x:Name="btnSaveAll"
+        AutomationProperties.Name="Download all fields"
+                Classes="imageButton"
+                Canvas.Left="583" Canvas.Top="585"
+                Width="94" Height="105">
+            <StackPanel Orientation="Vertical"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                <Image Width="64" Height="64"
+                       Source="avares://AgOpenGPS/btnImages/DownloadAll.png"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center" />
+                <TextBlock Text="Get All"
+                           FontFamily="Microsoft Sans Serif"
+                           FontSize="13"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Button>
+
+        <!--
+            lblDownloading — WinForms Label @ (678,592) 259 x 24, Microsoft Sans Serif 14.25pt Bold.
+            Hidden by default (WinForms constructor Visible = false); the code-behind reveals it during
+            a get-all download and sets its text from gStr ("Downloading... Please Wait").
+        -->
+        <TextBlock x:Name="lblDownloading"
+                   Canvas.Left="678" Canvas.Top="592"
+                   Width="259" Height="24"
+                   FontFamily="Microsoft Sans Serif"
+                   FontSize="19"
+                   FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="Downloading...Please Wait"
+                   IsVisible="False"
+                   VerticalAlignment="Center" />
+
+        <!--
+            progressBarDownloadAll — WinForms ProgressBar @ (683,628) 289 x 23. Hidden by default; the
+            code-behind sets Maximum to the field count, reveals it, and drives Value during a get-all
+            download via an IProgress callback.
+        -->
+        <ProgressBar x:Name="progressBarDownloadAll"
+                     Canvas.Left="683" Canvas.Top="628"
+                     Width="289" Height="23"
+                     Minimum="0"
+                     Maximum="100"
+                     Value="0"
+                     IsVisible="False" />
+
+        <!--
+            btnGetSelected — WinForms Button @ (978,585) 83 x 105, flat, image (DownloadAndUse, 64 x 64)
+            above the "Get Selected" caption. Click downloads + opens the selected field (btnOpen_Click);
+            the code-behind sets the caption from gStr.gsGetSelected and wires the handler by name.
+        -->
+        <Button x:Name="btnGetSelected"
+        AutomationProperties.Name="Download selected field"
+                Classes="imageButton"
+                Canvas.Left="978" Canvas.Top="585"
+                Width="83" Height="105">
+            <StackPanel Orientation="Vertical"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                <Image Width="64" Height="64"
+                       Source="avares://AgOpenGPS/btnImages/DownloadAndUse.png"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center" />
+                <TextBlock Text="Get Selected"
+                           FontFamily="Microsoft Sans Serif"
+                           FontSize="13"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Button>
+
+        <!--
+            btnClose — WinForms Button @ (1067,596) 83 x 84, flat, image only (OK64, 64 x 64), no caption.
+            Click closes the dialog (btnClose_Click); the code-behind wires the handler by name.
+        -->
+        <Button x:Name="btnClose"
+        AutomationProperties.Name="Close"
+                Classes="imageButton"
+                Canvas.Left="1067" Canvas.Top="596"
+                Width="83" Height="84"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center">
+            <Image Width="64" Height="64"
+                   Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Stretch="Uniform"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+        </Button>
+
+    </Canvas>
+</Window>

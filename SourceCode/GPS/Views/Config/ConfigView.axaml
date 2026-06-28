@@ -1,0 +1,139 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] ConfigView — Avalonia cross-platform parity shell that replaces the WinForms
+    configuration dialog the legacy Forms/Settings/FormConfig provided (FormConfig.cs +
+    FormConfig.Designer.cs). It is scoped to host EXACTLY the two ported configuration UserControls
+    (ConfigVehicleControl + ConfigSummaryControl); it is deliberately NOT a reproduction of the
+    legacy 30-tab FormConfig with its left submenu tree (Arduino / DataSources / Tool / Vehicle
+    sub-panels) — those panels are Deferred, see MIGRATION_DOCS/TRANSITION_MAP.md. Per AAP §0.3.3
+    this is a 1:1 visual parity reimplementation of the current Windows Forms look, never a redesign:
+    no new colors, no relayout, no UX changes.
+
+    Markup half only. Behavior lives in the sibling code-behind ConfigView.axaml.cs
+    (partial class AgOpenGPS.Views.Config.ConfigView : Window), which is expected to:
+      * provide a parameterless constructor that calls InitializeComponent()
+        (AvaloniaConfigMenuPanelPresenter does: new ConfigView { DataContext = configViewModel });
+      * drive the hosted controls imperatively by their x:Name — configVehicleControl.Initialize(...)
+        and configSummaryControl.UpdateSummary(...) (BOTH x:Names are a HARD CONTRACT);
+      * handle OnOkClick(object sender, RoutedEventArgs e) => Close() for btnOK, matching the
+        established Click-handler convention used across this migration (FormInputDialogView /
+        ConfigMenuView). The presenter's CloseConfigDialog() also calls .Close().
+
+    DataContext: AgOpenGPS.Core.ViewModels.ConfigViewModel (compiled bindings via x:DataType — note
+    the FLAT ViewModels namespace, NOT a .Configuration sub-namespace). The presenter supplies the
+    DataContext, so it is intentionally NOT set in this markup, and parameterless construction must
+    work. The ONLY bound member is the inherited IsDay (bool, from DayNightAndUnitsViewModel) used
+    for the subtle day/night surface swap below; ConfigViewModel exposes no command, so btnOK is a
+    code-behind Click, not a binding.
+
+    Window chrome mirrors FormConfig.Designer.cs:
+      ClientSize 995x715         -> Width/Height (SystemDecorations="None", so Width == client width).
+      ControlBox = false         -> covered by the borderless (SystemDecorations="None") shell; a top
+                                    header strip + a bottom OK button stand in for the missing chrome.
+      FormBorderStyle FixedDialog + (not resizable) -> CanResize="False".
+      StartPosition CenterScreen -> WindowStartupLocation="CenterOwner" (the presenter shows it modally,
+                                    parented on the main window — same convention as the Views/Inputs
+                                    dialogs and the sibling ConfigMenuView).
+      Text "Configuration"       -> Title + the header-strip TextBlock.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AgOpenGPS.Core.ViewModels"
+        xmlns:cfg="using:AgOpenGPS.Views.Config"
+        x:Class="AgOpenGPS.Views.Config.ConfigView"
+        x:DataType="vm:ConfigViewModel"
+        x:CompileBindings="True"
+        Title="Configuration"
+        Width="995" Height="715"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="None"
+        FontFamily="Tahoma"
+        FontSize="13">
+
+    <!--
+        [XPLAT] Subtle day/night surface swap (a compiled-binding demonstration against IsDay; see the
+        root Grid's Classes.night="{Binding !IsDay}"). It is driven through STYLES rather than a local
+        value on purpose: in Avalonia a locally-set property out-prioritises a style setter, so a
+        conditional class could not override a local Background. The night style is declared AFTER the
+        day style so the active "night" class wins. Only a day/night pair is introduced (no new
+        colors), matching the sibling ConfigMenuView and App.axaml's #FF1E1E1E night surface.
+    -->
+    <Window.Styles>
+        <!-- Day (default) surface. -->
+        <Style Selector="Grid#RootLayout">
+            <Setter Property="Background" Value="#FFF0F0F0" />
+        </Style>
+        <!-- Night surface. -->
+        <Style Selector="Grid#RootLayout.night">
+            <Setter Property="Background" Value="#FF1E1E1E" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Three-row shell: header strip / the two hosted config pages / bottom OK bar. -->
+    <Grid x:Name="RootLayout"
+          RowDefinitions="Auto,*,Auto"
+          Classes.night="{Binding !IsDay}">
+
+        <!-- Row 0 — header strip. Stands in for the hidden title bar (ControlBox=false); a fixed dark
+             strip in both day and night, parity with the dialog's "Configuration" caption. -->
+        <Border Grid.Row="0" Background="#FF2D2D30">
+            <TextBlock Text="Configuration"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="White"
+                       Margin="8" />
+        </Border>
+
+        <!-- Row 1 — the two ported configuration pages. TabStripPlacement="Left" echoes the legacy
+             FormConfig panelLeftSideMenu left-menu paradigm. Each page wraps its fixed-size
+             (859x584) UserControl Canvas in a ScrollViewer so the whole page stays reachable inside
+             the 995x715 window. The per-tab Border Background reproduces the legacy control BackColors
+             (configVehicleControl = WhiteSmoke, configSummaryControl = Gainsboro). -->
+        <TabControl Grid.Row="1" TabStripPlacement="Left">
+
+            <!-- Vehicle page (legacy configVehicleControl.BackColor = WhiteSmoke). The fixed-light
+                 parity surface is centralized in App.axaml as AogLegacyWhiteSmokeBrush (theme-
+                 independent by design — see that file's comment). -->
+            <TabItem Header="Vehicle">
+                <Border Background="{DynamicResource AogLegacyWhiteSmokeBrush}">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto">
+                        <cfg:ConfigVehicleControl x:Name="configVehicleControl" />
+                    </ScrollViewer>
+                </Border>
+            </TabItem>
+
+            <!-- Summary page (legacy configSummaryControl.BackColor = Gainsboro). The fixed-light
+                 parity surface is centralized in App.axaml as AogLegacyGainsboroBrush (theme-
+                 independent by design — see that file's comment). -->
+            <TabItem Header="Summary">
+                <Border Background="{DynamicResource AogLegacyGainsboroBrush}">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto">
+                        <cfg:ConfigSummaryControl x:Name="configSummaryControl" />
+                    </ScrollViewer>
+                </Border>
+            </TabItem>
+
+        </TabControl>
+
+        <!-- Row 2 — bottom bar (parity for the legacy panelBottom). The single OK button closes the
+             dialog from code-behind (OnOkClick -> Close()); ConfigViewModel exposes no command, so
+             this is a Click, not a binding. IsDefault / IsCancel give Enter / Escape close for
+             keyboard operability on this chromeless (SystemDecorations="None") dialog. -->
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="8">
+            <Button x:Name="btnOK"
+                    Content="OK"
+                    MinWidth="90"
+                    MinHeight="40"
+                    IsDefault="True"
+                    IsCancel="True"
+                    Click="OnOkClick" />
+        </StackPanel>
+
+    </Grid>
+</Window>

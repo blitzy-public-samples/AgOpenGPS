@@ -1,0 +1,163 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "System Data" telemetry / diagnostics panel (Avalonia view).
+
+    1:1 visual PARITY reimplementation of the deleted WinForms `Forms/FormGPSData`
+    (FormGPSData.cs + FormGPSData.Designer.cs), per AAP §0.3.3 — never a redesign. It is a
+    narrow, always-visible vertical readout strip that shows live GPS / IMU / loop telemetry.
+
+    WIRING CONTRACT (the partner code-behind FormGPSDataView.axaml.cs owns behaviour, NOT this markup):
+      * This view is IMPERATIVE, not MVVM — there is intentionally NO x:DataType, no DataContext
+        and no {Binding}. The original WinForms `timer1_Tick` updated each value Label by name once
+        per second (Interval = 1000 ms); the code-behind reproduces that with an Avalonia
+        DispatcherTimer that addresses the named TextBlocks below directly. The original ctor was
+        `FormGPSData(Form callingForm)`; the code-behind keeps the same reference-to-FormGPS pattern.
+      * The 15 value `x:Name`s below ARE that contract and MUST stay spelled exactly as the
+        generated x:Name fields the code-behind references:
+          lblLatitude, lblLongitude, lblNorthingField, lblEastingField, lblAltitude,
+          lblSatsTracked, lblHDOP, lblFrameTime, lblTimeSlice, lblHz, lbludpWatchCounts,
+          lblFix2FixHeading, lblIMUHeading, lblFuzeHeading, lblAngularVelocity.
+
+    WINDOW SHELL — mirrors FormGPSData.Designer.cs / .cs exactly:
+      Text "System Data"             -> Title
+      Load: Width=120, Height=330    -> Width / Height (SystemDecorations="None" => client == window),
+                                        i.e. the ClientSize(120,330) narrow vertical strip.
+      BackColor Color.Black          -> Background "Black" (hard-coded; this diagnostics overlay is
+                                        FIXED black + white and does NOT follow the app day/night
+                                        theme — there is no SwapDayNightMode handling in FormGPSData,
+                                        so it intentionally does NOT consume App.axaml's Aog* brushes).
+      label ForeColor Color.White    -> base TextBlock Foreground "White" (theme-independent).
+      FormBorderStyle.None           -> SystemDecorations="None"
+      MaximizeBox/MinimizeBox false  -> CanResize="False" (fixed, borderless)
+      ShowInTaskbar = false          -> ShowInTaskbar="False"
+      (StartPosition default)        -> WindowStartupLocation="CenterOwner" (owned panel over FormGPS)
+      Font Tahoma 11.25pt            -> FontFamily="Tahoma", FontSize="15"
+                                        (Avalonia FontSize is in device-independent pixels:
+                                         11.25pt × 96/72 = 15 DIP). Captions are Regular weight,
+                                         value labels are Bold — matching the WinForms FontStyle.
+
+    LAYOUT — the WinForms Designer used absolute Label positions; reproduced here as a 15-row,
+    two-column Grid in the SAME top-to-bottom order as the original (by Designer Y coordinate):
+      * Column 0 = right-aligned caption, Column 1 = left-aligned live value
+        (mirrors the original where captions end ~x=57 and values begin ~x=57, TextAlign MiddleLeft).
+      * The two top readouts (Latitude / Longitude) had no caption in the original and spanned the
+        full width, so they span both columns here.
+    Default Text values below are the original Designer placeholders, shown only at design time; the
+    code-behind timer overwrites them with live data at runtime.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormGPSDataView"
+        Title="System Data"
+        Width="120"
+        Height="330"
+        Background="{DynamicResource AogDataReadoutBackgroundBrush}"
+        SystemDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="15">
+
+    <!--
+        Shared styling for the readout. The base TextBlock rule reproduces the original labels'
+        white ForeColor on the black panel and keeps every row single-line and vertically centred.
+        The .caption / .value classes reproduce the WinForms FontStyle (Regular vs Bold) and the
+        caption|value column alignment.
+    -->
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+        </Style>
+        <!-- WinForms caption labels: FontStyle.Regular, sat just left of the value column. -->
+        <Style Selector="TextBlock.caption">
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+        <!-- WinForms value labels: FontStyle.Bold, TextAlign MiddleLeft. -->
+        <Style Selector="TextBlock.value">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Margin" Value="2,0,0,0" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        15 equal rows × (Auto caption | * value). Margin "3,0" reproduces the original's small left
+        inset (labels began ~x=5) while letting the rows fill the full 330px height (the original
+        labels ran y=-2 .. y=325 with effectively no top/bottom gutter).
+    -->
+    <Grid Margin="3,0"
+          ColumnDefinitions="Auto,*"
+          RowDefinitions="*,*,*,*,*,*,*,*,*,*,*,*,*,*,*">
+
+        <!-- Row 0 — Latitude (WinForms lblLatitude @ (5,-2); full-width, no caption). -->
+        <TextBlock x:Name="lblLatitude"
+                   Classes="value"
+                   Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                   Text="Latitude" />
+
+        <!-- Row 1 — Longitude (WinForms lblLongitude @ (5,19); full-width, no caption). -->
+        <TextBlock x:Name="lblLongitude"
+                   Classes="value"
+                   Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                   Text="-128.1234567" />
+
+        <!-- Row 2 — N | Northing (WinForms label28 "N" + lblNorthingField @ y=42). -->
+        <TextBlock Classes="caption" Grid.Row="2" Grid.Column="0" Text="N" />
+        <TextBlock x:Name="lblNorthingField" Classes="value" Grid.Row="2" Grid.Column="1" Text="Northing" />
+
+        <!-- Row 3 — E | Easting (WinForms label27 "E" + lblEastingField @ y=62). -->
+        <TextBlock Classes="caption" Grid.Row="3" Grid.Column="0" Text="E" />
+        <TextBlock x:Name="lblEastingField" Classes="value" Grid.Row="3" Grid.Column="1" Text="Easting" />
+
+        <!-- Row 4 — Elev | Altitude (WinForms label8 "Elev" + lblAltitude @ y=87/88). -->
+        <TextBlock Classes="caption" Grid.Row="4" Grid.Column="0" Text="Elev" />
+        <TextBlock x:Name="lblAltitude" Classes="value" Grid.Row="4" Grid.Column="1" Text="Altitude" />
+
+        <!-- Row 5 — # Sats | SatsTracked (WinForms label3 "# Sats" + lblSatsTracked @ y=107/108). -->
+        <TextBlock Classes="caption" Grid.Row="5" Grid.Column="0" Text="# Sats" />
+        <TextBlock x:Name="lblSatsTracked" Classes="value" Grid.Row="5" Grid.Column="1" Text="Sats" />
+
+        <!-- Row 6 — HDOP | HDOP (WinForms label9 "HDOP" + lblHDOP @ y=127/128). -->
+        <TextBlock Classes="caption" Grid.Row="6" Grid.Column="0" Text="HDOP" />
+        <TextBlock x:Name="lblHDOP" Classes="value" Grid.Row="6" Grid.Column="1" Text="HDOP" />
+
+        <!-- Row 7 — Frame | FrameTime (WinForms label11 "Frame" + lblFrameTime @ y=151). -->
+        <TextBlock Classes="caption" Grid.Row="7" Grid.Column="0" Text="Frame" />
+        <TextBlock x:Name="lblFrameTime" Classes="value" Grid.Row="7" Grid.Column="1" Text="msec" />
+
+        <!-- Row 8 — Raw Hz | TimeSlice (WinForms label10 "Raw Hz" + lblTimeSlice @ y=169). -->
+        <TextBlock Classes="caption" Grid.Row="8" Grid.Column="0" Text="Raw Hz" />
+        <TextBlock x:Name="lblTimeSlice" Classes="value" Grid.Row="8" Grid.Column="1" Text="msec" />
+
+        <!-- Row 9 — Hz | Hz (WinForms label4 "Hz" + lblHz @ y=187). -->
+        <TextBlock Classes="caption" Grid.Row="9" Grid.Column="0" Text="Hz" />
+        <TextBlock x:Name="lblHz" Classes="value" Grid.Row="9" Grid.Column="1" Text="msec" />
+
+        <!-- Row 10 — Missed | udpWatchCounts (WinForms label2 "Missed" + lbludpWatchCounts @ y=211). -->
+        <TextBlock Classes="caption" Grid.Row="10" Grid.Column="0" Text="Missed" />
+        <TextBlock x:Name="lbludpWatchCounts" Classes="value" Grid.Row="10" Grid.Column="1" Text="msec" />
+
+        <!-- Row 11 — Fix2Fix | Fix2FixHeading (WinForms label5 "Fix2Fix" + lblFix2FixHeading @ y=239). -->
+        <TextBlock Classes="caption" Grid.Row="11" Grid.Column="0" Text="Fix2Fix" />
+        <TextBlock x:Name="lblFix2FixHeading" Classes="value" Grid.Row="11" Grid.Column="1" Text="359.1" />
+
+        <!-- Row 12 — IMU | IMUHeading (WinForms label13 "IMU" + lblIMUHeading @ y=260). -->
+        <TextBlock Classes="caption" Grid.Row="12" Grid.Column="0" Text="IMU" />
+        <TextBlock x:Name="lblIMUHeading" Classes="value" Grid.Row="12" Grid.Column="1" Text="321.6" />
+
+        <!-- Row 13 — Heading | FuzeHeading (WinForms label15 "Heading" + lblFuzeHeading @ y=281). -->
+        <TextBlock Classes="caption" Grid.Row="13" Grid.Column="0" Text="Heading" />
+        <TextBlock x:Name="lblFuzeHeading" Classes="value" Grid.Row="13" Grid.Column="1" Text="344.0" />
+
+        <!-- Row 14 — AV | AngularVelocity (WinForms label12 "AV" + lblAngularVelocity @ y=307). -->
+        <TextBlock Classes="caption" Grid.Row="14" Grid.Column="0" Text="AV" />
+        <TextBlock x:Name="lblAngularVelocity" Classes="value" Grid.Row="14" Grid.Column="1" Text="3.56" />
+
+    </Grid>
+
+</Window>

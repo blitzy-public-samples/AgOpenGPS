@@ -1,0 +1,224 @@
+<!-- [XPLAT] migrated from net48/WinForms FormProfiles.cs + FormProfiles.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormProfiles"
+        x:DataType="vm:FormProfilesViewModel"
+        Title="AgIO: Manage Profiles"
+        RequestedThemeVariant="Light"
+        Width="576" Height="394"
+        MinWidth="460" MinHeight="360"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        Background="Gainsboro"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!-- [XPLAT] migrated from net48/WinForms FormProfiles.cs + FormProfiles.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the WinForms AgIO "Manage Profiles" dialog
+        (Forms/FormProfiles.cs + Forms/FormProfiles.designer.cs, WinForms class AgIO.FormProfiles : Form).
+        This is a parity rebuild, never a redesign (AAP §0.3.3): same purpose, same command set, same
+        light appearance — it lists the settings profiles found in RegistrySettings.profileDirectory and
+        lets the operator Load / Save / Delete one plus type a new name, then Close.
+
+        Window-chrome parity mapping to FormProfiles.designer.cs:
+          • Form Text "AgIO: Manage Profiles"      -> Title="AgIO: Manage Profiles".
+          • ClientSize 576 x 394                    -> Width="576" Height="394" (+ MinWidth/MinHeight for
+                                                       graceful resize).
+          • BackColor Gainsboro                     -> Background="Gainsboro" (the classic light-gray
+                                                       WinForms surface; AgIO is light-only).
+          • FormBorderStyle SizableToolWindow       -> CanResize="True" (the WinForms form was resizable).
+          • StartPosition CenterParent              -> WindowStartupLocation="CenterOwner".
+          • Form Font Tahoma                        -> FontFamily="Tahoma", base FontSize="14.25" (matches
+                                                       the WinForms label font; list/textbox enlarge below).
+          • Shown via ShowDialog (a dialog)         -> ShowInTaskbar="False".
+
+        Theme: Light only — App.axaml pins RequestedThemeVariant="Light" (AgIO has no day/night toggle);
+        it is restated on the window for explicitness/parity, mirroring the sibling FormSource.axaml /
+        FormTimedMessage.axaml — see MIGRATION_DOCS/TRANSITION_MAP.md.
+
+        MVVM contract (COMPILED bindings via x:DataType="vm:FormProfilesViewModel"). The WinForms dialog
+        was a god-object that read RegistrySettings, enumerated the profile directory with DirectoryInfo,
+        confirmed with MessageBox.Show(...), and called Settings.Default.Reset()/Save()/Load() inline,
+        holding an "mf" FormLoop back-reference only to read the touch-keyboard flag. All of that moves
+        into FormProfilesViewModel; this view binds to its public surface only:
+          • Profiles            (ObservableCollection<string>)  -> ListBox.ItemsSource  (replaces the
+                                                                   WinForms cboxChooseExisting / cboxOverWrite
+                                                                   combo item lists).
+          • SelectedProfile     (string, two-way)               -> ListBox.SelectedItem  (the Load/Delete target).
+          • NewProfileName      (string, two-way)               -> TextBox.Text           (replaces tboxCreateNew /
+                                                                   tboxSaveAs; the Save target).
+          • CurrentProfileName  (string, one-way)               -> header label           (replaces lblLast
+                                                                   "Using Profile: …" / lblCurrentProfile).
+          • LoadCommand / SaveCommand / DeleteCommand / CloseCommand (RelayCommand : ICommand)
+                                                                 -> the four command buttons.
+        The view-model owns no Window, so the overwrite/delete confirmations (former MessageBox.Show
+        YesNo) and the on-screen keyboard are the code-behind's concern: it assigns ConfirmAsync
+        (=> new FormYes(msg, true).ShowDialog<bool>(this)), wires ProfileApplied / RequestClose (=> Close()),
+        and attaches the converted ../Controls/ ShowKeyboard helper to the named tboxName when the touch
+        keyboard is enabled. DataContext is therefore set by the code-behind (FormProfilesViewModel has no
+        parameterless constructor — it requires an IErrorPresenter), never here.
+
+        ASSETS: buttons render as TEXT, not the WinForms VehFileSave / FileSaveAs / Cancel64 bitmaps. The
+        migrated AgIO.csproj registers NO btnImages as <AvaloniaResource> (only GPS/AgOpenGPS.csproj does)
+        and excludes Properties/Resources.Designer.cs from compilation (System.Drawing purged), so an
+        avares://AgIO/btnImages/* reference would not resolve and would render a broken image. Every
+        migrated AgIO view therefore uses text affordances — the documented convention in the sibling
+        FormYes.axaml / FormSource.axaml. See MIGRATION_DOCS/TRANSITION_MAP.md.
+    -->
+
+    <!--
+        Vertical layout. The list row is the star (*) row so it absorbs resize; every other row is Auto
+        and pins to its natural height. Reading order top-to-bottom: which profile is active, the list of
+        profiles to Open, Load/Delete for the selection, a New-name field, Save, and finally Close.
+    -->
+    <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto">
+
+        <!-- WinForms lblLast ("Using Profile: " + name, Tahoma 15.75, MiddleCenter) + lblCurrentProfile.
+             A plain centered caption + bound value (no decorative band — the WinForms original was a
+             bare centered label), split so no StringFormat is needed. CurrentProfileName is refreshed by
+             the view-model after a load/save. TextTrimming guards against an over-long profile name. -->
+        <StackPanel Grid.Row="0"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    Spacing="6"
+                    Margin="0,0,0,6">
+            <TextBlock Text="Using Profile:"
+                       FontSize="15.75"
+                       FontWeight="Bold"
+                       VerticalAlignment="Center" />
+            <TextBlock x:Name="lblLast"
+                       Text="{Binding CurrentProfileName}"
+                       FontSize="15.75"
+                       FontWeight="Bold"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center"
+                       AutomationProperties.Name="Active profile" />
+        </StackPanel>
+
+        <!-- WinForms label3 "Open:" (Tahoma 14.25 Bold) — caption for the profile list below. -->
+        <TextBlock Grid.Row="1"
+                   Text="Open:"
+                   FontWeight="Bold"
+                   Margin="2,0,0,4" />
+
+        <!-- WinForms cboxChooseExisting (the "open an existing profile" picker) reimagined as a list so
+             the same control also serves Delete and reads naturally on a touch screen. ItemsSource binds
+             to the profile names; SelectedItem is the Load/Delete target (two-way so a programmatic
+             SelectedProfile reset after a delete clears the visual selection). Large 44px rows give the
+             touch-friendly hit target the kiosk UI expects (Phase 3 styling). -->
+        <ListBox Grid.Row="2"
+                 x:Name="lvProfiles"
+                 ItemsSource="{Binding Profiles}"
+                 SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
+                 FontSize="18"
+                 Background="White"
+                 BorderBrush="#40000000"
+                 BorderThickness="1"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 AutomationProperties.Name="Existing profiles"
+                 ToolTip.Tip="Select a profile to Load or Delete">
+            <ListBox.Styles>
+                <!-- Full-row selection + large, touch-friendly rows. -->
+                <Style Selector="ListBoxItem">
+                    <Setter Property="MinHeight" Value="44" />
+                    <Setter Property="Padding" Value="10,8" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment" Value="Center" />
+                </Style>
+            </ListBox.Styles>
+        </ListBox>
+
+        <!-- Action row for the current selection: Load (apply the selected profile) on the left, Delete
+             (remove it) on the right. Load mirrors the WinForms cboxChooseExisting "open" flow; Delete is
+             the explicit cross-platform replacement for what the WinForms UI only did via file management.
+             Both are no-ops in the view-model when nothing is selected. -->
+        <Grid Grid.Row="3"
+              ColumnDefinitions="Auto,*,Auto"
+              Margin="0,8,0,0">
+            <Button Grid.Column="0"
+                    x:Name="btnLoad"
+                    Content="Load"
+                    Command="{Binding LoadCommand}"
+                    MinWidth="120"
+                    Height="60"
+                    FontSize="16"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="Load selected profile"
+                    ToolTip.Tip="Open the selected profile and make it active" />
+
+            <Button Grid.Column="2"
+                    x:Name="btnDelete"
+                    Content="Delete"
+                    Command="{Binding DeleteCommand}"
+                    MinWidth="120"
+                    Height="60"
+                    FontSize="16"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="Delete selected profile"
+                    ToolTip.Tip="Delete the selected profile (asks for confirmation)" />
+        </Grid>
+
+        <!-- WinForms label1 "New:" (Tahoma 14.25 Bold) — caption for the new-name field. The top margin
+             visually separates the "open/manage existing" group above from the "create new" group below
+             (the WinForms form used vertical position for the same grouping). -->
+        <TextBlock Grid.Row="4"
+                   Text="New:"
+                   FontWeight="Bold"
+                   Margin="2,10,0,4" />
+
+        <!-- New-name field + Save, on one row. The TextBox replaces the WinForms tboxCreateNew / tboxSaveAs
+             entries; its name is sanitized and validated inside SaveCommand (an empty name reproduces the
+             WinForms "Enter a File Name To Save..." notice). The named tboxName lets the code-behind attach
+             the converted ../Controls/ ShowKeyboard on-screen keyboard when touch input is enabled — that
+             wiring is a view concern handled in FormProfiles.axaml.cs, not here. Save mirrors the WinForms
+             btnSaveAs/btnSaveNewProfile flow, with the overwrite confirmation folded into the view-model. -->
+        <Grid Grid.Row="5"
+              ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0"
+                     x:Name="tboxName"
+                     Text="{Binding NewProfileName, Mode=TwoWay}"
+                     Watermark="New profile name"
+                     FontSize="18"
+                     VerticalContentAlignment="Center"
+                     Margin="0,0,8,0"
+                     AutomationProperties.Name="New profile name"
+                     ToolTip.Tip="Type a name for a new profile, then press Save" />
+
+            <Button Grid.Column="1"
+                    x:Name="btnSave"
+                    Content="Save"
+                    Command="{Binding SaveCommand}"
+                    MinWidth="120"
+                    Height="60"
+                    FontSize="16"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="Save new profile"
+                    ToolTip.Tip="Save the current settings to a profile with the typed name" />
+        </Grid>
+
+        <!-- WinForms btnSerialCancel (DialogResult.Cancel) -> Close. IsCancel="True" maps the Escape key to
+             this button — the conventional dialog-dismiss key — and CloseCommand raises the view-model's
+             RequestClose, which the code-behind routes to Window.Close(). -->
+        <Button Grid.Row="6"
+                x:Name="btnClose"
+                Content="Close"
+                Command="{Binding CloseCommand}"
+                IsCancel="True"
+                MinWidth="120"
+                Height="60"
+                FontSize="16"
+                HorizontalAlignment="Right"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Margin="0,12,0,0"
+                AutomationProperties.Name="Close"
+                ToolTip.Tip="Close without changing the active profile" />
+    </Grid>
+</Window>

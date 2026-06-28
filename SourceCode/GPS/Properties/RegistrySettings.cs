@@ -1,10 +1,9 @@
-﻿using AgLibrary.Logging;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgLibrary.Logging;
 using AgLibrary.Settings;
-using AgOpenGPS.Forms;
-using Microsoft.Win32;
+using AgOpenGPS.Core.Platform;
 using System;
 using System.IO;
-using System.Windows.Forms;
 
 namespace AgOpenGPS
 {
@@ -51,70 +50,108 @@ namespace AgOpenGPS
         // Indicates if migration from legacy single profile is needed
         public static bool NeedsMigration { get; private set; }
 
+        // [XPLAT] Cross-platform services backing (replaces the Windows Registry + %AppData%/MyDocuments
+        // source). Supplies the application-data/config root used both to locate the settings tree and to
+        // place the fixed-location config file below. The concrete per-OS implementation is selected by
+        // PlatformServicesFactory; any Registry/WMI access stays confined to WindowsPlatformServices.
+        private static IPlatformServices _platform;
+
+        // [XPLAT] Optionally called once from Program.Main (after PlatformServicesFactory.Register(...) and
+        // before Load()) so this class shares the exact platform instance the rest of the app uses. It is
+        // safe to skip — the Platform property below falls back to the factory. Never throws here.
+        public static void Initialize(IPlatformServices platform)
+        {
+            _platform = platform;
+        }
+
+        // [XPLAT] Lazily resolves the platform services, falling back to PlatformServicesFactory.Create()
+        // when Initialize was not called. Reading AppDataRoot acquires no OS lock, so creating a second
+        // instance via the factory is harmless.
+        private static IPlatformServices Platform => _platform ??= PlatformServicesFactory.Create();
+
+        // [XPLAT] Fixed cross-platform location of the small config file holding the six legacy "registry"
+        // string values (WorkingDirectory, VehicleProfileName, ToolProfileName, EnvironmentFileName,
+        // VehicleFileName, Language). It lives directly at AppDataRoot — never under WorkingDirectory — so
+        // it is always found on the next launch regardless of where WorkingDirectory redirects
+        // baseDirectory, mirroring how the old HKCU\SOFTWARE\AgOpenGPS key lived at a fixed hive location.
+        // On Windows, the one-time legacy-Registry seed (WindowsPlatformServices/CSettingsMigration) writes
+        // THIS very file before Load() reads it, so this class needs no Registry knowledge.
+        private static string ConfigFilePath => Path.Combine(Platform.AppDataRoot, "RegistrySettings.xml");
+
         public static void Load()
         {
             try
             {
-                //opening the subkey
-                RegistryKey regKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\AgOpenGPS");
+                // [XPLAT] Read the six legacy values from the fixed cross-platform config file instead of
+                // HKCU\SOFTWARE\AgOpenGPS. Absent keys load as null (XmlSettingsHandler leaves unmatched
+                // fields at their initial value), exactly mirroring the old Registry.GetValue returning
+                // null for a missing key. Missing values are repaired to their original defaults and the
+                // file is written back once at the end — preserving the original "repair on load" behavior.
+                RegistryConfig cfg = new RegistryConfig();
+                XmlSettingsHandler.LoadXMLFile(ConfigFilePath, cfg);
 
-                if (regKey.GetValue(RegKeys.workingDirectory) == null || regKey.GetValue(RegKeys.workingDirectory).ToString() == "")
+                bool repaired = false;
+
+                if (cfg.WorkingDirectory == null || cfg.WorkingDirectory == "")
                 {
-                    regKey.SetValue(RegKeys.workingDirectory, defaultString);
+                    cfg.WorkingDirectory = defaultString;
                     Log.EventWriter("Registry -> Key workingDirectory was null");
+                    repaired = true;
                 }
-                workingDirectory = regKey.GetValue(RegKeys.workingDirectory).ToString();
+                workingDirectory = cfg.WorkingDirectory;
 
                 // NEW: Vehicle Profile Name (v7+)
-                if (regKey.GetValue(RegKeys.vehicleProfileName) == null)
+                if (cfg.VehicleProfileName == null)
                 {
-                    regKey.SetValue(RegKeys.vehicleProfileName, "");
+                    cfg.VehicleProfileName = "";
                     Log.EventWriter("Registry -> Key vehicleProfileName was null");
+                    repaired = true;
                 }
-                vehicleProfileName = regKey.GetValue(RegKeys.vehicleProfileName).ToString();
-
-                // NEW: Vehicle Profile Name (v7+)
-                if (regKey.GetValue(RegKeys.vehicleProfileName) == null)
-                {
-                    regKey.SetValue(RegKeys.vehicleProfileName, "");
-                    Log.EventWriter("Registry -> Key vehicleProfileName was null");
-                }
-                vehicleProfileName = regKey.GetValue(RegKeys.vehicleProfileName).ToString();
+                vehicleProfileName = cfg.VehicleProfileName;
 
                 // NEW: Tool Profile Name (v7+)
-                if (regKey.GetValue(RegKeys.toolProfileName) == null)
+                if (cfg.ToolProfileName == null)
                 {
-                    regKey.SetValue(RegKeys.toolProfileName, "");
+                    cfg.ToolProfileName = "";
                     Log.EventWriter("Registry -> Key toolProfileName was null");
+                    repaired = true;
                 }
-                toolProfileName = regKey.GetValue(RegKeys.toolProfileName).ToString();
+                toolProfileName = cfg.ToolProfileName;
 
                 // LEGACY: Vehicle File Name (v6 and earlier) - only for migration detection
-                if (regKey.GetValue(RegKeys.vehicleFileName) == null)
+                if (cfg.VehicleFileName == null)
                 {
-                    regKey.SetValue(RegKeys.vehicleFileName, "");
+                    cfg.VehicleFileName = "";
                     Log.EventWriter("Registry -> Key vehicleFileName was null");
+                    repaired = true;
                 }
-                legacyVehicleFileName = regKey.GetValue(RegKeys.vehicleFileName).ToString();
+                legacyVehicleFileName = cfg.VehicleFileName;
 
                 // Environment File Name Registry Key
-                if (regKey.GetValue(RegKeys.environmentFileName) == null)
+                if (cfg.EnvironmentFileName == null)
                 {
-                    regKey.SetValue(RegKeys.environmentFileName, "Default");
+                    cfg.EnvironmentFileName = "Default";
                     Log.EventWriter("Registry -> Key environmentFileName was null");
+                    repaired = true;
                 }
-                environmentFileName = regKey.GetValue(RegKeys.environmentFileName).ToString();
+                environmentFileName = cfg.EnvironmentFileName;
 
                 //Language Registry Key
-                if (regKey.GetValue(RegKeys.language) == null || regKey.GetValue(RegKeys.language).ToString() == "")
+                if (cfg.Language == null || cfg.Language == "")
                 {
-                    regKey.SetValue(RegKeys.language, "en");
+                    cfg.Language = "en";
                     Log.EventWriter("Registry -> Key language was null");
+                    repaired = true;
                 }
-                culture = regKey.GetValue(RegKeys.language).ToString();
+                culture = cfg.Language;
 
-                //close registry
-                regKey.Close();
+                // [XPLAT] Persist repaired defaults so subsequent launches find every key (the old code
+                // wrote each missing key back via RegistryKey.SetValue). Every field is non-null at this
+                // point, so the write is safe; SaveXMLFile creates AppDataRoot if it does not yet exist.
+                if (repaired)
+                {
+                    XmlSettingsHandler.SaveXMLFile(ConfigFilePath, cfg);
+                }
             }
             catch (Exception ex)
             {
@@ -167,8 +204,10 @@ namespace AgOpenGPS
         {
             try
             {
-                //adding or editing "Language" subkey to the "SOFTWARE" subkey
-                RegistryKey key = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\AgOpenGPS");
+                // [XPLAT] Read-modify-write the single named value into the cross-platform config file
+                // instead of HKCU\SOFTWARE\AgOpenGPS. ReadConfig() loads the existing file and normalizes
+                // any absent key to its default so the subsequent write can never encounter a null field.
+                RegistryConfig cfg = ReadConfig();
 
                 if (name == RegKeys.vehicleProfileName)
                     vehicleProfileName = value;
@@ -181,16 +220,16 @@ namespace AgOpenGPS
 
                 if (name == RegKeys.workingDirectory && value == Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments))
                 {
-                    key.SetValue(name, defaultString);
+                    SetConfigValue(cfg, name, defaultString);
                     Log.EventWriter("Registry -> Key " + name + " Saved to registry key with value: " + defaultString);
                 }
                 else//storing the value
                 {
-                    key.SetValue(name, value);
+                    SetConfigValue(cfg, name, value);
                     Log.EventWriter("Registry -> Key " + name + " Saved to registry key with value: " + value);
                 }
 
-                key.Close();
+                XmlSettingsHandler.SaveXMLFile(ConfigFilePath, cfg);
             }
             catch (Exception ex)
             {
@@ -202,22 +241,34 @@ namespace AgOpenGPS
         {
             try
             {
-                Registry.CurrentUser.DeleteSubKeyTree(@"SOFTWARE\AgOpenGPS");
+                // [XPLAT] Delete the cross-platform config file and reset the in-memory values to their
+                // defaults (replaces Registry.CurrentUser.DeleteSubKeyTree). The next Load() recreates the
+                // file from these defaults. The one-time legacy-Registry read is delegated to the
+                // Windows-only layer, so there is nothing Registry-related to clear here.
+                string configFile = ConfigFilePath;
+                if (File.Exists(configFile))
+                {
+                    File.Delete(configFile);
+                }
 
-                Log.EventWriter("Registry -> Resetting Registry SubKey Tree and Full Default Reset");
+                workingDirectory = defaultString;
+                vehicleProfileName = "";
+                toolProfileName = "";
+                environmentFileName = "Default";
+                legacyVehicleFileName = "";
+                culture = "en";
+
+                Log.EventWriter("Registry -> Resetting config file and Full Default Reset");
             }
             catch (Exception ex)//program will crash anyways!
             {
-                Log.EventWriter("Registry -> Catch, Serious Problem Resetting Registry keys: " + ex.ToString());
+                Log.EventWriter("Registry -> Catch, Serious Problem Resetting config file: " + ex.ToString());
 
                 Log.FileSaveSystemEvents();
 
-                // Show critical registry error
-                FormDialog.Show(
-                    "Critical Registry Error",
-                    "Can't delete the Registry SubKeyTree",
-                    DialogSeverity.Error);
-
+                // [XPLAT] This runs pre-UI, so log the critical settings error instead of showing the
+                // former WinForms FormDialog, then exit as before. Do not introduce any UI type here.
+                Log.EventWriter("Registry -> Critical Settings Error: Can't delete the config file");
 
                 Environment.Exit(0);
             }
@@ -229,7 +280,11 @@ namespace AgOpenGPS
             {
                 if (workingDirectory == defaultString)
                 {
-                    baseDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AgOpenGPS");
+                    // [XPLAT] Default data root comes from the platform services. AppDataRoot already
+                    // includes the trailing "AgOpenGPS" leaf on every OS (Windows %AppData%\AgOpenGPS,
+                    // Linux ~/.config/AgOpenGPS, macOS ~/Library/Application Support/AgOpenGPS), so it must
+                    // NOT be re-appended here. (Replaces the former MyDocuments\AgOpenGPS Windows path.)
+                    baseDirectory = Platform.AppDataRoot;
                 }
                 else //user set to other
                 {
@@ -334,6 +389,65 @@ namespace AgOpenGPS
             catch (Exception ex)
             {
                 Log.EventWriter("Catch, Serious Problem Making Logs Directory: " + ex.ToString());
+            }
+        }
+
+        // [XPLAT] Loads the cross-platform config file and normalizes every absent key to its original
+        // default, guaranteeing all fields are non-null before a write (XmlSettingsHandler.SaveXMLFile
+        // dereferences each field's value, so a null field would throw). Used by Save() for its
+        // read-modify-write; Load() instead loads raw so it can detect, log and repair missing keys.
+        private static RegistryConfig ReadConfig()
+        {
+            RegistryConfig cfg = new RegistryConfig();
+            XmlSettingsHandler.LoadXMLFile(ConfigFilePath, cfg);
+
+            if (cfg.WorkingDirectory == null) cfg.WorkingDirectory = defaultString;
+            if (cfg.VehicleProfileName == null) cfg.VehicleProfileName = "";
+            if (cfg.ToolProfileName == null) cfg.ToolProfileName = "";
+            if (cfg.EnvironmentFileName == null) cfg.EnvironmentFileName = "Default";
+            if (cfg.VehicleFileName == null) cfg.VehicleFileName = "";
+            if (cfg.Language == null) cfg.Language = "en";
+
+            return cfg;
+        }
+
+        // [XPLAT] Maps a legacy registry value name (one of the RegKeys constants) to the matching field on
+        // the config holder, mirroring the original RegistryKey.SetValue(name, value) dispatch. An unknown
+        // name is ignored, matching the harmless old behavior of writing a registry value nothing reads.
+        private static void SetConfigValue(RegistryConfig cfg, string name, string value)
+        {
+            if (name == RegKeys.workingDirectory)
+                cfg.WorkingDirectory = value;
+            else if (name == RegKeys.vehicleProfileName)
+                cfg.VehicleProfileName = value;
+            else if (name == RegKeys.toolProfileName)
+                cfg.ToolProfileName = value;
+            else if (name == RegKeys.environmentFileName)
+                cfg.EnvironmentFileName = value;
+            else if (name == RegKeys.vehicleFileName)
+                cfg.VehicleFileName = value;
+            else if (name == RegKeys.language)
+                cfg.Language = value;
+        }
+
+        // [XPLAT] Cross-platform replacement for the six HKCU\SOFTWARE\AgOpenGPS string values, persisted by
+        // AgLibrary.Settings.XmlSettingsHandler to RegistrySettings.xml at AppDataRoot. The field names match
+        // the RegKeys value names exactly so the same identifiers round-trip through the settings file.
+        // ToString() is overridden because XmlSettingsHandler uses it as the XML root element name, and the
+        // default nested-type name ("AgOpenGPS.RegistrySettings+RegistryConfig") contains '+', which is
+        // illegal in an XML element name and would throw during save.
+        private sealed class RegistryConfig
+        {
+            public string WorkingDirectory;
+            public string VehicleProfileName;
+            public string ToolProfileName;
+            public string EnvironmentFileName;
+            public string VehicleFileName;
+            public string Language;
+
+            public override string ToString()
+            {
+                return "RegistrySettings";
             }
         }
     }

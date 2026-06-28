@@ -1,0 +1,308 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Color Picker dialog (Avalonia view).
+
+    1:1 visual + behavioral PARITY reimplementation of the WinForms `Forms/Pickers/FormColorPicker`
+    (source: FormColorPicker.cs + FormColorPicker.Designer.cs, 406 lines). A palette / colour
+    selection dialog: a 2-D colour box + a vertical hue slider on the left, two large Day/Night
+    colour-preview buttons on the right, a "Select Preset Color" group of 16 preset swatches, a
+    lock/unlock toggle that switches between "use a preset" and "save the current colour into a
+    preset", and an OK button that closes the dialog. Per AAP §0.3.3 this is a faithful re-platform
+    of the currently rendered Windows Forms look — never a redesign: every size, position, font and
+    colour below is taken verbatim from FormColorPicker.Designer.cs.
+
+    ─────────────────────────────────────────────────────────────────────────────────────────────
+    COORDINATION DEPENDENCY (out of this Views/Pickers/ folder's scope — recorded for traceability)
+    ─────────────────────────────────────────────────────────────────────────────────────────────
+    Per AAP §0.5.1 the WinForms MechanikaDesign colour controls (ColorBox2D + ColorSliderVertical
+    from the package `MechanikaDesign.WinForms.UI.ColorPicker`) are REPLACED with the cross-platform
+    Avalonia colour controls ColorSpectrum (the 2-D saturation/value plane) + ColorSlider (the
+    vertical hue slider). Those controls ship in the **Avalonia.Controls.ColorPicker** NuGet package
+    (repo-pinned version 11.3.18), which MUST be referenced by `SourceCode/GPS/AgOpenGPS.csproj`.
+    That .csproj is owned by the GPS-root agent (outside this folder), so the PackageReference is
+    added there — this comment records the requirement so the dependency stays traceable.
+
+    NAMESPACE NOTE (correction vs. the original instruction): ColorSpectrum and ColorSlider live in
+    the CLR namespace `Avalonia.Controls.Primitives` (verified against Avalonia.Controls.ColorPicker
+    11.3.18), NOT `Avalonia.Controls`. The package assembly's XmlnsDefinition does map both
+    Avalonia.Controls and Avalonia.Controls.Primitives onto the default https://github.com/avaloniaui
+    XML namespace, but to keep this markup self-documenting we declare an explicit `xmlns:primitives`
+    prefix bound to the correct CLR namespace and use it for the two colour controls.
+
+    ─────────────────────────────────────────────────────────────────────────────────────────────
+    WIRING CONTRACT — the partner code-behind (FormColorPickerView.axaml.cs) owns ALL behaviour
+    ─────────────────────────────────────────────────────────────────────────────────────────────
+    This is an IMPERATIVE, code-behind-driven dialog (exactly like the sibling FormYesView /
+    FormInputDialogView): there is intentionally NO x:DataType, NO DataContext and NO {Binding}.
+    The code-behind resolves every control by x:Name and subscribes every event handler itself with
+    `+=` (mirroring the original WinForms Designer, which did `this.btnXX.Click += ...`). Therefore
+    NO Click / ColorChanged / IsCheckedChanged attributes are declared in this markup — declaring
+    them here would force specific handler signatures to exist and risk double-wiring. The named
+    controls below MUST keep these exact names (the code-behind generated x:Name fields depend on
+    them): colorBox2D, colorSlider, btnDay, btnNight, groupBoxSelectPresetColor, btn00..btn15,
+    chkUse, chkUseImage, btnSave.
+
+    Behaviour reproduced by the code-behind (FormColorPicker.cs):
+      * colorBox2D.ColorChanged / colorSlider.ColorChanged keep the box, the slider and the two
+        preview buttons in sync and update the public `useThisColor`.
+      * btnDay / btnNight are colour-preview swatches: their Background is recoloured to the current
+        colour in code-behind (the design-time Background here is cosmetic). Their Text is set at
+        runtime from gStr.gsDay / gStr.gsNight (assign Button.Content in code-behind).
+      * btn00..btn15 share one handler (Preset_Click). Each carries Tag="00".."15"; the handler
+        reads the Tag to know which preset slot it is (replacing the WinForms `Name.Substring(3,2)`
+        parse) and either applies the preset (lock / "use" mode) or stores the current colour into
+        that slot (unlock / "save" mode).
+      * chkUse toggles use/save mode: it swaps chkUseImage between ColorLocked.png and
+        ColorUnlocked.png and retitles groupBoxSelectPresetColor; the :checked PaleGreen background
+        (WinForms FlatAppearance.CheckedBackColor) is supplied declaratively below.
+      * btnSave closes the dialog (WinForms DialogResult.OK).
+
+    SHELL PARITY (FormColorPicker.Designer.cs):
+      Text "Color Picker"                  -> Title
+      ClientSize 591 x 615                  -> Width / Height (SystemDecorations="None" => client == window)
+      BackColor Color.FromArgb(127,127,127) -> Background "#FF7F7F7F" (mid-gray, hard-coded for parity —
+                                              theme-independent, like the sibling parity dialogs)
+      FormBorderStyle.FixedSingle +
+        ControlBox=false + MinimizeBox=false -> SystemDecorations="None" + CanResize="False"
+      StartPosition.CenterParent            -> WindowStartupLocation="CenterOwner"
+      ShowInTaskbar=false                   -> ShowInTaskbar="False"
+      (not TopMost)                         -> Topmost omitted (defaults False)
+      Font Tahoma                           -> FontFamily="Tahoma"
+
+    No System.Windows.Forms, no OpenTK / OpenTK.GLControl, no Win32 types — Avalonia 11.3 markup only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:primitives="using:Avalonia.Controls.Primitives"
+        x:Class="AgOpenGPS.Views.Pickers.FormColorPickerView"
+        Title="Color Picker"
+        Width="591" Height="615"
+        Background="{DynamicResource AogLegacyGray127Brush}"
+        SystemDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma">
+
+    <Window.Styles>
+
+        <!-- Colour-preview / preset SWATCH buttons (btnDay, btnNight, btn00..btn15).
+             WinForms FlatStyle.Flat/Popup colour buttons render a SOLID fill that IS the swatch, so
+             the locally-assigned Background must stay visible in every interaction state (the Fluent
+             Button template would otherwise paint a hover/pressed overlay that tints the colour).
+             A minimal custom template — one ContentPresenter bound to the templated parent, with no
+             state visuals — reproduces this exactly (same proven idiom as the sibling
+             Config/ConfigVehicleControl.axaml). Background/Foreground/Content are set per-button
+             (design-time) and re-assigned at runtime by the code-behind. -->
+        <Style Selector="Button.swatch">
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      FontFamily="{TemplateBinding FontFamily}"
+                                      FontSize="{TemplateBinding FontSize}"
+                                      FontWeight="{TemplateBinding FontWeight}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- Flat, transparent, image-only button (btnSave OK glyph). Matches the sibling
+             FormYesView OK button: BackColor Transparent + FlatStyle.Flat + BorderSize 0, with
+             hover/pressed kept transparent so only the 64x64 glyph shows. -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- chkUse — WinForms CheckBox with Appearance=Button, FlatAppearance.BorderSize=0 and
+             CheckedBackColor=PaleGreen. As an Avalonia ToggleButton: a flat image button that is
+             transparent when unchecked and PaleGreen (#98FB98) when checked. Using the same custom
+             template as the swatches, the control's Background drives the fill; the :checked style
+             simply flips Background to PaleGreen (the proven ConfigVehicleControl :checked idiom),
+             so the checked colour holds across hover/pressed automatically. -->
+        <Style Selector="ToggleButton.useToggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleButton.useToggle:checked">
+            <Setter Property="Background" Value="PaleGreen" />
+        </Style>
+
+    </Window.Styles>
+
+    <!-- FormColorPicker used absolute Location/Size with no anchoring on a fixed 591x615 client,
+         so a top-level Canvas reproduces every pixel faithfully (same strategy as the sibling
+         Forms->Views ports, e.g. Config/ConfigVehicleControl.axaml). The mid-gray window Background
+         shows through as the form face. -->
+    <Canvas Width="591" Height="615">
+
+        <!-- colorBox2D — WinForms MechanikaDesign ColorBox2D (ColorMode=Hue) @ (5,6) 360x360.
+             Avalonia ColorSpectrum showing the Saturation (X) / Value (Y) plane; hue is the third
+             component, driven by colorSlider. ColorChanged is subscribed in the code-behind. -->
+        <primitives:ColorSpectrum x:Name="colorBox2D"
+                                  AutomationProperties.Name="Color saturation and value"
+                                  Canvas.Left="5" Canvas.Top="6"
+                                  Width="360" Height="360"
+                                  Shape="Box"
+                                  Components="SaturationValue" />
+
+        <!-- colorSlider — WinForms MechanikaDesign ColorSliderVertical (ColorMode=Hue) @ (371,6)
+             75x360. Avalonia ColorSlider as a VERTICAL Hue slider (HSVA model; first component =
+             Hue), alpha hidden. ColorChanged is subscribed in the code-behind. -->
+        <primitives:ColorSlider x:Name="colorSlider"
+                                AutomationProperties.Name="Hue"
+                                Canvas.Left="371" Canvas.Top="6"
+                                Width="75" Height="360"
+                                Orientation="Vertical"
+                                ColorModel="Hsva"
+                                ColorComponent="Component1"
+                                IsAlphaVisible="False" />
+
+        <!-- btnDay — colour-preview swatch @ (454,12) 120x162. WinForms FlatStyle.Flat, Tahoma 24pt
+             Bold (=32px), default (black) text "Day". Background is recoloured to the selected
+             colour by the code-behind; the design-time fill here is cosmetic, and the caption is
+             replaced at runtime from gStr.gsDay. -->
+        <Button x:Name="btnDay"
+                Classes="swatch"
+                Canvas.Left="454" Canvas.Top="12"
+                Width="120" Height="162"
+                Background="#FFCCCCCC"
+                Foreground="Black"
+                BorderBrush="Gray"
+                BorderThickness="1"
+                FontFamily="Tahoma"
+                FontSize="32"
+                FontWeight="Bold"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Content="Day" />
+
+        <!-- btnNight — colour-preview swatch @ (454,204) 120x162. WinForms FlatStyle.Flat with
+             FlatAppearance.BorderColor=White and ForeColor=Window (white) text "Night". Background
+             recoloured in code-behind; caption replaced at runtime from gStr.gsNight. -->
+        <Button x:Name="btnNight"
+                Classes="swatch"
+                Canvas.Left="454" Canvas.Top="204"
+                Width="120" Height="162"
+                Background="#FF333333"
+                Foreground="White"
+                BorderBrush="White"
+                BorderThickness="1"
+                FontFamily="Tahoma"
+                FontSize="32"
+                FontWeight="Bold"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Content="Night" />
+
+        <!-- groupBoxSelectPresetColor — WinForms GroupBox @ (12,387) 468x216, Tahoma 11.25pt Bold
+             (=15px), caption "Select Preset Color". Avalonia has no GroupBox, so this is a titled
+             Border + inner Canvas; the caption TextBlock is named so the code-behind can retitle it
+             ("Pick New Color and Select Square Below to Save Preset" in unlock/save mode). The 16
+             preset swatches keep their GroupBox-relative offsets exactly: x in {10,87,164,241,318,
+             395}, y in {30,92,155}. Each swatch carries Tag="00".."15" for the shared Preset_Click;
+             the code-behind overwrites all 16 Backgrounds from customColorsList on load, so the
+             design-time fills (a neutral grey, plus the two original designer literals on btn01 and
+             btn08) are cosmetic only. -->
+        <Border Canvas.Left="12" Canvas.Top="387"
+                Width="468" Height="216"
+                BorderBrush="Gray"
+                BorderThickness="1"
+                CornerRadius="3"
+                Background="Transparent">
+            <Canvas>
+                <TextBlock x:Name="groupBoxSelectPresetColor"
+                           Canvas.Left="10" Canvas.Top="2"
+                           FontFamily="Tahoma"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           Text="Select Preset Color" />
+
+                <!-- Row 0 (y=30) -->
+                <Button x:Name="btn00" Classes="swatch" Tag="00" AutomationProperties.Name="Preset color 1" Canvas.Left="10"  Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn01" Classes="swatch" Tag="01" AutomationProperties.Name="Preset color 2" Canvas.Left="87"  Canvas.Top="30" Width="64" Height="47" Background="Coral"     BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn02" Classes="swatch" Tag="02" AutomationProperties.Name="Preset color 3" Canvas.Left="164" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn03" Classes="swatch" Tag="03" AutomationProperties.Name="Preset color 4" Canvas.Left="241" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn04" Classes="swatch" Tag="04" AutomationProperties.Name="Preset color 5" Canvas.Left="318" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn05" Classes="swatch" Tag="05" AutomationProperties.Name="Preset color 6" Canvas.Left="395" Canvas.Top="30" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+
+                <!-- Row 1 (y=92) -->
+                <Button x:Name="btn06" Classes="swatch" Tag="06" AutomationProperties.Name="Preset color 7" Canvas.Left="10"  Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn07" Classes="swatch" Tag="07" AutomationProperties.Name="Preset color 8" Canvas.Left="87"  Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn08" Classes="swatch" Tag="08" AutomationProperties.Name="Preset color 9" Canvas.Left="164" Canvas.Top="92" Width="64" Height="47" Background="#FF99B4D1" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn09" Classes="swatch" Tag="09" AutomationProperties.Name="Preset color 10" Canvas.Left="241" Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn10" Classes="swatch" Tag="10" AutomationProperties.Name="Preset color 11" Canvas.Left="318" Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn11" Classes="swatch" Tag="11" AutomationProperties.Name="Preset color 12" Canvas.Left="395" Canvas.Top="92" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+
+                <!-- Row 2 (y=155) -->
+                <Button x:Name="btn12" Classes="swatch" Tag="12" AutomationProperties.Name="Preset color 13" Canvas.Left="10"  Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn13" Classes="swatch" Tag="13" AutomationProperties.Name="Preset color 14" Canvas.Left="87"  Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn14" Classes="swatch" Tag="14" AutomationProperties.Name="Preset color 15" Canvas.Left="164" Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+                <Button x:Name="btn15" Classes="swatch" Tag="15" AutomationProperties.Name="Preset color 16" Canvas.Left="241" Canvas.Top="155" Width="64" Height="47" Background="#FFF0F0F0" BorderBrush="Gray" BorderThickness="1" FontFamily="Tahoma" FontSize="32" FontWeight="Bold" />
+            </Canvas>
+        </Border>
+
+        <!-- chkUse — WinForms CheckBox (Appearance=Button) @ (495,428) 79x73. Flat image toggle; the
+             child image is swapped between ColorLocked/ColorUnlocked by the code-behind, and the
+             button turns PaleGreen when checked (style above). WinForms ImageAlign=MiddleRight =>
+             the glyph is right-aligned within the button. -->
+        <ToggleButton x:Name="chkUse"
+                      AutomationProperties.Name="Lock color selection"
+                      Classes="useToggle"
+                      Canvas.Left="495" Canvas.Top="428"
+                      Width="79" Height="73"
+                      HorizontalContentAlignment="Right"
+                      VerticalContentAlignment="Center">
+            <Image x:Name="chkUseImage"
+                   Source="avares://AgOpenGPS/btnImages/ColorLocked.png"
+                   Width="64" Height="64"
+                   Stretch="Uniform" />
+        </ToggleButton>
+
+        <!-- btnSave — WinForms OK button @ (503,532) 71x62, BackColor Transparent, FlatStyle.Flat,
+             BorderSize 0, Image OK64 (DialogResult.OK). The code-behind closes the dialog. -->
+        <Button x:Name="btnSave"
+                Classes="imageButton"
+                Canvas.Left="503" Canvas.Top="532"
+                Width="71" Height="62"
+                AutomationProperties.Name="OK">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Width="64" Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

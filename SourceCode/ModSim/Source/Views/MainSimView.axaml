@@ -1,0 +1,214 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    ModSim standalone module simulator — main window (Avalonia).
+    1:1 parity port of the WinForms FormSim (Forms/FormSim.cs + FormSim.Designer.cs).
+    Absolute pixel layout reproduced on a fixed 713x520 Canvas; every control keeps the
+    original WinForms field name as x:Name so the ported code-behind (MainSimView.axaml.cs,
+    MainSimView.Udp.cs, MainSimView.Nmea.cs) compiles against the generated typed fields.
+    STANDALONE: no ProjectReference, no AgOpenGPS.Core, no MVVM bindings — pure code-behind.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ModSim.Views.MainSimView"
+        Title="Module Sim"
+        Width="713" Height="520"
+        MinWidth="381" MinHeight="410"
+        CanResize="True"
+        Background="WhiteSmoke"
+        FontFamily="Tahoma" FontSize="11.25"
+        RequestedThemeVariant="Light">
+    <!-- RequestedThemeVariant="Light" pins the light Fluent palette so the WinForms look
+         (dark text on a WhiteSmoke background) is reproduced regardless of the host OS theme. -->
+
+    <!-- Absolute-positioned root canvas matches the WinForms 713x520 client area exactly. -->
+    <Canvas Width="713" Height="520">
+
+        <!-- ===== Left column: coordinates, save, local IP (from FormSim.Designer.cs) ===== -->
+        <TextBlock x:Name="lblLatt" Canvas.Left="6" Canvas.Top="4" Text="Lat" FontSize="12" />
+        <TextBlock x:Name="lblCurrentLat" Canvas.Left="36" Canvas.Top="4" Text="-88.8888888" FontSize="12" FontWeight="Bold" />
+        <TextBlock x:Name="label22" Canvas.Left="1" Canvas.Top="26" Text="Lon" FontSize="12" />
+        <TextBlock x:Name="lblCurrentLon" Canvas.Left="36" Canvas.Top="26" Text="-166.8888888" FontSize="12" FontWeight="Bold" />
+        <NumericUpDown x:Name="nudLat" Canvas.Left="11" Canvas.Top="52" Width="136" Height="27" Minimum="-90" Maximum="90" Increment="1" FormatString="0.0000000" FontSize="12" FontWeight="Bold"
+                       AutomationProperties.Name="Simulated start latitude" />
+        <NumericUpDown x:Name="nudLon" Canvas.Left="11" Canvas.Top="81" Width="136" Height="27" Minimum="-180" Maximum="180" Increment="1" FormatString="0.0000000" FontSize="12" FontWeight="Bold"
+                       AutomationProperties.Name="Simulated start longitude" />
+        <Button x:Name="btnSave" Canvas.Left="20" Canvas.Top="112" Width="101" Height="28" Content="Save" Click="OnSaveClick"
+                AutomationProperties.Name="Save simulated start coordinate" />
+        <!-- [XPLAT] M10: tap-only readout exposed to assistive tech and operable from the keyboard
+             (Focusable + Enter/Space via OnClickableKeyDown), with an accessible name and tooltip. -->
+        <TextBlock x:Name="lblIP" Canvas.Left="5" Canvas.Top="150" Width="143" Height="59" Text="288.288.288.288&#10;288&#10;288" Background="Transparent" FontSize="11.25" FontWeight="Bold"
+                   Tapped="OnIpLabelClick" Focusable="True" KeyDown="OnClickableKeyDown"
+                   AutomationProperties.Name="Local IP addresses. Activate to refresh the list."
+                   ToolTip.Tip="Click to list this computer's network addresses" />
+
+        <!-- ===== Center: steer angle / speed / roll readouts + sliders ===== -->
+        <Border Canvas.Left="195" Canvas.Top="10" Width="119" Height="21"
+                Background="White" BorderBrush="Black" BorderThickness="1">
+            <TextBlock x:Name="lblWAS" Text="Steer: 0.0°" Background="White"
+                       FontSize="11.25" FontWeight="Bold" TextAlignment="Left"
+                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="3,2,0,0"
+                       Tapped="OnWasLabelClick" Focusable="True" KeyDown="OnClickableKeyDown"
+                       AutomationProperties.Name="Steer angle readout. Activate to zero the steer angle."
+                       ToolTip.Tip="Click to zero the steer angle" />
+        </Border>
+        <Slider x:Name="tbarSteerAngleWAS" Canvas.Left="182" Canvas.Top="41" Width="190" Height="45" Orientation="Horizontal" Minimum="-6000" Maximum="6000" TickFrequency="500" TickPlacement="BottomRight" ValueChanged="OnSteerAngleChanged"
+                AutomationProperties.Name="Simulated steer angle" />
+        <TextBlock x:Name="lblHeading" Canvas.Left="315" Canvas.Top="11" Text="0" FontSize="11.25" FontWeight="Bold" />
+        <Border Canvas.Left="190" Canvas.Top="86" Width="104" Height="24"
+                Background="White" BorderBrush="Black" BorderThickness="1">
+            <TextBlock x:Name="lblKmh" Text="Kmh: 0.0" Background="White"
+                       FontSize="11.25" FontWeight="Bold" TextAlignment="Center"
+                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="0,3,0,0"
+                       Tapped="OnKmhLabelClick" Focusable="True" KeyDown="OnClickableKeyDown"
+                       AutomationProperties.Name="Speed readout in km/h. Activate to zero the speed."
+                       ToolTip.Tip="Click to zero the speed" />
+        </Border>
+        <TextBlock x:Name="mSec" Canvas.Left="296" Canvas.Top="90" Text="m/s: 0.0" FontFamily="Microsoft Sans Serif" FontSize="9.75" FontWeight="Bold" />
+        <Slider x:Name="tbarSpeed" Canvas.Left="182" Canvas.Top="117" Width="190" Height="45" Orientation="Horizontal" Minimum="-200" Maximum="500" TickFrequency="50" TickPlacement="BottomRight" ValueChanged="OnSpeedChanged"
+                AutomationProperties.Name="Simulated speed" />
+        <Border Canvas.Left="220" Canvas.Top="169" Width="114" Height="21"
+                Background="White" BorderBrush="Black" BorderThickness="1">
+            <TextBlock x:Name="lblRoll" Text="Roll: 0°" Background="White"
+                       FontSize="11.25" FontWeight="Bold" TextAlignment="Center"
+                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Padding="0,2,0,0"
+                       Tapped="OnRollLabelClick" Focusable="True" KeyDown="OnClickableKeyDown"
+                       AutomationProperties.Name="Roll readout. Activate to zero the roll."
+                       ToolTip.Tip="Click to zero the roll" />
+        </Border>
+        <Slider x:Name="tbarRoll" Canvas.Left="182" Canvas.Top="198" Width="190" Height="45" Orientation="Horizontal" Minimum="-200" Maximum="200" TickFrequency="50" TickPlacement="BottomRight" ValueChanged="OnRollChanged"
+                AutomationProperties.Name="Simulated roll" />
+
+        <!-- ===== NMEA sentence enable checkboxes (only NDA checked by default) ===== -->
+        <CheckBox x:Name="cboxGGA" Canvas.Left="178" Canvas.Top="259" Width="69" Height="24" Content="GGA" FontFamily="Microsoft Sans Serif" FontSize="12" FontWeight="Bold" />
+        <CheckBox x:Name="cboxVTG" Canvas.Left="178" Canvas.Top="285" Width="69" Height="24" Content="VTG" FontFamily="Microsoft Sans Serif" FontSize="12" FontWeight="Bold" />
+        <CheckBox x:Name="cboxRMC" Canvas.Left="178" Canvas.Top="311" Width="69" Height="24" Content="RMC" FontFamily="Microsoft Sans Serif" FontSize="12" FontWeight="Bold" />
+        <CheckBox x:Name="cboxNDA" Canvas.Left="178" Canvas.Top="339" Width="69" Height="24" Content="NDA" IsChecked="True" FontFamily="Microsoft Sans Serif" FontSize="12" FontWeight="Bold" />
+        <CheckBox x:Name="cboxAVR" Canvas.Left="283" Canvas.Top="259" Width="69" Height="24" Content="AVR" FontFamily="Microsoft Sans Serif" FontSize="12" FontWeight="Bold" />
+        <CheckBox x:Name="cboxHDT" Canvas.Left="283" Canvas.Top="285" Width="69" Height="24" Content="HDT" FontFamily="Microsoft Sans Serif" FontSize="12" FontWeight="Bold" />
+        <CheckBox x:Name="cboxKSXT" Canvas.Left="283" Canvas.Top="311" Width="80" Height="24" Content="KSXT" FontFamily="Microsoft Sans Serif" FontSize="12" FontWeight="Bold" />
+        <CheckBox x:Name="cboxOGI" Canvas.Left="283" Canvas.Top="337" Width="69" Height="24" Content="OGI" FontFamily="Microsoft Sans Serif" FontSize="12" FontWeight="Bold" />
+
+        <!-- ===== Steer / Machine relay bitfields and section-zone readouts ===== -->
+        <TextBlock x:Name="label17" Canvas.Left="5" Canvas.Top="251" Text="Steer" FontSize="12" />
+        <TextBlock x:Name="lbl1To8" Canvas.Left="-2" Canvas.Top="274" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lbl9To16" Canvas.Left="83" Canvas.Top="274" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="label21" Canvas.Left="5" Canvas.Top="303" Text="Machine" FontSize="12" />
+        <TextBlock x:Name="lbl1To8M" Canvas.Left="-2" Canvas.Top="323" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lbl9To16M" Canvas.Left="83" Canvas.Top="323" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lblZone1" Canvas.Left="4" Canvas.Top="498" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lblZone2" Canvas.Left="92" Canvas.Top="498" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lblZone3" Canvas.Left="180" Canvas.Top="498" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lblZone4" Canvas.Left="268" Canvas.Top="498" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lblZone5" Canvas.Left="356" Canvas.Top="498" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lblZone6" Canvas.Left="444" Canvas.Top="498" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lblZone7" Canvas.Left="532" Canvas.Top="498" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+        <TextBlock x:Name="lblZone8" Canvas.Left="620" Canvas.Top="498" Text="00000000" FontSize="11.25" FontWeight="Bold" />
+
+        <!-- ===== groupBox1 "Steer Module" @ (395,12) 314x473 ===== -->
+        <Border Canvas.Left="395" Canvas.Top="12" Width="314" Height="473"
+                BorderBrush="Gray" BorderThickness="1">
+            <Canvas>
+                <!-- group caption straddling the top border line (WinForms GroupBox.Text) -->
+                <TextBlock Text="Steer Module" Canvas.Left="8" Canvas.Top="-1"
+                           Background="WhiteSmoke" Padding="4,0,4,0" FontSize="11.25" />
+                <Button x:Name="btnSteerButtonRemote" Canvas.Left="114" Canvas.Top="27" Width="61" Height="61" Click="OnSteerButtonRemoteClick" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0"
+                        AutomationProperties.Name="Steer button (momentary)">
+                    <TextBlock Text="Steer Button" TextWrapping="Wrap" TextAlignment="Center" />
+                </Button>
+                <ToggleButton x:Name="cboxSteerSwitchRemote" Canvas.Left="15" Canvas.Top="29" Width="61" Height="59" Click="OnSteerSwitchRemoteClick" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0"
+                              AutomationProperties.Name="Steer switch (latching)">
+                    <TextBlock Text="Steer Switch" TextWrapping="Wrap" TextAlignment="Center" />
+                </ToggleButton>
+                <ToggleButton x:Name="cboxWorkSwitch" Canvas.Left="210" Canvas.Top="29" Width="61" Height="59" Click="OnWorkSwitchClick" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0"
+                              AutomationProperties.Name="Work switch (latching)">
+                    <TextBlock Text="Work Switch" TextWrapping="Wrap" TextAlignment="Center" />
+                </ToggleButton>
+                <TextBlock x:Name="label20" Canvas.Left="4" Canvas.Top="99" Text="Steer Switch:" FontSize="12" />
+                <TextBlock x:Name="lblSteerSwitchStatus" Canvas.Left="102" Canvas.Top="99" Text="0" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label1" Canvas.Left="184" Canvas.Top="100" Text="InvertWAS" FontSize="12" />
+                <TextBlock x:Name="lblInvertWAS" Canvas.Left="278" Canvas.Top="100" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label3" Canvas.Left="166" Canvas.Top="123" Text="RelayActHigh" FontSize="12" />
+                <TextBlock x:Name="lblRelayActHigh" Canvas.Left="278" Canvas.Top="123" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label2" Canvas.Left="9" Canvas.Top="124" Text="AOG Status:" FontSize="12" />
+                <TextBlock x:Name="lblGuidanceStatus" Canvas.Left="102" Canvas.Top="125" Text="0" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label4" Canvas.Left="156" Canvas.Top="146" Text="MotorDirection" FontSize="12" />
+                <TextBlock x:Name="lblMotorDirection" Canvas.Left="278" Canvas.Top="146" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label41" Canvas.Left="74" Canvas.Top="168" Text="Kp" FontSize="12" />
+                <TextBlock x:Name="lblKp" Canvas.Left="107" Canvas.Top="168" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label5" Canvas.Left="159" Canvas.Top="169" Text="SingleIP_WAS" FontSize="12" />
+                <TextBlock x:Name="lblSingleInputWAS" Canvas.Left="278" Canvas.Top="169" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label7" Canvas.Left="213" Canvas.Top="192" Text="Cytron" FontSize="12" />
+                <TextBlock x:Name="lblCytron" Canvas.Left="278" Canvas.Top="192" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label40" Canvas.Left="24" Canvas.Top="196" Text="HighPWM" FontSize="12" />
+                <TextBlock x:Name="lblHighPWM" Canvas.Left="107" Canvas.Top="196" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label14" Canvas.Left="204" Canvas.Top="215" Text="Danfoss" FontSize="12" />
+                <TextBlock x:Name="lblDanfoss" Canvas.Left="278" Canvas.Top="215" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label39" Canvas.Left="28" Canvas.Top="224" Text="LowPWM" FontSize="12" />
+                <TextBlock x:Name="lblLowPWM" Canvas.Left="107" Canvas.Top="224" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label9" Canvas.Left="203" Canvas.Top="238" Text="SteerSw" FontSize="12" />
+                <TextBlock x:Name="lblSteerSw" Canvas.Left="278" Canvas.Top="238" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label38" Canvas.Left="32" Canvas.Top="252" Text="MinPWM" FontSize="12" />
+                <TextBlock x:Name="lblMinPWM" Canvas.Left="107" Canvas.Top="252" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label11" Canvas.Left="201" Canvas.Top="261" Text="SteerBtn" FontSize="12" />
+                <TextBlock x:Name="lblSteerBtn" Canvas.Left="278" Canvas.Top="261" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label37" Canvas.Left="0" Canvas.Top="280" Text="WAS_Counts" FontSize="12" />
+                <TextBlock x:Name="lblWAS_Counts" Canvas.Left="107" Canvas.Top="280" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label13" Canvas.Left="199" Canvas.Top="284" Text="ShaftEnc" FontSize="12" />
+                <TextBlock x:Name="lblShaftEnc" Canvas.Left="278" Canvas.Top="284" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label18" Canvas.Left="174" Canvas.Top="307" Text="PulseCounts" FontSize="12" />
+                <TextBlock x:Name="lblPulseCounts" Canvas.Left="278" Canvas.Top="307" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label36" Canvas.Left="7" Canvas.Top="308" Text="WAS_Offset" FontSize="12" />
+                <TextBlock x:Name="lblWAS_Offset" Canvas.Left="107" Canvas.Top="308" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label15" Canvas.Left="200" Canvas.Top="330" Text="Pressure" FontSize="12" />
+                <TextBlock x:Name="lblPressure" Canvas.Left="278" Canvas.Top="330" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label35" Canvas.Left="12" Canvas.Top="336" Text="Ackermann" FontSize="12" />
+                <TextBlock x:Name="lblAckerman" Canvas.Left="106" Canvas.Top="336" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label16" Canvas.Left="207" Canvas.Top="353" Text="Current" FontSize="12" />
+                <TextBlock x:Name="lblCurrent" Canvas.Left="278" Canvas.Top="353" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label28" Canvas.Left="185" Canvas.Top="376" Text="UseY_Axis" FontSize="12" />
+                <TextBlock x:Name="lblUseY_Axis" Canvas.Left="278" Canvas.Top="376" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label19" Canvas.Left="9" Canvas.Top="418" Text="Scan Reply" FontSize="12" />
+                <TextBlock x:Name="lblScanReply" Canvas.Left="93" Canvas.Top="418" Width="40" Height="19" Text="No" FontSize="12" FontWeight="Bold" TextAlignment="Center" VerticalAlignment="Center" />
+                <TextBlock x:Name="label6" Canvas.Left="6" Canvas.Top="444" Text="SubNet" FontSize="12" />
+                <TextBlock x:Name="lblIPSet1" Canvas.Left="63" Canvas.Top="444" Width="40" Height="19" Text="255" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="lblIPSet2" Canvas.Left="106" Canvas.Top="444" Width="40" Height="19" Text="255" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="lblIPSet3" Canvas.Left="149" Canvas.Top="444" Width="40" Height="19" Text="255" FontSize="12" FontWeight="Bold" />
+            </Canvas>
+        </Border>
+
+        <!-- ===== groupBox2 "Machine Module" @ (18,370) 354x116 ===== -->
+        <Border Canvas.Left="18" Canvas.Top="370" Width="354" Height="116"
+                BorderBrush="Gray" BorderThickness="1">
+            <Canvas>
+                <!-- group caption straddling the top border line (WinForms GroupBox.Text) -->
+                <TextBlock Text="Machine Module" Canvas.Left="8" Canvas.Top="-1"
+                           Background="WhiteSmoke" Padding="4,0,4,0" FontSize="11.25" />
+                <TextBlock x:Name="label33" Canvas.Left="19" Canvas.Top="23" Text="Uturn" FontSize="12" />
+                <TextBlock x:Name="lblUTurn" Canvas.Left="73" Canvas.Top="23" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label26" Canvas.Left="127" Canvas.Top="23" Text="Raise Time" FontSize="12" />
+                <TextBlock x:Name="lblRaiseTime" Canvas.Left="216" Canvas.Top="23" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label44" Canvas.Left="265" Canvas.Top="23" Text="User1" FontSize="12" />
+                <TextBlock x:Name="lblUser1" Canvas.Left="318" Canvas.Top="23" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label32" Canvas.Left="16" Canvas.Top="44" Text="Speed" FontSize="12" />
+                <TextBlock x:Name="lblGPSSpeedMM" Canvas.Left="73" Canvas.Top="44" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label43" Canvas.Left="126" Canvas.Top="44" Text="LowerTime" FontSize="12" />
+                <TextBlock x:Name="lblLowerTime" Canvas.Left="216" Canvas.Top="44" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label45" Canvas.Left="265" Canvas.Top="44" Text="User2" FontSize="12" />
+                <TextBlock x:Name="lblUser2" Canvas.Left="318" Canvas.Top="44" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label31" Canvas.Left="4" Canvas.Top="65" Text="Hyd Lift" FontSize="12" />
+                <TextBlock x:Name="lblHydLift" Canvas.Left="73" Canvas.Top="65" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label42" Canvas.Left="131" Canvas.Top="65" Text="Lift Enable" FontSize="12" />
+                <TextBlock x:Name="lblLiftEnable" Canvas.Left="216" Canvas.Top="65" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label46" Canvas.Left="265" Canvas.Top="65" Text="User3" FontSize="12" />
+                <TextBlock x:Name="lblUser3" Canvas.Left="318" Canvas.Top="65" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label30" Canvas.Left="21" Canvas.Top="86" Text="Tram" FontSize="12" />
+                <TextBlock x:Name="lblTram" Canvas.Left="73" Canvas.Top="86" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label34" Canvas.Left="119" Canvas.Top="86" Text="Relay Act Hi" FontSize="12" />
+                <TextBlock x:Name="lblRelayActiveHigh" Canvas.Left="216" Canvas.Top="86" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+                <TextBlock x:Name="label47" Canvas.Left="265" Canvas.Top="86" Text="User4" FontSize="12" />
+                <TextBlock x:Name="lblUser4" Canvas.Left="318" Canvas.Top="86" Text="." Background="SeaShell" FontSize="12" FontWeight="Bold" />
+            </Canvas>
+        </Border>
+
+    </Canvas>
+</Window>

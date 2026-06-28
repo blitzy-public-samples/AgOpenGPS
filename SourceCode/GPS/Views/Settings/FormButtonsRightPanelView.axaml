@@ -1,0 +1,350 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Right-menu button-order picker (Avalonia view).
+
+    1:1 parity reimplementation of the WinForms `Forms/Settings/FormButtonsRightPanel`
+    (FormButtonsRightPanel.cs + FormButtonsRightPanel.Designer.cs). The dialog lets the operator
+    pick which command buttons appear on the main right menu and in what order: the operator
+    touches the eight source buttons on the left (groupBoxSelectButtons); each touch disables that
+    source button and appends its preview glyph into the right-hand preview column (flpRight inside
+    groupBoxAOGMenu). Default adds all eight, Reset clears, Test applies live, OK commits, Cancel
+    reverts. Per AAP §0.3.3 this is a faithful visual/behavioural parity port of the current Windows
+    Forms UI, never a redesign — no new colours, no relayout, no new controls.
+
+    WIRING CONTRACT — the partner code-behind (FormButtonsRightPanelView.axaml.cs) owns ALL
+    behaviour, exactly like the sibling code-behind dialogs (FormYesView / FormInputDialogView /
+    FormDialogView / ConfigVehicleControl):
+      * This view is IMPERATIVE, not MVVM: there is intentionally NO x:DataType, NO DataContext and
+        NO {Binding}. Every control is addressed by the x:Name fields the Avalonia XAML compiler
+        generates for the code-behind partial class.
+      * The eight source buttons raise the EXACT WinForms Click handlers (btnAutoSteer_Click …
+        btnContour_Click); the action buttons raise btnAll_Click (Default — add all eight),
+        btnReset_Click (Reset), btnOk_Click, btnCancel_Click and btnTest_Click. The code-behind
+        reproduces FormButtonsRightPanel.cs (toggling each source button's IsEnabled, appending the
+        matching preview Image into flpRight, and maintaining mf.buttonOrder).
+      * The eight PREVIEW glyphs (autoSteer / youTurn / autoSection / manualSection / skipPrev /
+        skipNext / track / contour) are NOT declared here: in WinForms they are added to and cleared
+        from flpRight at runtime (Load clears it, each Click re-adds one), and an Avalonia control can
+        only have a single parent — so the code-behind CONSTRUCTS them and adds them into flpRight in
+        click order (the file spec explicitly permits "constructed in code-behind"). flpRight is the
+        empty named container provided below for that purpose.
+      * Window Title and every group/label caption are assigned at runtime by the code-behind from
+        AgOpenGPS.Core.Translations.gStr (gsButtonPicker / gsSelectButtons / gsRightMenu /
+        gsArrangeText / gsDefault / gsReset / gsPreview). The English strings below are the WinForms
+        designer's design-time defaults, replaced by the localized gStr values at load.
+
+    WINDOW SHELL — mirrors FormButtonsRightPanel.Designer.cs:
+      Text "Button Arrange"          -> Title (design-time; code-behind sets gStr.gsButtonPicker)
+      ClientSize 741 x 664           -> Width / Height (SystemDecorations="None" => client == window)
+      FormBorderStyle.SizableToolWindow + ControlBox=false -> SystemDecorations="None" + CanResize="False"
+      ShowInTaskbar=false            -> ShowInTaskbar="False"
+      StartPosition.CenterParent     -> WindowStartupLocation="CenterOwner"
+      BackColor Silver               -> Background="{DynamicResource AogFrameBrush}" (file spec mandates
+                                        the day/night frame brush from App.axaml; referenced via
+                                        DynamicResource so the live Light<->Dark switch is observed)
+      Font Tahoma                    -> FontFamily="Tahoma"
+
+    Button glyphs are served from the GPS assembly via avares://AgOpenGPS/btnImages/<name>.png, the
+    same convention every sibling GPS view uses. NOTE: the WinForms `Resources.back_button` glyph is
+    the file `btnImages/back-button.png` (hyphen) on disk.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gStr="clr-namespace:AgOpenGPS.Core.Translations;assembly=AgOpenGPS.Core"
+        x:Class="AgOpenGPS.Views.Settings.FormButtonsRightPanelView"
+        Title="Button Arrange"
+        Width="741"
+        Height="664"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogFrameBrush}"
+        FontFamily="Tahoma">
+
+    <Window.Styles>
+        <!--
+            "selectButton" reproduces the WinForms source/label buttons: BackColor=WhiteSmoke,
+            FlatStyle.Flat with a thin 1px border, holding a centred image. The :pointerover /
+            :pressed template overrides keep the WhiteSmoke face in every interactive state (the
+            Fluent Button template would otherwise paint a theme hover/press fill); the :disabled
+            state intentionally falls through to the Fluent template so a disabled source button
+            dims exactly like WinForms `Enabled = false`.
+        -->
+        <Style Selector="Button.selectButton">
+            <Setter Property="Background" Value="WhiteSmoke" />
+            <Setter Property="BorderBrush" Value="#FF0066CC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.selectButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="WhiteSmoke" />
+            <Setter Property="BorderBrush" Value="#FF0066CC" />
+        </Style>
+        <Style Selector="Button.selectButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="WhiteSmoke" />
+            <Setter Property="BorderBrush" Value="#FF0066CC" />
+        </Style>
+
+        <!--
+            "imageButton" reproduces the WinForms OK / Cancel / Test buttons: BackColor=Transparent,
+            FlatStyle.Flat, FlatAppearance.BorderSize=0 — just the glyph, with no button surface in
+            any visual state. The template overrides suppress the Fluent hover/press background.
+        -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!--
+            "groupBox" gives a HeaderedContentControl the look of a WinForms GroupBox: a thin 1px
+            bordered box whose caption sits over (breaking) the top border line. The caption fills
+            its small background with the window's frame brush so it masks the border behind it. The
+            caption text comes from {TemplateBinding Header}, so the code-behind setting
+            `groupBox*.Header = gStr.*` maps 1:1 to the WinForms `GroupBox.Text`. Foreground uses the
+            day/night text brush so the caption stays legible in both Light and Dark variants.
+        -->
+        <Style Selector="HeaderedContentControl.groupBox">
+            <Setter Property="Foreground" Value="{DynamicResource AogTextBrush}" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border BorderBrush="Gray"
+                            BorderThickness="1"
+                            CornerRadius="3"
+                            Background="Transparent">
+                        <Panel>
+                            <ContentPresenter Content="{TemplateBinding Content}" />
+                            <Border HorizontalAlignment="Left"
+                                    VerticalAlignment="Top"
+                                    Margin="8,-9,0,0"
+                                    Padding="4,0"
+                                    Background="{DynamicResource AogFrameBrush}">
+                                <TextBlock Text="{TemplateBinding Header}"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           FontWeight="Bold"
+                                           FontSize="13" />
+                            </Border>
+                        </Panel>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+    </Window.Styles>
+
+    <!--
+        WinForms used absolute Location/Size with no anchoring, so a top-level Canvas reproduces
+        every coordinate pixel-faithfully (the same strategy as the sibling Forms->Views ports, e.g.
+        ConfigVehicleControl). Coordinates below are the WinForms client coordinates; coordinates
+        inside each group box are relative to that group box's client area.
+    -->
+    <Canvas Width="741" Height="664">
+
+        <!-- ============================================================================
+             A. groupBoxSelectButtons — WinForms GroupBox @ (19,12) 144x646. Header text set in
+                code-behind from gStr.gsSelectButtons. Hosts the eight SOURCE buttons (each 72x64),
+                stacked bottom-to-top at group-box-relative x=37 (y 30..569). Touching a source
+                button disables it (code-behind) and appends its glyph to the preview column.
+             ============================================================================ -->
+        <HeaderedContentControl x:Name="groupBoxSelectButtons"
+                                Classes="groupBox"
+                                Header="Select Buttons"
+                                Canvas.Left="19" Canvas.Top="12"
+                                Width="144" Height="646">
+            <Canvas>
+                <!-- btnContour -> Resources.ContourOn ; mf.buttonOrder.Add(7) -->
+                <Button x:Name="btnContour" AutomationProperties.Name="Contour" Classes="selectButton"
+                        Canvas.Left="37" Canvas.Top="30" Width="72" Height="64"
+                        Click="btnContour_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/ContourOn.png" Stretch="Uniform" Margin="3" />
+                </Button>
+
+                <!-- btnCycleLines -> Resources.ABLineCycle ; mf.buttonOrder.Add(6) -->
+                <Button x:Name="btnCycleLines" AutomationProperties.Name="Cycle Lines" Classes="selectButton"
+                        Canvas.Left="37" Canvas.Top="107" Width="72" Height="64"
+                        Click="btnCycleLines_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/ABLineCycle.png" Stretch="Uniform" Margin="3" />
+                </Button>
+
+                <!-- btnCycleLinesBk -> Resources.ABLineCycleBk ; mf.buttonOrder.Add(5) -->
+                <Button x:Name="btnCycleLinesBk" AutomationProperties.Name="Cycle Lines Back" Classes="selectButton"
+                        Canvas.Left="37" Canvas.Top="184" Width="72" Height="64"
+                        Click="btnCycleLinesBk_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/ABLineCycleBk.png" Stretch="Uniform" Margin="3" />
+                </Button>
+
+                <!-- btnTrack -> Resources.AutoTrack ; mf.buttonOrder.Add(4) -->
+                <Button x:Name="btnTrack" AutomationProperties.Name="Track" Classes="selectButton"
+                        Canvas.Left="37" Canvas.Top="261" Width="72" Height="64"
+                        Click="btnTrack_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/AutoTrack.png" Stretch="Uniform" Margin="3" />
+                </Button>
+
+                <!-- btnSectionMasterManual -> Resources.ManualOff ; mf.buttonOrder.Add(3) -->
+                <Button x:Name="btnSectionMasterManual" AutomationProperties.Name="Section Master Manual" Classes="selectButton"
+                        Canvas.Left="37" Canvas.Top="338" Width="72" Height="64"
+                        Click="btnSectionMasterManual_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/ManualOff.png" Stretch="Uniform" Margin="3" />
+                </Button>
+
+                <!-- btnSectionMasterAuto -> Resources.SectionMasterOff ; mf.buttonOrder.Add(2) -->
+                <Button x:Name="btnSectionMasterAuto" AutomationProperties.Name="Section Master Auto" Classes="selectButton"
+                        Canvas.Left="37" Canvas.Top="415" Width="72" Height="64"
+                        Click="btnSectionMasterAuto_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/SectionMasterOff.png" Stretch="Uniform" Margin="3" />
+                </Button>
+
+                <!-- btnAutoYouTurn -> Resources.YouTurnNo ; mf.buttonOrder.Add(1) -->
+                <Button x:Name="btnAutoYouTurn" AutomationProperties.Name="Auto U-Turn" Classes="selectButton"
+                        Canvas.Left="37" Canvas.Top="492" Width="72" Height="64"
+                        Click="btnAutoYouTurn_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/YouTurnNo.png" Stretch="Uniform" Margin="3" />
+                </Button>
+
+                <!-- btnAutoSteer -> Resources.AutoSteerOff ; mf.buttonOrder.Add(0) -->
+                <Button x:Name="btnAutoSteer" AutomationProperties.Name="Auto Steer" Classes="selectButton"
+                        Canvas.Left="37" Canvas.Top="569" Width="72" Height="64"
+                        Click="btnAutoSteer_Click">
+                    <Image Source="avares://AgOpenGPS/btnImages/AutoSteerOff.png" Stretch="Uniform" Margin="3" />
+                </Button>
+            </Canvas>
+        </HeaderedContentControl>
+
+        <!-- ============================================================================
+             B. groupBoxAOGMenu — WinForms GroupBox @ (432,12) 136x646. Header text set in
+                code-behind from gStr.gsRightMenu. Hosts flpRight, the live preview of the chosen
+                right menu.
+             ============================================================================ -->
+        <HeaderedContentControl x:Name="groupBoxAOGMenu"
+                                Classes="groupBox"
+                                Header="AOG Menu"
+                                Canvas.Left="432" Canvas.Top="12"
+                                Width="136" Height="646">
+            <Canvas>
+                <!--
+                    flpRight — the WinForms FlowLayoutPanel (FixedSingle border, FlowDirection
+                    BottomUp) @ group-box-relative (28,28) 92x608. Reimplemented as an EMPTY vertical
+                    StackPanel inside a ScrollViewer inside a 1px border (the FixedSingle look). The
+                    code-behind populates flpRight.Children with the preview glyphs in click order
+                    (Load clears it first), reproducing flpRight.Controls.Add/Clear.
+                -->
+                <Border Canvas.Left="28" Canvas.Top="28" Width="92" Height="608"
+                        BorderBrush="Gray" BorderThickness="1"
+                        Background="WhiteSmoke">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="flpRight" Orientation="Vertical" />
+                    </ScrollViewer>
+                </Border>
+            </Canvas>
+        </HeaderedContentControl>
+
+        <!-- ============================================================================
+             C. Centre column — instructions + Default/Reset action buttons.
+             ============================================================================ -->
+
+        <!-- labelButtonArrangeOne — WinForms Label @ (186,53) 230x219, Tahoma 12 Bold, Black,
+             Transparent. Multi-line instructions; runtime text set from gStr.gsArrangeText. -->
+        <TextBlock x:Name="labelButtonArrangeOne"
+                   Canvas.Left="186" Canvas.Top="53" Width="230" Height="219"
+                   FontFamily="Tahoma" FontSize="13" FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   TextWrapping="Wrap"
+                   Text="Touch the buttons on the left side you want to appear in the Menu (The right side).&#x0A;&#x0A;The order you push them will be the order they appear on the menu from bottom up." />
+
+        <!-- buttonLabelDefault — WinForms Button @ (246,301) 91x115: ArrowRight glyph above the
+             "Default" caption (TextImageRelation.ImageAboveText), Click -> btnAll_Click (adds all
+             eight). WhiteSmoke face. The caption text is the gStr.gsDefault design-time default;
+             if the code-behind assigns it, it sets the inner TextBlock so the glyph is preserved. -->
+        <Button x:Name="buttonLabelDefault" AutomationProperties.Name="Default" Classes="selectButton"
+                Canvas.Left="246" Canvas.Top="301" Width="91" Height="115"
+                Click="btnAll_Click">
+            <StackPanel Orientation="Vertical"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Image Source="avares://AgOpenGPS/btnImages/ArrowRight.png"
+                       MaxHeight="64" Stretch="Uniform" />
+                <TextBlock Text="Default"
+                           FontFamily="Tahoma" FontSize="13" FontWeight="Bold"
+                           Foreground="Black"
+                           HorizontalAlignment="Center"
+                           Margin="0,4,0,0" />
+            </StackPanel>
+        </Button>
+
+        <!-- buttonLabelReset — WinForms Button @ (246,500) 91x115: back-button glyph above the
+             "Reset" caption, Click -> btnReset_Click (clears preview + re-enables source buttons).
+             WhiteSmoke face. Runtime caption from gStr.gsReset. -->
+        <Button x:Name="buttonLabelReset" AutomationProperties.Name="Reset" Classes="selectButton"
+                Canvas.Left="246" Canvas.Top="500" Width="91" Height="115"
+                Click="btnReset_Click">
+            <StackPanel Orientation="Vertical"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Image Source="avares://AgOpenGPS/btnImages/back-button.png"
+                       MaxHeight="64" Stretch="Uniform" />
+                <TextBlock Text="Reset"
+                           FontFamily="Tahoma" FontSize="13" FontWeight="Bold"
+                           Foreground="Black"
+                           HorizontalAlignment="Center"
+                           Margin="0,4,0,0" />
+            </StackPanel>
+        </Button>
+
+        <!-- ============================================================================
+             D. Right column — Preview caption + Test / Cancel / OK action buttons.
+             ============================================================================ -->
+
+        <!-- labelPreview — WinForms Label @ (651,209) 82x26, Tahoma 12 Bold, MiddleCenter.
+             Runtime text set from gStr.gsPreview. -->
+        <Border Canvas.Left="651" Canvas.Top="209" Width="82" Height="26" Background="Transparent">
+            <TextBlock x:Name="labelPreview"
+                       Text="Preview"
+                       FontFamily="Tahoma" FontSize="13" FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       TextAlignment="Center" />
+        </Border>
+
+        <!-- btnTest — WinForms Button @ (623,234) 106x70, Transparent, TrackVisible glyph,
+             Click -> btnTest_Click (applies the current order live without closing). -->
+        <Button x:Name="btnTest" AutomationProperties.Name="Test" Classes="imageButton"
+                Canvas.Left="623" Canvas.Top="234" Width="106" Height="70"
+                Click="btnTest_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/TrackVisible.png"
+                   MaxHeight="64" Stretch="Uniform" />
+        </Button>
+
+        <!-- btnCancel — WinForms Button @ (657,451) 69x70, Transparent, Cancel64 glyph,
+             Click -> btnCancel_Click (reverts setDisplay_buttonOrder and closes). -->
+        <Button x:Name="btnCancel" AutomationProperties.Name="Cancel" Classes="imageButton"
+                Canvas.Left="657" Canvas.Top="451" Width="69" Height="70"
+                IsCancel="True"
+                Click="btnCancel_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+        <!-- btnOk — WinForms Button @ (620,576) 106x70, Transparent, OK64 glyph,
+             Click -> btnOk_Click (commits the order, rebuilds the right menu, and closes). -->
+        <Button x:Name="btnOk" AutomationProperties.Name="OK" Classes="imageButton"
+                Canvas.Left="620" Canvas.Top="576" Width="106" Height="70"
+                IsDefault="True"
+                Click="btnOk_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

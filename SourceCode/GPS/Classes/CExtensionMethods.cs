@@ -1,72 +1,26 @@
-﻿using System;
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+//
+// De-Windowsed extension helpers. The WinForms-only members that previously lived here are removed
+// by the migration (AAP §0.2.1, §0.5):
+//   * NudlessNumericUpDown : System.Windows.Forms.NumericUpDown — a custom spinner control; the
+//     Avalonia views reimplement numeric entry directly (e.g. FormSimCoordsView), so the WinForms
+//     control has no cross-platform consumer.
+//   * SetProgressNoAnimation(this System.Windows.Forms.ProgressBar) — a WinForms Aero-animation
+//     work-around with no consumers once the WinForms surface is removed.
+// Only the framework-agnostic colour helper is retained: System.Drawing.Color lives in the in-box
+// System.Drawing.Primitives assembly on net8.0, so it carries across all platforms unchanged.
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Windows.Forms;
 
 namespace AgOpenGPS
 {
-    public class NudlessNumericUpDown : NumericUpDown
-    {
-        public NudlessNumericUpDown()
-        {
-            Controls[0].Hide();
-        }
-
-        protected override void OnTextBoxResize(object source, EventArgs e)
-        {
-            Controls[1].Width = Width - 4;
-        }
-
-        public new decimal Value
-        {
-            get
-            {
-                return base.Value;
-            }
-            set
-            {
-                if (value != base.Value)
-                {
-                    if (value < Minimum)
-                    {
-                        value = Minimum;
-                    }
-                    if (value > Maximum)
-                    {
-                        value = Maximum;
-                    }
-                    base.Value = value;
-                }
-            }
-        }
-    }
-
-
     public static class CExtensionMethods
     {
         /// <summary>
-        /// Sets the progress bar value, without using 'Windows Aero' animation.
-        /// This is to work around a known WinForms issue where the progress bar
-        /// is slow to update.
+        /// Clamps each RGB channel that is fully saturated (255) down to 254, leaving alpha untouched.
+        /// Used so a colour never serialises/round-trips as pure 255 in a channel where the legacy
+        /// format treated 255 as a sentinel. Cross-platform: <see cref="Color"/> is in the in-box
+        /// System.Drawing.Primitives assembly.
         /// </summary>
-        public static void SetProgressNoAnimation(this ProgressBar pb, int value)
-        {
-            // To get around the progressive animation, we need to move the
-            // progress bar backwards.
-            if (value == pb.Maximum)
-            {
-                // Special case as value can't be set greater than Maximum.
-                pb.Maximum = value + 1;     // Temporarily Increase Maximum
-                pb.Value = value + 1;       // Move past
-                pb.Maximum = value;         // Reset maximum
-            }
-            else
-            {
-                pb.Value = value + 1;       // Move past
-            }
-            pb.Value = value;               // Move to correct value
-        }
-
         public static Color CheckColorFor255(this Color color)
         {
             var currentR = color.R;
@@ -80,46 +34,4 @@ namespace AgOpenGPS
             return Color.FromArgb(color.A, currentR, currentG, currentB);
         }
     }
-
-    //public class ExtendedPanel : Panel
-    //{
-    //    private const int WS_EX_TRANSPARENT = 0x20;
-    //    public ExtendedPanel()
-    //    {
-    //        SetStyle(ControlStyles.Opaque, true);
-    //    }
-
-    //    private int opacity = 50;
-    //    [DefaultValue(50)]
-    //    public int Opacity
-    //    {
-    //        get
-    //        {
-    //            return this.opacity;
-    //        }
-    //        set
-    //        {
-    //            if (value < 0 || value > 100)
-    //                throw new System.ArgumentException("value must be between 0 and 100");
-    //            this.opacity = value;
-    //        }
-    //    }
-    //    protected override CreateParams CreateParams
-    //    {
-    //        get
-    //        {
-    //            CreateParams cp = base.CreateParams;
-    //            cp.ExStyle = cp.ExStyle | WS_EX_TRANSPARENT;
-    //            return cp;
-    //        }
-    //    }
-    //    protected override void OnPaint(PaintEventArgs e)
-    //    {
-    //        using (var brush = new SolidBrush(Color.FromArgb(this.opacity * 255 / 100, this.BackColor)))
-    //        {
-    //            e.Graphics.FillRectangle(brush, this.ClientRectangle);
-    //        }
-    //        base.OnPaint(e);
-    //    }
-    //}
 }

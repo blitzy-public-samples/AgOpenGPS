@@ -1,6 +1,8 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 //Please, if you use this, share the improvements
 
 using AgLibrary.Logging;
+using AgOpenGPS.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,7 +15,11 @@ namespace AgOpenGPS
     /// </summary>
     public class CSmartWAS
     {
-        private readonly FormGPS mf;
+        // [XPLAT] Decoupled from the WinForms host-form god-object. The autosteer runtime state this
+        // calibrator reads (autosteer-on flag, average speed, guidance cross-track distance) is now
+        // sourced live-by-reference from the shared AgOpenGPS.Core ApplicationModel rather than from a
+        // direct host-form field reference. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        private readonly ApplicationModel _appModel;
 
         // Data collection settings
         private const int MAX_SAMPLES = 2000;
@@ -47,9 +53,11 @@ namespace AgOpenGPS
 
         #endregion
 
-        public CSmartWAS(FormGPS callingForm)
+        // [XPLAT] Inject the shared ApplicationModel (previously the calling host form) so this
+        // calibrator is free of any WinForms coupling and runs unchanged on Windows, Linux and macOS.
+        public CSmartWAS(ApplicationModel appModel)
         {
-            mf = callingForm;
+            _appModel = appModel;
             Reset();
         }
 
@@ -120,10 +128,13 @@ namespace AgOpenGPS
         public void AddSample(double steerAngleDegrees)
         {
             // Check collection conditions
+            // [XPLAT] Runtime state read live-by-reference from the shared ApplicationModel (previously
+            // the host-form reference); types/scaling are unchanged (isBtnAutoSteerOn: bool,
+            // avgSpeed: double km/h, guidanceLineDistanceOff: short mm) so the gating is identical.
             if (!IsCollecting) return;
-            if (!mf.isBtnAutoSteerOn) return;
-            if (mf.avgSpeed < MIN_SPEED_KMH) return;
-            if (Math.Abs(mf.guidanceLineDistanceOff) > MAX_DIST_OFF_MM) return;
+            if (!_appModel.isBtnAutoSteerOn) return;
+            if (_appModel.avgSpeed < MIN_SPEED_KMH) return;
+            if (Math.Abs(_appModel.guidanceLineDistanceOff) > MAX_DIST_OFF_MM) return;
             if (Math.Abs(steerAngleDegrees) > MAX_ANGLE_DEG) return;
 
             // Normalize for WAS inversion: inverted WAS flips the required correction direction

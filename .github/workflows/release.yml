@@ -1,4 +1,5 @@
 name: Build and release
+# [XPLAT] migrated from net48/WinForms single Windows runner to tri-OS (windows/ubuntu/macos) matrix — see MIGRATION_DOCS/CHANGELOG.md
 
 on:
   push:
@@ -21,7 +22,33 @@ env:
 
 jobs:
   build-and-release:
-    runs-on: windows-latest
+    # [XPLAT] Least-privilege GITHUB_TOKEN scope, declared on the only job that needs it: this job
+    # creates the GitHub Release and uploads per-RID assets via softprops/action-gh-release@v2, which
+    # requires `contents: write`. No other permission is granted, replacing the broad repository-default
+    # token scope the job would otherwise inherit.
+    permissions:
+      contents: write
+    # [XPLAT] tri-OS publish matrix: one self-contained leg per OS/RID. A pure `include` matrix gives
+    # exactly four legs, each carrying its own os + rid + framework. Both Apple RIDs (osx-x64 and
+    # osx-arm64) build on the macOS runner. `fail-fast: false` so one OS/RID failing does not cancel
+    # the others. `runs-on` resolves per leg from ${{ matrix.os }}.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            framework: net8.0-windows
+          - os: ubuntu-latest
+            rid: linux-x64
+            framework: net8.0
+          - os: macos-latest
+            rid: osx-x64
+            framework: net8.0
+          - os: macos-latest
+            rid: osx-arm64
+            framework: net8.0
+    runs-on: ${{ matrix.os }}
 
     steps:
     - name: Checkout
@@ -31,6 +58,14 @@ jobs:
 
     - name: Setup dotnet
       uses: actions/setup-dotnet@v4
+      # [XPLAT] QA F5 m1: explicitly install BOTH the .NET 8 runtime (the test target framework, net8.0)
+      # and the .NET 9 SDK (pinned by global.json). Without 8.0.x the net8.0 test host would abort with
+      # FrameworkNotFound on a 9.0-only runner image. Paired with <RollForward>Major</RollForward> in the
+      # test projects for defense-in-depth — see MIGRATION_DOCS/PARITY_REPORT.md.
+      with:
+        dotnet-version: |
+          8.0.x
+          9.0.x
 
     - name: Setup GitVersion
       uses: gittools/actions/gitversion/setup@v3.2.0
@@ -45,18 +80,67 @@ jobs:
     - name: Install dependencies
       run: dotnet restore ${{env.SOLUTION_FILE_PATH}}
 
+    # [XPLAT] QA Issue 5: build AND test EXPLICITLY in the Release configuration (env.BUILD_CONFIGURATION)
+    # so the CI gate exercises the same analyzer + TreatWarningsAsErrors settings as the publish step and
+    # the local final-acceptance gate. Both steps pin -c Release in lockstep: the --no-build test run must
+    # match the build configuration, otherwise a Debug-defaulted test would not find the Release output.
     - name: Build
-      run: dotnet build --no-restore ${{env.SOLUTION_FILE_PATH}}
+      run: dotnet build -c ${{ env.BUILD_CONFIGURATION }} --no-restore ${{env.SOLUTION_FILE_PATH}}
 
     - name: Test
-      run: dotnet test --no-restore --no-build ${{env.SOLUTION_FILE_PATH}}
+      run: dotnet test -c ${{ env.BUILD_CONFIGURATION }} --no-restore --no-build ${{env.SOLUTION_FILE_PATH}}
 
-    - name: Publish
-      run: dotnet publish --no-restore --configuration ${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
+    # [XPLAT] Per-RID SELF-CONTAINED publish — replaces the framework-dependent solution-level publish.
+    # The output does NOT require a pre-installed .NET runtime on the target machine (cross-platform
+    # reach, AAP §0.7.2). The executable app projects are published per RID into per-app subfolders of
+    # publish/${{ matrix.rid }} (a solution-level self-contained publish is ambiguous because libraries
+    # and test projects must not publish with a RID, and the single-target executables have no
+    # net8.0-windows head). GPS and AgIO multi-target net8.0;net8.0-windows, so the framework is paired
+    # to the RID via ${{ matrix.framework }}: win-x64 publishes net8.0-windows (so the WMI brightness /
+    # Registry migration-read platform code participates), while linux-x64/osx-x64/osx-arm64 publish
+    # net8.0. The single-target executables (ModSim/GPS_Out/AgDiag/Updater) are net8.0 only and omit -f.
+    # Runs under bash on every runner (Git Bash on Windows) so the multi-line script — and its set -e
+    # fail-fast on any failing publish — is identical across all three operating systems.
+    - name: Publish (self-contained, ${{ matrix.rid }})
+      shell: bash
+      run: |
+        dotnet publish SourceCode/GPS/AgOpenGPS.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} -f ${{ matrix.framework }} --self-contained true -o "publish/${{ matrix.rid }}/AgOpenGPS"
+        dotnet publish SourceCode/AgIO/Source/AgIO.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} -f ${{ matrix.framework }} --self-contained true -o "publish/${{ matrix.rid }}/AgIO"
+        dotnet publish SourceCode/ModSim/Source/ModSim.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} --self-contained true -o "publish/${{ matrix.rid }}/ModSim"
+        dotnet publish SourceCode/GPS_Out/Source/GPS_Out.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} --self-contained true -o "publish/${{ matrix.rid }}/GPS_Out"
+        dotnet publish SourceCode/AgDiag/AgDiag.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} --self-contained true -o "publish/${{ matrix.rid }}/AgDiag"
+        dotnet publish SourceCode/Updater/AgOpenGPS.Updater.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} --self-contained true -o "publish/${{ matrix.rid }}/Updater"
 
-    - name: Create AgOpenGPS_${{ env.GitVersion_SemVer }}.zip
-      shell: powershell
-      run: Compress-Archive -Path "${{env.PUBLISH_DIR}}/*" -DestinationPath "AgOpenGPS_${{ env.GitVersion_SemVer }}.zip"
+    # [XPLAT] Bundle licensing artifacts with every RID's payload (AAP §0.7.2 — preserve licensing).
+    # The root Apache-2.0 LICENSE is copied to the top of the per-RID tree; the two GPLv3 License.txt
+    # files are also copied explicitly into their app subfolders so the archive is guaranteed to carry
+    # them regardless of csproj <Content Include> behaviour (each app csproj already copies its own
+    # License.txt to output, so these cp commands are idempotent). Runs under bash on every runner.
+    - name: Bundle license files
+      shell: bash
+      run: |
+        cp LICENSE "publish/${{ matrix.rid }}/LICENSE"
+        cp SourceCode/GPS/License.txt "publish/${{ matrix.rid }}/AgOpenGPS/License.txt"
+        cp SourceCode/Updater/License.txt "publish/${{ matrix.rid }}/Updater/License.txt"
+
+    # [XPLAT] Cross-platform, per-RID archiving — replaces the Windows-only PowerShell Compress-Archive
+    # that previously ran on the shared path. Each OS produces its own asset whose name embeds BOTH the
+    # version AND the RID, so the four assets never collide/overwrite on the shared release. Every
+    # OS-specific command is gated by `if: runner.os == '...'`, so no PowerShell-only command ever runs
+    # on a Linux/macOS shared path. Both macOS legs share runner.os == 'macOS'; ${{ matrix.rid }} keeps
+    # the osx-x64 and osx-arm64 assets distinct.
+    - name: Archive (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: Compress-Archive -Path "publish/${{ matrix.rid }}/*" -DestinationPath "AgOpenGPS_${{ env.GitVersion_SemVer }}_${{ matrix.rid }}.zip"
+
+    - name: Archive (Linux)
+      if: runner.os == 'Linux'
+      run: tar -czf "AgOpenGPS_${{ env.GitVersion_SemVer }}_${{ matrix.rid }}.tar.gz" -C "publish/${{ matrix.rid }}" .
+
+    - name: Archive (macOS)
+      if: runner.os == 'macOS'
+      run: cd "publish/${{ matrix.rid }}" && zip -r "${{ github.workspace }}/AgOpenGPS_${{ env.GitVersion_SemVer }}_${{ matrix.rid }}.zip" .
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
@@ -68,4 +152,7 @@ jobs:
           Automated Release by GitHub Action CI
         draft: ${{ github.ref_name == 'master' }}
         prerelease: ${{ contains(github.ref_name, 'release/') }}
-        files: AgOpenGPS_${{ env.GitVersion_SemVer }}.zip
+        # [XPLAT] Each matrix leg attaches only its own per-RID asset (.zip or .tar.gz). All legs share
+        # the same tag_name/name, so action-gh-release@v2 creates the release once and appends each
+        # leg's file — the intended per-OS fan-in. The distinct per-RID names prevent overwrites.
+        files: AgOpenGPS_${{ env.GitVersion_SemVer }}_${{ matrix.rid }}.*

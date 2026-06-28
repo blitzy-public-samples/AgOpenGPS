@@ -1,6 +1,6 @@
 ﻿using AgOpenGPS.Core.DrawLib;
 using System;
-using System.Windows.Media.Media3D;
+// [XPLAT] migrated from net48/WinForms — removed unused System.Windows.Media.Media3D (WPF) using; see MIGRATION_DOCS/TRANSITION_MAP.md
 
 namespace AgOpenGPS.Core
 {

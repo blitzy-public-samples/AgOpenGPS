@@ -1,4 +1,5 @@
-﻿using AgOpenGPS.Core.Models;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core.Models;
 using System.Collections.Generic;
 
 namespace AgOpenGPS

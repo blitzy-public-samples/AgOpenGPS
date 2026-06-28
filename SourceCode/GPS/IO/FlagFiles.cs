@@ -1,5 +1,4 @@
-﻿using AgLibrary.Logging;
-using AgOpenGPS.Core.Models;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -38,7 +37,7 @@ namespace AgOpenGPS.IO
                 reader.ReadLine(); // header
                 var line = reader.ReadLine();
                 int count;
-                if (!int.TryParse(line, out count)) return result;
+                if (!int.TryParse((line ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out count)) return result;
 
                 for (int i = 0; i < count; i++)
                 {

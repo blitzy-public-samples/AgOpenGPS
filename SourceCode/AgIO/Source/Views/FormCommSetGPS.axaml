@@ -1,0 +1,454 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormCommSetGPS"
+        x:DataType="vm:FormCommSetGPSViewModel"
+        Title="GPS Comm Settings"
+        RequestedThemeVariant="Light"
+        Width="1040" Height="784"
+        MinWidth="900" MinHeight="560"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        Background="#FFDCDCDC"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+
+    <!-- [XPLAT] migrated from net48/WinForms FormCommSetGPS.cs + FormCommSetGPS.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms "Connect GPS" dialog
+        (the largest AgIO configuration dialog: Forms/FormCommSetGPS.Designer.cs + FormCommSetGPS.cs).
+        It configures and opens/closes AgIO's six serial ports and shows the live receive traffic.
+        This is a parity rebuild, never a redesign (AAP §0.3.3): same controls, captions, baud lists,
+        and command set as the original — only re-hosted on the cross-platform Avalonia stack.
+
+        Parity mapping to FormCommSetGPS.Designer.cs (WinForms control -> Avalonia element):
+          • Form Text "Connect GPS"            -> Title="GPS Comm Settings" (per agent-prompt caption).
+          • ClientSize 929 x 696, CenterParent  -> large resizable Window, WindowStartupLocation="CenterOwner".
+          • BackColor Gainsboro                 -> Window Background="#FFDCDCDC".
+          • Font Tahoma                         -> FontFamily="Tahoma" FontSize="14.25".
+          • groupBox1 "GPS" (held GPS + RTCM)   -> the "GPS" group Border (GPS port row + RTCM port row).
+          • groupBox2 "GPS Port 2"              -> the "GPS Port 2" group Border (was positioned off-screen
+                                                   in the original; restored to a visible, bound block here
+                                                   because the agent-prompt enumerates GPS2 as one of the six
+                                                   required port blocks and the view-model exposes Gps2Port).
+          • groupBox6 "IMU" / groupBox3 "Steer" -> the IMU / Steer / Machine group Borders (port-only:
+            / groupBox4 "Machine"                  fixed baud, no baud combo — exactly as the originals).
+          • groupBox5 "Module 3"                -> OMITTED: dead code in the original (all handlers commented
+                                                   out, no spModule3, and no view-model property exists).
+          • textBoxRcv / textBoxRcv2            -> read-only monospace receive boxes (RecvText / RecvText2).
+          • right-side status block             -> "Status" group: GPS/IMU/Steer/Machine port-name labels
+            (label1/4/5/6 + lblGPS/IMU/Steer/      (GpsPortLabel/ImuPortLabel/SteerPortLabel/MachinePortLabel)
+            Machine + lblFrom*)                    and the GPS-in counter (lblFromGPS -> FromGpsText). The IMU/
+                                                   Steer/Machine "from" counters were never updated by the
+                                                   WinForms timer (a static placeholder), so they stay placeholders.
+          • btnRescan (ScanPorts) / btnSerialOK -> "Rescan Ports" -> RescanCommand / "OK" -> OkCommand.
+
+        BUTTON AFFORDANCES = TEXT, not bitmaps ([XPLAT] deliberate, documented convention): the migrated
+        AgIO.csproj registers NO btnImages as <AvaloniaResource> (only GPS/AgOpenGPS.csproj does) and excludes
+        Properties/Resources.Designer.cs from compilation (System.Drawing purged). Referencing
+        avares://AgIO/btnImages/* here would NOT resolve and would render a broken image / throw at runtime, so
+        — exactly like every sibling migrated AgIO view (FormYes, FormSource, FormISOBUS, FormProfiles, FormPGN,
+        FormNumeric, …) — this dialog renders the USB_Connect/USB_Disconnect/ScanPorts/OK64 affordances as text.
+        The decorative pictureBoxes (satellite / module icons) are likewise omitted (purely decorative).
+        See MIGRATION_DOCS/TRANSITION_MAP.md.
+
+        Bound to FormCommSetGPSViewModel via COMPILED bindings (x:DataType). The six near-identical port blocks
+        are each a SerialPortItemViewModel (GpsPort / Gps2Port / RtcmPort / ImuPort / SteerPort / MachinePort);
+        the WinForms god-object writes (mf.sp<Port>, FormLoop.<field>) are gone — the view-model commands the
+        shared SerialCommService, and the OK/Close + timed-message popups are surfaced to the code-behind via
+        the RequestClose / RequestTimedMessage events (see FormCommSetGPS.axaml.cs / FormCommSetGPSViewModel.cs).
+
+        Theme: Light only — App.axaml pins RequestedThemeVariant="Light" (AgIO has no day/night toggle); it is
+        restated here for explicitness/parity, mirroring the sibling views.
+    -->
+
+    <Window.Styles>
+        <!-- WinForms GroupBox (Color.Black text, Color.Silver border via DrawGroupBox) -> bordered panel. -->
+        <Style Selector="Border.group">
+            <Setter Property="BorderBrush" Value="#FFAAAAAA" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Background" Value="#FFF2F2F2" />
+        </Style>
+
+        <!-- GroupBox.Text (Tahoma 14.25 Bold). -->
+        <Style Selector="TextBlock.groupHeader">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#FF000000" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+
+        <!-- Sub-section header inside the GPS group (label3 "RTCM", Tahoma 18 Bold). -->
+        <Style Selector="TextBlock.subHeader">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#FF000000" />
+            <Setter Property="Margin" Value="0,6,0,4" />
+        </Style>
+
+        <!-- Small column caption (lblCurrentPort2 "Port" / lblCurrentBaud2 "Baud", Tahoma 11.25 Bold). -->
+        <Style Selector="TextBlock.colCaption">
+            <Setter Property="FontSize" Value="11.25" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#FF404040" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Current-value label (lblCurrent*Port / lblCurrent*Baud at runtime). -->
+        <Style Selector="TextBlock.current">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#FF000000" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,1,0,3" />
+        </Style>
+
+        <!-- Port / baud selector combo (WinForms cbox*: DropDownList, Tahoma 18 Bold, large/touch). -->
+        <Style Selector="ComboBox.selector">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="MinWidth" Value="132" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Open / Close serial buttons (WinForms btnOpen*/btnClose*, large/touch). -->
+        <Style Selector="Button.port">
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="MinWidth" Value="92" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="FontSize" Value="14.25" />
+            <Setter Property="VerticalAlignment" Value="Bottom" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Bottom command-bar buttons (btnRescan / btnSerialOK). -->
+        <Style Selector="Button.command">
+            <Setter Property="MinHeight" Value="48" />
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="Padding" Value="18,8" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Live receive boxes (WinForms textBoxRcv/textBoxRcv2: read-only, multiline). Monospace per the
+             agent-prompt so the raw NMEA sentences keep a fixed-pitch, parity-readable layout. -->
+        <Style Selector="TextBox.recv">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="MinHeight" Value="54" />
+            <Setter Property="Background" Value="#FFDCDCDC" />
+            <Setter Property="FontFamily" Value="Courier New, DejaVu Sans Mono, Liberation Mono, Consolas, Menlo, monospace" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        </Style>
+
+        <!-- Right-side status block captions/values (label1/4/5/6 + lblGPS/IMU/Steer/Machine + lblFrom*). -->
+        <Style Selector="TextBlock.statusCaption">
+            <Setter Property="FontSize" Value="14.25" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#FF505050" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,6,8,6" />
+        </Style>
+        <Style Selector="TextBlock.statusValue">
+            <Setter Property="FontSize" Value="14.25" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#FF000000" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,6,12,6" />
+        </Style>
+        <Style Selector="TextBlock.statusCounter">
+            <Setter Property="FontSize" Value="14.25" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#FF000000" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="Margin" Value="0,6,0,6" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="12" LastChildFill="True">
+
+        <!-- Bottom command bar — WinForms btnRescan (ScanPorts, re-enumerate ports) + btnSerialOK (OK64,
+             close). Rendered as text buttons per the AgIO no-image convention. OK is the default button
+             (Enter), reproducing the WinForms accept affordance; both raise the view-model commands. -->
+        <Border DockPanel.Dock="Bottom" Margin="0,12,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                <Button Classes="command"
+                        Content="Rescan Ports"
+                        Command="{Binding RescanCommand}"
+                        AutomationProperties.Name="Rescan serial ports" />
+                <Button Classes="command"
+                        Content="OK"
+                        IsDefault="True"
+                        Command="{Binding OkCommand}"
+                        AutomationProperties.Name="OK, close dialog" />
+            </StackPanel>
+        </Border>
+
+        <!-- Main content: left = the six serial-port blocks (scrollable so nothing is clipped on any OS /
+             window size); right = the live status read-outs. -->
+        <Grid ColumnDefinitions="*,Auto">
+
+            <ScrollViewer Grid.Column="0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto"
+                          Padding="0,0,12,0">
+                <StackPanel Spacing="0">
+
+                    <!-- ============================= GPS group (groupBox1) ============================= -->
+                    <!-- The WinForms groupBox1 "GPS" held BOTH the GPS port block and the RTCM port block. -->
+                    <Border Classes="group">
+                        <StackPanel Spacing="2">
+                            <TextBlock Classes="groupHeader" Text="GPS" />
+
+                            <!-- GPS port row: Port combo + Baud combo + Open/Close (GpsPort). -->
+                            <Grid ColumnDefinitions="*,*,Auto,Auto" ColumnSpacing="10">
+                                <StackPanel Grid.Column="0" Spacing="0">
+                                    <TextBlock Classes="colCaption" Text="Port" />
+                                    <TextBlock Classes="current" Text="{Binding GpsPort.CurrentPortLabel, Mode=OneWay}" />
+                                    <ComboBox Classes="selector"
+                                              ItemsSource="{Binding AvailablePorts}"
+                                              SelectedItem="{Binding GpsPort.SelectedPortName, Mode=TwoWay}"
+                                              IsEnabled="{Binding GpsPort.CanEditSettings}"
+                                              AutomationProperties.Name="GPS port" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="0">
+                                    <TextBlock Classes="colCaption" Text="Baud" />
+                                    <TextBlock Classes="current" Text="{Binding GpsPort.CurrentBaudLabel, Mode=OneWay}" />
+                                    <ComboBox Classes="selector"
+                                              ItemsSource="{Binding GpsPort.BaudRates}"
+                                              SelectedItem="{Binding GpsPort.SelectedBaud, Mode=TwoWay}"
+                                              IsEnabled="{Binding GpsPort.CanEditSettings}"
+                                              AutomationProperties.Name="GPS baud rate" />
+                                </StackPanel>
+                                <Button Grid.Column="2" Classes="port"
+                                        Content="Open"
+                                        Command="{Binding GpsPort.OpenCommand}"
+                                        AutomationProperties.Name="Open GPS port" />
+                                <Button Grid.Column="3" Classes="port"
+                                        Content="Close"
+                                        Command="{Binding GpsPort.CloseCommand}"
+                                        AutomationProperties.Name="Close GPS port" />
+                            </Grid>
+
+                            <!-- RTCM sub-block (label3 "RTCM" + labelDifferentRtcmPort). RtcmPort. -->
+                            <TextBlock Classes="subHeader" Text="RTCM" />
+                            <TextBlock Classes="colCaption"
+                                       HorizontalAlignment="Left"
+                                       Text="Different Port Then GPS ?" />
+                            <Grid ColumnDefinitions="*,*,Auto,Auto" ColumnSpacing="10" Margin="0,4,0,0">
+                                <StackPanel Grid.Column="0" Spacing="0">
+                                    <TextBlock Classes="colCaption" Text="RTCM Port" />
+                                    <TextBlock Classes="current" Text="{Binding RtcmPort.CurrentPortLabel, Mode=OneWay}" />
+                                    <ComboBox Classes="selector"
+                                              ItemsSource="{Binding AvailablePorts}"
+                                              SelectedItem="{Binding RtcmPort.SelectedPortName, Mode=TwoWay}"
+                                              IsEnabled="{Binding RtcmPort.CanEditSettings}"
+                                              AutomationProperties.Name="RTCM port" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="0">
+                                    <TextBlock Classes="colCaption" Text="RTCM Baud" />
+                                    <TextBlock Classes="current" Text="{Binding RtcmPort.CurrentBaudLabel, Mode=OneWay}" />
+                                    <ComboBox Classes="selector"
+                                              ItemsSource="{Binding RtcmPort.BaudRates}"
+                                              SelectedItem="{Binding RtcmPort.SelectedBaud, Mode=TwoWay}"
+                                              IsEnabled="{Binding RtcmPort.CanEditSettings}"
+                                              AutomationProperties.Name="RTCM baud rate" />
+                                </StackPanel>
+                                <Button Grid.Column="2" Classes="port"
+                                        Content="Open"
+                                        Command="{Binding RtcmPort.OpenCommand}"
+                                        AutomationProperties.Name="Open RTCM port" />
+                                <Button Grid.Column="3" Classes="port"
+                                        Content="Close"
+                                        Command="{Binding RtcmPort.CloseCommand}"
+                                        AutomationProperties.Name="Close RTCM port" />
+                            </Grid>
+
+                            <!-- GPS live receive box (WinForms textBoxRcv -> RecvText). -->
+                            <TextBox Classes="recv"
+                                     Margin="0,10,0,0"
+                                     Text="{Binding RecvText, Mode=OneWay}"
+                                     AutomationProperties.Name="GPS received sentence" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ========================== GPS Port 2 group (groupBox2) ========================= -->
+                    <!-- Restored to a visible block (the WinForms groupBox2 sat off-screen at x=1118); the
+                         agent-prompt requires GPS2 as one of the six port blocks and Gps2Port exists. -->
+                    <Border Classes="group">
+                        <StackPanel Spacing="2">
+                            <TextBlock Classes="groupHeader" Text="GPS Port 2" />
+                            <Grid ColumnDefinitions="*,*,Auto,Auto" ColumnSpacing="10">
+                                <StackPanel Grid.Column="0" Spacing="0">
+                                    <TextBlock Classes="colCaption" Text="Port" />
+                                    <TextBlock Classes="current" Text="{Binding Gps2Port.CurrentPortLabel, Mode=OneWay}" />
+                                    <ComboBox Classes="selector"
+                                              ItemsSource="{Binding AvailablePorts}"
+                                              SelectedItem="{Binding Gps2Port.SelectedPortName, Mode=TwoWay}"
+                                              IsEnabled="{Binding Gps2Port.CanEditSettings}"
+                                              AutomationProperties.Name="GPS port 2" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="0">
+                                    <TextBlock Classes="colCaption" Text="Baud" />
+                                    <TextBlock Classes="current" Text="{Binding Gps2Port.CurrentBaudLabel, Mode=OneWay}" />
+                                    <ComboBox Classes="selector"
+                                              ItemsSource="{Binding Gps2Port.BaudRates}"
+                                              SelectedItem="{Binding Gps2Port.SelectedBaud, Mode=TwoWay}"
+                                              IsEnabled="{Binding Gps2Port.CanEditSettings}"
+                                              AutomationProperties.Name="GPS 2 baud rate" />
+                                </StackPanel>
+                                <Button Grid.Column="2" Classes="port"
+                                        Content="Open"
+                                        Command="{Binding Gps2Port.OpenCommand}"
+                                        AutomationProperties.Name="Open GPS port 2" />
+                                <Button Grid.Column="3" Classes="port"
+                                        Content="Close"
+                                        Command="{Binding Gps2Port.CloseCommand}"
+                                        AutomationProperties.Name="Close GPS port 2" />
+                            </Grid>
+
+                            <!-- GPS2 live receive box (WinForms textBoxRcv2 -> RecvText2). -->
+                            <TextBox Classes="recv"
+                                     Margin="0,10,0,0"
+                                     Text="{Binding RecvText2, Mode=OneWay}"
+                                     AutomationProperties.Name="GPS 2 received sentence" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ============================== IMU group (groupBox6) =========================== -->
+                    <!-- Port-only module (fixed baud, no baud combo) — ImuPort (ShowBaud == false). -->
+                    <Border Classes="group">
+                        <StackPanel Spacing="2">
+                            <TextBlock Classes="groupHeader" Text="IMU" />
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                <StackPanel Grid.Column="0" Spacing="0">
+                                    <TextBlock Classes="colCaption" Text="Port" />
+                                    <TextBlock Classes="current" Text="{Binding ImuPort.CurrentPortLabel, Mode=OneWay}" />
+                                    <ComboBox Classes="selector"
+                                              ItemsSource="{Binding AvailablePorts}"
+                                              SelectedItem="{Binding ImuPort.SelectedPortName, Mode=TwoWay}"
+                                              IsEnabled="{Binding ImuPort.CanEditSettings}"
+                                              AutomationProperties.Name="IMU port" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Classes="port"
+                                        Content="Open"
+                                        Command="{Binding ImuPort.OpenCommand}"
+                                        AutomationProperties.Name="Open IMU port" />
+                                <Button Grid.Column="2" Classes="port"
+                                        Content="Close"
+                                        Command="{Binding ImuPort.CloseCommand}"
+                                        AutomationProperties.Name="Close IMU port" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ============================= Steer group (groupBox3) ========================== -->
+                    <!-- Port-only module (fixed baud) — SteerPort (ShowBaud == false). -->
+                    <Border Classes="group">
+                        <StackPanel Spacing="2">
+                            <TextBlock Classes="groupHeader" Text="Steer" />
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                <StackPanel Grid.Column="0" Spacing="0">
+                                    <TextBlock Classes="colCaption" Text="Port" />
+                                    <TextBlock Classes="current" Text="{Binding SteerPort.CurrentPortLabel, Mode=OneWay}" />
+                                    <ComboBox Classes="selector"
+                                              ItemsSource="{Binding AvailablePorts}"
+                                              SelectedItem="{Binding SteerPort.SelectedPortName, Mode=TwoWay}"
+                                              IsEnabled="{Binding SteerPort.CanEditSettings}"
+                                              AutomationProperties.Name="Steer module port" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Classes="port"
+                                        Content="Open"
+                                        Command="{Binding SteerPort.OpenCommand}"
+                                        AutomationProperties.Name="Open steer module port" />
+                                <Button Grid.Column="2" Classes="port"
+                                        Content="Close"
+                                        Command="{Binding SteerPort.CloseCommand}"
+                                        AutomationProperties.Name="Close steer module port" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ============================ Machine group (groupBox4) ========================= -->
+                    <!-- Port-only module (fixed baud) — MachinePort (ShowBaud == false). -->
+                    <Border Classes="group">
+                        <StackPanel Spacing="2">
+                            <TextBlock Classes="groupHeader" Text="Machine" />
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                <StackPanel Grid.Column="0" Spacing="0">
+                                    <TextBlock Classes="colCaption" Text="Port" />
+                                    <TextBlock Classes="current" Text="{Binding MachinePort.CurrentPortLabel, Mode=OneWay}" />
+                                    <ComboBox Classes="selector"
+                                              ItemsSource="{Binding AvailablePorts}"
+                                              SelectedItem="{Binding MachinePort.SelectedPortName, Mode=TwoWay}"
+                                              IsEnabled="{Binding MachinePort.CanEditSettings}"
+                                              AutomationProperties.Name="Machine module port" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Classes="port"
+                                        Content="Open"
+                                        Command="{Binding MachinePort.OpenCommand}"
+                                        AutomationProperties.Name="Open machine module port" />
+                                <Button Grid.Column="2" Classes="port"
+                                        Content="Close"
+                                        Command="{Binding MachinePort.CloseCommand}"
+                                        AutomationProperties.Name="Close machine module port" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ======================= Right-side live status block ========================== -->
+            <!-- WinForms label1/4/5/6 ("GPS:"/"Machine:"/"Steer:"/"IMU:") + lblGPS/IMU/Steer/Machine
+                 (live port names) + lblFromGPS/lblFromMU/lblFromSteerModule/lblFromMachineModule
+                 (traffic counters). Only the GPS-in counter is live (FromGpsText); the WinForms timer
+                 never updated the IMU/Steer/Machine counters, so they stay a static placeholder for parity. -->
+            <Border Grid.Column="1" Classes="group" Margin="0,0,0,10" MinWidth="300" VerticalAlignment="Top">
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="groupHeader" Text="Status" />
+                    <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <!-- GPS row -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="statusCaption" Text="GPS:" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Classes="statusValue"
+                                   Text="{Binding GpsPortLabel, Mode=OneWay}"
+                                   AutomationProperties.Name="GPS port name" />
+                        <TextBlock Grid.Row="0" Grid.Column="2" Classes="statusCounter"
+                                   Text="{Binding FromGpsText, Mode=OneWay}"
+                                   AutomationProperties.Name="GPS frames received" />
+                        <!-- IMU row -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="statusCaption" Text="IMU:" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Classes="statusValue"
+                                   Text="{Binding ImuPortLabel, Mode=OneWay}"
+                                   AutomationProperties.Name="IMU port name" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" Classes="statusCounter" Text="--" />
+                        <!-- Steer row -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="statusCaption" Text="Steer:" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Classes="statusValue"
+                                   Text="{Binding SteerPortLabel, Mode=OneWay}"
+                                   AutomationProperties.Name="Steer module port name" />
+                        <TextBlock Grid.Row="2" Grid.Column="2" Classes="statusCounter" Text="--" />
+                        <!-- Machine row -->
+                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="statusCaption" Text="Machine:" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Classes="statusValue"
+                                   Text="{Binding MachinePortLabel, Mode=OneWay}"
+                                   AutomationProperties.Name="Machine module port name" />
+                        <TextBlock Grid.Row="3" Grid.Column="2" Classes="statusCounter" Text="--" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

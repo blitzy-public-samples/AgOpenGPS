@@ -1,20 +1,32 @@
-﻿using OpenTK.Graphics.OpenGL;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Globalization;
-using System.Runtime.CompilerServices;
-using System.Windows.Forms;
 
 namespace AgOpenGPS
 {
-    public enum TrackMode { None = 0, AB = 2, Curve = 4, bndTrackOuter = 8, bndTrackInner = 16, bndCurve = 32, waterPivot = 64 };//, Heading, Circle, Spiral
+    // [XPLAT] TrackMode and the CTrk track-line model were moved to Classes/CTrk.cs (Extract-Class) so
+    // the cross-platform track I/O / ISOXML / Views can build while this track manager stays gated. The
+    // manager itself is now decoupled from the WinForms host form (see the class below), but remains gated
+    // in AgOpenGPS.csproj until its guidance collaborators (CABCurve/CABLine/CYouTurn) are likewise
+    // decoupled. See Classes/CTrk.cs and MIGRATION_DOCS/TRANSITION_MAP.md.
 
     public class CTrack
     {
-        //pointers to mainform controls
-        private readonly FormGPS mf;
+        // [XPLAT] Decoupled from the WinForms host-form god-object (formerly `private readonly FormGPS mf;`).
+        // The collaborators this track manager needs are now injected (tool, ApplicationModel) or late-wired
+        // (curve/ABLine/yt), and the vehicle steer-axle position is read live-by-reference from the shared
+        // AgOpenGPS.Core ApplicationModel — exactly as the already-decoupled CSmartWAS does — so this manager
+        // runs free of any WinForms coupling on Windows, Linux and macOS. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        private readonly CTool tool;
+        private readonly ApplicationModel _appModel;
+
+        // [XPLAT] Guidance-line peers (formerly mf.curve / mf.ABLine / mf.yt). They form construction cycles
+        // with CTrack, so they are late-wired after construction via SetGuidanceReferences, mirroring the
+        // established late-wire setters (CVehicle.SetTool/SetBoundary, CTool.SetTram).
+        private CABCurve curve;
+        private CABLine ABLine;
+        private CYouTurn yt;
 
         public List<CTrk> gArr = new List<CTrk>();
 
@@ -22,11 +34,25 @@ namespace AgOpenGPS
 
         public bool isAutoTrack = false, isAutoSnapToPivot = false, isAutoSnapped;
 
-        public CTrack(FormGPS _f)
+        // [XPLAT] Inject the non-cyclic collaborators directly: the tool geometry (was mf.tool) and the
+        // shared ApplicationModel carrying the live steer-axle position (was mf.steerAxlePos). The cyclic
+        // guidance peers are late-wired via SetGuidanceReferences once all guidance objects are constructed.
+        public CTrack(CTool tool, ApplicationModel appModel)
         {
             //constructor
-            mf = _f;
+            this.tool = tool;
+            _appModel = appModel;
             idx = -1;
+        }
+
+        // [XPLAT] Post-construct wiring for the curve/ABLine/yt construction cycle (was mf.curve / mf.ABLine /
+        // mf.yt), mirroring the established late-wire setters (e.g. CVehicle.SetTool/SetBoundary). Call once
+        // after the guidance objects are constructed.
+        public void SetGuidanceReferences(CABCurve curve, CABLine ABLine, CYouTurn yt)
+        {
+            this.curve = curve;
+            this.ABLine = ABLine;
+            this.yt = yt;
         }
 
         public int FindClosestRefTrack(vec3 pivot)
@@ -82,20 +108,20 @@ namespace AgOpenGPS
 
                 if (gArr[i].mode == TrackMode.AB)
                 {
-                    double abHeading = mf.trk.gArr[i].heading;
+                    double abHeading = gArr[i].heading;
 
-                    endPtA.easting = mf.trk.gArr[i].ptA.easting - (Math.Sin(abHeading) * 2000);
-                    endPtA.northing = mf.trk.gArr[i].ptA.northing - (Math.Cos(abHeading) * 2000);
+                    endPtA.easting = gArr[i].ptA.easting - (Math.Sin(abHeading) * 2000);
+                    endPtA.northing = gArr[i].ptA.northing - (Math.Cos(abHeading) * 2000);
 
-                    endPtB.easting = mf.trk.gArr[i].ptB.easting + (Math.Sin(abHeading) * 2000);
-                    endPtB.northing = mf.trk.gArr[i].ptB.northing + (Math.Cos(abHeading) * 2000);
+                    endPtB.easting = gArr[i].ptB.easting + (Math.Sin(abHeading) * 2000);
+                    endPtB.northing = gArr[i].ptB.northing + (Math.Cos(abHeading) * 2000);
 
                     //x2-x1
                     double dx = endPtB.easting - endPtA.easting;
                     //z2-z1
                     double dy = endPtB.northing - endPtA.northing;
 
-                    dist = ((dy * mf.steerAxlePos.easting) - (dx * mf.steerAxlePos.northing) + (endPtB.easting
+                    dist = ((dy * _appModel.SteerAxlePos.Easting) - (dx * _appModel.SteerAxlePos.Northing) + (endPtB.easting
                                             * endPtA.northing) - (endPtB.northing * endPtA.easting))
                                                 / Math.Sqrt((dy * dy) + (dx * dx));
 
@@ -132,21 +158,21 @@ namespace AgOpenGPS
             {
                 if (gArr[idx].mode == TrackMode.AB)
                 {
-                    mf.ABLine.isABValid = false;
-                    gArr[idx].nudgeDistance += mf.ABLine.isHeadingSameWay ? dist : -dist;
+                    ABLine.isABValid = false;
+                    gArr[idx].nudgeDistance += ABLine.isHeadingSameWay ? dist : -dist;
                 }
                 else
                 {
-                    mf.curve.isCurveValid = false;
-                    gArr[idx].nudgeDistance += mf.curve.isHeadingSameWay ? dist : -dist;
+                    curve.isCurveValid = false;
+                    gArr[idx].nudgeDistance += curve.isHeadingSameWay ? dist : -dist;
 
                 }
 
                 // Rebuild uturn after nudge to reflect new track position
-                mf.yt.RebuildAfterNudge();
+                yt.RebuildAfterNudge();
 
-                //if (gArr[idx].nudgeDistance > 0.5 * mf.tool.width) gArr[idx].nudgeDistance -= mf.tool.width;
-                //else if (gArr[idx].nudgeDistance < -0.5 * mf.tool.width) gArr[idx].nudgeDistance += mf.tool.width;
+                //if (gArr[idx].nudgeDistance > 0.5 * tool.width) gArr[idx].nudgeDistance -= tool.width;
+                //else if (gArr[idx].nudgeDistance < -0.5 * tool.width) gArr[idx].nudgeDistance += tool.width;
             }
         }
 
@@ -156,17 +182,17 @@ namespace AgOpenGPS
             {
                 if (gArr[idx].mode == TrackMode.AB)
                 {
-                    mf.ABLine.isABValid = false;
+                    ABLine.isABValid = false;
                 }
                 else
                 {
-                    mf.curve.isCurveValid = false;
+                    curve.isCurveValid = false;
                 }
 
                 gArr[idx].nudgeDistance = 0;
 
                 // Rebuild uturn after reset to reflect new track position
-                mf.yt.RebuildAfterNudge();
+                yt.RebuildAfterNudge();
             }
         }
 
@@ -174,7 +200,7 @@ namespace AgOpenGPS
         {
             if (idx > -1)
             {
-                NudgeTrack(gArr[idx].mode == TrackMode.AB ? mf.ABLine.distanceFromCurrentLinePivot : mf.curve.distanceFromCurrentLinePivot);
+                NudgeTrack(gArr[idx].mode == TrackMode.AB ? ABLine.distanceFromCurrentLinePivot : curve.distanceFromCurrentLinePivot);
             }
         }
 
@@ -184,13 +210,13 @@ namespace AgOpenGPS
             {
                 if (gArr[idx].mode == TrackMode.AB)
                 {
-                    mf.ABLine.isABValid = false;
-                    NudgeRefABLine(mf.ABLine.isHeadingSameWay ? dist : -dist);
+                    ABLine.isABValid = false;
+                    NudgeRefABLine(ABLine.isHeadingSameWay ? dist : -dist);
                 }
                 else
                 {
-                    mf.curve.isCurveValid = false;
-                    NudgeRefCurve(mf.curve.isHeadingSameWay ? dist : -dist);
+                    curve.isCurveValid = false;
+                    NudgeRefCurve(curve.isHeadingSameWay ? dist : -dist);
                 }
             }
         }
@@ -208,7 +234,7 @@ namespace AgOpenGPS
 
         public void NudgeRefCurve(double distAway)
         {
-            mf.curve.isCurveValid = false;
+            curve.isCurveValid = false;
 
             List<vec3> curList = new List<vec3>();
 
@@ -316,46 +342,6 @@ namespace AgOpenGPS
         }
     }
 
-    public class CTrk
-    {
-        public List<vec3> curvePts = new List<vec3>();
-        public double heading;
-        public string name;
-        public bool isVisible;
-        public vec2 ptA;
-        public vec2 ptB;
-        public vec2 endPtA;
-        public vec2 endPtB;
-        public TrackMode mode;
-        public double nudgeDistance;
-        public HashSet<int> workedTracks = new HashSet<int>();
-
-        public CTrk()
-        {
-            curvePts = new List<vec3>();
-            heading = 3;
-            name = "New Track";
-            isVisible = true;
-            ptA = new vec2();
-            ptB = new vec2();
-            endPtA = new vec2();
-            endPtB = new vec2();
-            mode = TrackMode.None;
-            nudgeDistance = 0;
-        }
-
-        public CTrk(CTrk _trk)
-        {
-            curvePts = new List<vec3>(_trk.curvePts);
-            heading = _trk.heading;
-            name = _trk.name;
-            isVisible = _trk.isVisible;
-            ptA = _trk.ptA;
-            ptB = _trk.ptB;
-            endPtA = new vec2();
-            endPtB = new vec2();
-            mode = _trk.mode;
-            nudgeDistance = _trk.nudgeDistance;
-        }
-    }
+    // [XPLAT] The CTrk track-line model that lived here was moved to Classes/CTrk.cs (Extract-Class);
+    // see the note at the top of this namespace.
 }

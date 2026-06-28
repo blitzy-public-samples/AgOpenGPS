@@ -7,6 +7,7 @@
 //     the code is regenerated.
 // </auto-generated>
 //------------------------------------------------------------------------------
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 
 namespace GPS_Out.Properties {
     using System;
@@ -67,36 +68,6 @@ namespace GPS_Out.Properties {
             get {
                 object obj = ResourceManager.GetObject("Example", resourceCulture);
                 return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
-        internal static System.Drawing.Bitmap Off {
-            get {
-                object obj = ResourceManager.GetObject("Off", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
-        internal static System.Drawing.Bitmap On {
-            get {
-                object obj = ResourceManager.GetObject("On", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
-        internal static System.Drawing.Bitmap ScanPorts {
-            get {
-                object obj = ResourceManager.GetObject("ScanPorts", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
             }
         }
     }

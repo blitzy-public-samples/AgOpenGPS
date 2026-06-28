@@ -1,0 +1,263 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Drive / Field picker dialog (Avalonia view).
+
+    1:1 PARITY reimplementation of the WinForms `Forms/Pickers/FormDrivePicker`
+    (source: FormDrivePicker.cs + FormDrivePicker.Designer.cs) — the modal list dialog that
+    lets the operator pick an existing field (by name + distance) and confirm with
+    "Use Selected", or back out with Cancel. Per AAP §0.3.3 this is visual + behavioural
+    fidelity to the currently rendered Windows Forms UI, never a redesign: every size, colour
+    and font below is taken verbatim from FormDrivePicker.Designer.cs.
+
+    WIRING CONTRACT — this view is IMPERATIVE (code-behind), NOT MVVM:
+      * There is intentionally NO x:DataType, no DataContext and no compiled binding. The
+        partner code-behind (partial class AgOpenGPS.Views.Pickers.FormDrivePickerView : Window)
+        owns ALL behaviour and addresses the named controls below directly, exactly like the
+        sibling code-behind dialogs (FormYesView / FormInputDialogView / FormSavingView).
+      * The named controls are the contract; they MUST keep these exact x:Name values because the
+        code-behind references them: lvLines, chName, chDistance, btnOpenExistingLv, btnOpenText,
+        btnDeleteAB.
+      * The original WinForms designer wired the button clicks programmatically
+        (this.btnOpenExistingLv.Click += ...; this.btnDeleteAB.Click += ...). The code-behind
+        reproduces that by subscribing to btnOpenExistingLv.Click / btnDeleteAB.Click, so this
+        markup deliberately declares NO Click attributes (no dependency on handler method names).
+      * The list items are the small record defined in the code-behind (DriveItem { Name, Distance }).
+        Because there is no x:DataType, the ItemTemplate uses plain reflection {Binding Name} /
+        {Binding Distance} — acceptable here and identical to FormSavingView's reflection
+        {Binding Text} / {Binding Foreground} pattern. No {CompiledBinding} is used.
+
+    WINDOW SHELL — mirrors FormDrivePicker.Designer.cs exactly:
+      Text gsFieldPicker (set at runtime) -> Title (hidden; SystemDecorations="None")
+      ClientSize 971 x 407                -> Width / Height (borderless => client == window)
+      BackColor WhiteSmoke                -> Background="WhiteSmoke"
+      ControlBox = false                  -> SystemDecorations="None" + CanResize="False"
+      ShowInTaskbar = false               -> ShowInTaskbar="False"
+      StartPosition CenterParent          -> WindowStartupLocation="CenterOwner"
+      Font Tahoma 14.25pt                 -> FontFamily="Tahoma" FontSize="19" (14.25 * 96/72 ≈ 19)
+      (NOT Topmost — this is an owned modal picker, not a toast.)
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.Pickers.FormDrivePickerView"
+        Title="Field Picker"
+        Width="971"
+        Height="407"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+        SystemDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19">
+
+    <!--
+        Flat, border-less, transparent buttons (WinForms FlatStyle.Flat + FlatAppearance.BorderSize=0
+        + BackColor Transparent). The Fluent Button template otherwise paints a hover/pressed fill;
+        these styles strip it on the content presenter so the glyph buttons stay flat in every state
+        — the same technique used by the sibling FormYesView dialog.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flat:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Two-row shell. Row 0 (star) holds the field list (WinForms lvLines, Anchor Top|Left|Right,
+        so it fills toward the right edge); Row 1 (fixed 80px band) holds the command buttons
+        bottom-anchored (WinForms btnDeleteAB Bottom|Left, btnOpenExistingLv Bottom|Right). This
+        reproduces the designer coordinates within a resilient, fixed-size layout: Row 0 = 407 - 80
+        = 327; with the list margins below the ListBox ends near y=319 and the buttons sit at the
+        designer Y, so the on-screen result matches the WinForms form.
+    -->
+    <Grid RowDefinitions="*,80">
+
+        <!--
+            List region. Margin "5,12,5,8" reproduces lvLines Location (5,12) with the Top|Left|Right
+            anchor (fills toward the right edge). A non-scrolling header band sits directly above the
+            ListBox (WinForms ListView Details column headers), and the ListBox fills the remainder.
+        -->
+        <DockPanel Grid.Row="0" Margin="5,12,5,8">
+
+            <!--
+                Column header band — WinForms ColumnHeaders chName ("Field Name", Width 750) and
+                chDistance ("Distance (km|mi)", Width 200). Both texts are assigned by the code-behind
+                (chDistance switches on mf.isMetric), so they start blank here. Fixed 750/200 columns
+                align with the row template below; the bottom rule and the column divider reproduce the
+                ListView GridLines look. The 6px left padding matches the per-row ListBoxItem inset so
+                header and data columns line up exactly.
+            -->
+            <Border DockPanel.Dock="Top"
+                    Background="#FFD6DEE8"
+                    BorderBrush="#FFA0A8B0"
+                    BorderThickness="0,0,0,1"
+                    Padding="6,4">
+                <Grid ColumnDefinitions="750,200">
+                    <Border Grid.Column="0"
+                            BorderBrush="#FFA0A8B0"
+                            BorderThickness="0,0,1,0">
+                        <TextBlock x:Name="chName"
+                                   Margin="0,0,6,0"
+                                   FontFamily="Tahoma"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   Foreground="Black"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Border>
+                    <TextBlock x:Name="chDistance"
+                               Grid.Column="1"
+                               Margin="6,0,6,0"
+                               FontFamily="Tahoma"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               Foreground="Black"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </Border>
+
+            <!--
+                lvLines — WinForms ListView (View=Details, FullRowSelect, MultiSelect=false,
+                HideSelection=false => single selection, persistent highlight). BackColor
+                SystemColors.InactiveCaption is reproduced with the literal #FFBFCDDB (SystemColors
+                is unavailable in Avalonia). Font Tahoma 21.75pt -> FontSize 29 (21.75 * 96/72). The
+                code-behind fills the rows (DriveItem records) and reads SelectedItem on confirm.
+                Horizontal scrolling is disabled (Details view does not scroll its fixed columns).
+            -->
+            <ListBox x:Name="lvLines"
+                     AutomationProperties.Name="Field list"
+                     Background="#FFBFCDDB"
+                     BorderThickness="0"
+                     Padding="0"
+                     FontFamily="Tahoma"
+                     FontSize="29"
+                     SelectionMode="Single"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <!--
+                    Zero the default ListBoxItem right padding and apply a 6px left inset so each row's
+                    data columns align with the header band; stretch the content so the fixed 750/200
+                    columns position identically in header and rows.
+                -->
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="6,2,0,2" />
+                        <Setter Property="Margin" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                    <!--
+                        x:CompileBindings="False" forces the two bindings below to be REFLECTION
+                        bindings against the code-behind DriveItem record. The GPS project builds with
+                        compiled bindings on by default; without this opt-out a compiled binding would
+                        need an x:DataType (which this code-behind dialog deliberately does not declare),
+                        so the build would fail to resolve Name / Distance (Avalonia AVLN2000). This is
+                        NOT {CompiledBinding}; it is the documented way to keep plain {Binding} working
+                        as a reflection binding, exactly as the sibling code-behind dialogs intend.
+                    -->
+                    <DataTemplate x:CompileBindings="False">
+                        <!--
+                            One field row: col0 Name (750) + col1 Distance (200), matching the header
+                            columns. The bottom rule and the col0 right divider reproduce the ListView
+                            GridLines. Plain reflection bindings against the code-behind DriveItem record
+                            (no x:DataType here, exactly like FormSavingView).
+                        -->
+                        <Border BorderBrush="#FFA0A8B0" BorderThickness="0,0,0,1">
+                            <Grid ColumnDefinitions="750,200">
+                                <Border Grid.Column="0"
+                                        BorderBrush="#FFA0A8B0"
+                                        BorderThickness="0,0,1,0">
+                                    <TextBlock Text="{Binding Name}"
+                                               Margin="0,0,6,0"
+                                               Foreground="Black"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Border>
+                                <TextBlock Grid.Column="1"
+                                           Margin="6,0,6,0"
+                                           Text="{Binding Distance}"
+                                           Foreground="Black"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+
+        <!--
+            btnDeleteAB — Cancel (mislabeled in the WinForms source; functions as Cancel; the
+            code-behind clears mf.filePickerFileAndDirectory). WinForms Location (30,329) Size 227x63,
+            image-only (Resources.Cancel64, no Text). Bottom-left anchor: bottom margin 15 lands the
+            227x63 button so its top sits at the designer Y (407 - 15 - 63 = 329). The Cancel64 glyph
+            is served from the GPS assembly via avares://; AutomationProperties.Name gives the
+            image-only button an accessible label.
+        -->
+        <Button x:Name="btnDeleteAB"
+                Grid.Row="1"
+                Classes="flat"
+                Width="227"
+                Height="63"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                Margin="30,0,0,15"
+                Background="Transparent"
+                BorderThickness="0"
+                AutomationProperties.Name="Cancel">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                   Width="48"
+                   Height="48"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!--
+            btnOpenExistingLv — "Use Selected" (confirm). WinForms Location (669,330) Size 288x63,
+            Image FileOpen + Text " Use Selected", ImageBeforeText, ImageAlign/TextAlign MiddleLeft.
+            Bottom-right anchor: right margin 14 (971 - 957) and bottom margin 14 (top at designer
+            Y=330). The horizontal StackPanel reproduces ImageBeforeText with the content left-aligned
+            and vertically centred. btnOpenText carries no design-time text; the code-behind sets it
+            to gStr.gsUseSelected (matching the WinForms btnOpenExistingLv.Text assignment).
+        -->
+        <Button x:Name="btnOpenExistingLv"
+                Grid.Row="1"
+                Classes="flat"
+                Width="288"
+                Height="63"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                Margin="0,0,14,14"
+                Background="Transparent"
+                BorderThickness="0"
+                AutomationProperties.Name="Use Selected">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        Margin="6,0,0,0">
+                <Image Source="avares://AgOpenGPS/btnImages/FileOpen.png"
+                       Width="48"
+                       Height="48"
+                       Stretch="Uniform" />
+                <TextBlock x:Name="btnOpenText"
+                           Margin="6,0,0,0"
+                           FontFamily="Tahoma"
+                           FontSize="24"
+                           Foreground="Black"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+    </Grid>
+</Window>

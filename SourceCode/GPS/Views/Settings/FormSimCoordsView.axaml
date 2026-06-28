@@ -1,0 +1,253 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Enter Coordinates For Simulator" dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Settings/FormSimCoords`
+    (FormSimCoords.cs + FormSimCoords.Designer.cs). A small fixed-size modal that lets the
+    operator set the simulator start latitude/longitude on a world-map backdrop. Per AAP
+    §0.3.3 this is a faithful parity reimplementation of the current Windows Forms look,
+    never a redesign — no new fields, no relayout, no UX changes.
+
+    WINDOW SHELL — mirrors FormSimCoords.Designer.cs exactly:
+      Text "Enter Coordinates For Simulator" -> Title. This is the WinForms designer's literal
+                                                Text; the code-behind overrides it at runtime with
+                                                the localized gStr.gsEnterCoordinatesForSimulator
+                                                (reproducing FormSimCoords.cs ctor) — the same
+                                                Title-in-code-behind convention used by the sibling
+                                                FormYesView / FormInputDialogView, which avoids any
+                                                compiled-binding dependency in the markup.
+      ClientSize 931 x 551                   -> Width / Height. SystemDecorations="None" => the
+                                                window == client; WinForms 96-DPI px == Avalonia DIP.
+      ControlBox = false / FixedDialog       -> SystemDecorations="None" + CanResize="False".
+      ShowInTaskbar = false                  -> ShowInTaskbar="False".
+      StartPosition.CenterParent             -> WindowStartupLocation="CenterOwner".
+      (always-on-top kiosk modal)            -> Topmost="True".
+      Font Tahoma                            -> FontFamily="Tahoma".
+    The WinForms BackColor was Gainsboro; here the chrome uses the day/night theme frame brush
+    {DynamicResource AogFrameBrush} (defined in App.axaml) so the dialog tracks SwapDayNightMode().
+
+    WIRING CONTRACT (the partner code-behind FormSimCoordsView.axaml.cs owns ALL behaviour):
+      * IMPERATIVE, not MVVM — intentionally NO x:DataType, NO DataContext, NO {Binding}. Every
+        control is addressed by x:Name, exactly like the sibling FormYesView / FormInputDialogView.
+      * btnOK -> btnOK_Click and btnCancel -> btnCancel_Click (the WinForms DialogResult.OK/Cancel;
+        the WinForms control was misspelled `bntOK` — renamed `btnOK` here). The code-behind
+        reproduces FormSimCoords.cs: OK validates job/sim state then defines the local plane from
+        the entered Wgs84(lat, lon) and closes; Cancel closes.
+      * nudLatitude / nudLongitude reproduce the WinForms `NudlessNumericUpDown` (a read-only
+        numeric up/down whose embedded textbox is disabled and which pops a keypad on click). They
+        are declared here as read-only numeric DISPLAY buttons; the code-behind assigns the value
+        text (formatted with CultureInfo.InvariantCulture, from Settings setGPS_SimLatitude /
+        setGPS_SimLongitude) and wires their click to open FormNumeric — the same code-behind
+        wiring used for the sibling FormInputDialogView's keyboard popup. So NO click is declared
+        here for them, only x:Name so the code-behind can reach them.
+
+    The form used absolute Location/Size with a top-left background image, so a top-level Canvas
+    reproduces every coordinate pixel-faithfully — the same strategy as the sibling absolute-layout
+    ports (e.g. Config/ConfigVehicleControl.axaml). WinForms font pt -> Avalonia DIP = pt * 96/72
+    (Tahoma 27.75pt -> 37, 18pt -> 24, 15.75pt -> 21).
+
+    Button glyphs and the world-map backdrop are served from the GPS assembly via avares:// URIs
+    (avares://AgOpenGPS/btnImages/{OK64,Cancel64,LatLon}.png), matching the on-disk file casing and
+    the convention already used by the sibling GPS views.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.Settings.FormSimCoordsView"
+        Title="Enter Coordinates For Simulator"
+        Width="931"
+        Height="551"
+        Background="{DynamicResource AogFrameBrush}"
+        SystemDecorations="None"
+        CanResize="False"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma">
+
+    <Window.Styles>
+        <!-- Flat, transparent, image-only command buttons (OK / Cancel): reproduce WinForms
+             FlatStyle.Flat + FlatAppearance.BorderSize=0 + BackColor.Transparent and keep that
+             face in every interaction state (the Fluent Button template otherwise paints a
+             hover/pressed fill). Targets the template content presenter — the same technique used
+             by the sibling FormYesView / Keypad views. -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- Read-only numeric DISPLAY fields (nudLatitude / nudLongitude): reproduce the
+             NudlessNumericUpDown's static white face + big bold number. Background White,
+             Foreground Black, big bold Tahoma; the white fill stays stable across
+             pointerover/pressed (the WinForms control had no hover recolor). The code-behind
+             assigns the value text and opens FormNumeric on click. -->
+        <Style Selector="Button.numericDisplay">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="FontSize" Value="37" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.numericDisplay:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+        <Style Selector="Button.numericDisplay:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Absolute layout. Canvas.Left/Canvas.Top == WinForms Location, Width/Height == Size, so the
+        dialog is pixel-faithful to FormSimCoords.Designer.cs at its fixed 931 x 551 size. Children
+        render in document order, so the LatLon backdrop (declared first) sits behind the labels
+        and buttons (declared after), matching the WinForms z-order.
+    -->
+    <Canvas Width="931" Height="551">
+
+        <!-- BackgroundImage = Resources.LatLon, ImageLayout.None (native 819 x 382, top-left): the
+             world map with the lat/lon graticule. The two big labels below annotate its axes. -->
+        <Image Source="avares://AgOpenGPS/btnImages/LatLon.png"
+               Canvas.Left="0"
+               Canvas.Top="0"
+               Width="819"
+               Height="382"
+               Stretch="None" />
+
+        <!-- label2: vertical "Latitude" axis annotation over the map. WinForms stacked each letter
+             on its own line (Text "L\r\na\r\nt\r\ni\r\nt\r\nu\r\nd\r\ne"); reproduced with explicit
+             line breaks. Black foreground (fixed) for legibility over the static map image — like
+             FormYesView's fixed foreground over its non-themed panel. (56,58) 35 x 256, Tahoma
+             18pt Bold, MiddleCenter. -->
+        <Border Canvas.Left="56" Canvas.Top="58" Width="35" Height="256">
+            <TextBlock FontSize="24"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Text="L&#x0A;a&#x0A;t&#x0A;i&#x0A;t&#x0A;u&#x0A;d&#x0A;e" />
+        </Border>
+
+        <!-- label3: "Longitude" axis annotation over the map. (271,309) 269 x 36, Tahoma 18pt Bold,
+             MiddleCenter. Fixed black foreground (over the static map image). -->
+        <Border Canvas.Left="271" Canvas.Top="309" Width="269" Height="36">
+            <TextBlock FontSize="24"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Text="Longitude" />
+        </Border>
+
+        <!-- label18: "Latitude" caption above the latitude entry. (37,430) 252 x 25, Tahoma
+             15.75pt, MiddleCenter. Themed text brush — sits over the AogFrameBrush chrome below
+             the map image. -->
+        <Border Canvas.Left="37" Canvas.Top="430" Width="252" Height="25">
+            <TextBlock FontSize="21"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Text="Latitude" />
+        </Border>
+
+        <!-- label1: "Longitude" caption above the longitude entry. (349,430) 269 x 25, Tahoma
+             15.75pt, MiddleCenter. -->
+        <Border Canvas.Left="349" Canvas.Top="430" Width="269" Height="25">
+            <TextBlock FontSize="21"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Text="Longitude" />
+        </Border>
+
+        <!-- label8: latitude range hint. WinForms AutoSize label at (92,455), Tahoma 15.75pt,
+             default top-left text — reproduced as a bare positioned TextBlock. -->
+        <TextBlock Canvas.Left="92"
+                   Canvas.Top="455"
+                   FontSize="21"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="( +90 to -90)" />
+
+        <!-- label9: longitude range hint. WinForms AutoSize label at (402,455), Tahoma 15.75pt. -->
+        <TextBlock Canvas.Left="402"
+                   Canvas.Top="455"
+                   FontSize="21"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="( +180 to -180 )" />
+
+        <!-- nudLatitude: read-only numeric display (NudlessNumericUpDown). (29,483) 274 x 52,
+             Tahoma 27.75pt Bold, White. The code-behind assigns the value text (Settings
+             setGPS_SimLatitude, CultureInfo.InvariantCulture; range +90..-90) and wires the
+             click to open FormNumeric. -->
+        <Button x:Name="nudLatitude"
+                Classes="numericDisplay"
+                Canvas.Left="29"
+                Canvas.Top="483"
+                Width="274"
+                Height="52"
+                AutomationProperties.Name="Latitude" />
+
+        <!-- nudLongitude: read-only numeric display. (340,483) 298 x 52, Tahoma 27.75pt Bold,
+             White. Code-behind assigns the value text (range +180..-180) and opens FormNumeric. -->
+        <Button x:Name="nudLongitude"
+                Classes="numericDisplay"
+                Canvas.Left="340"
+                Canvas.Top="483"
+                Width="298"
+                Height="52"
+                AutomationProperties.Name="Longitude" />
+
+        <!-- btnCancel: WinForms (671,459) 95 x 80, transparent flat, DialogResult.Cancel, Cancel64
+             glyph. Click -> btnCancel_Click (code-behind closes the dialog). -->
+        <Button x:Name="btnCancel"
+                Classes="imageButton"
+                Canvas.Left="671"
+                Canvas.Top="459"
+                Width="95"
+                Height="80"
+                AutomationProperties.Name="Cancel"
+                Click="btnCancel_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- bntOK (WinForms misspelling) -> btnOK: (783,459) 136 x 80, transparent flat,
+             DialogResult.OK, OK64 glyph. Click -> btnOK_Click (code-behind defines the local
+             plane from the entered coordinates). -->
+        <Button x:Name="btnOK"
+                Classes="imageButton"
+                Canvas.Left="783"
+                Canvas.Top="459"
+                Width="136"
+                Height="80"
+                AutomationProperties.Name="OK"
+                Click="btnOK_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

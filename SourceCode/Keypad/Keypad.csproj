@@ -1,41 +1,32 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    [XPLAT] Keypad is now a portable Avalonia UserControl library.
+      * Removed UseWindowsForms / ImportWindowsDesktopTargets: the on-screen keypads
+        (GenericKeypad base + NumKeypad + Keyboard) are Avalonia UserControls now.
+      * Removed System.Memory (net48 polyfill; in-box on net8.0) and the
+        System.Resources.Extensions + GenerateResourceUsePreserializedResources WinForms
+        .resx pipeline (the deleted Properties/Resources.resx is replaced by AvaloniaResource
+        PNGs referenced directly by avares:// URIs).
+      * Button glyph images live under Resources/ and are embedded as AvaloniaResource.
+    TargetFramework (net8.0) is inherited from SourceCode/Directory.Build.props.
+  -->
   <PropertyGroup>
     <OutputType>Library</OutputType>
-    <UseWindowsForms>true</UseWindowsForms>
-    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
-    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Memory" Version="4.6.0" />
-    <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
+    <PackageReference Include="Avalonia" Version="11.3.18" />
+    <!-- [XPLAT] Fluent styling base for the re-platformed touch/kiosk controls. Version is pinned
+         identical to the Avalonia package and aligned with every other re-platformed UI project
+         (AgIO/ModSim/AgDiag/GPS_Out/Updater all reference Avalonia.Themes.Fluent 11.3.18). -->
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="GenericKeypad.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="NumKeypad.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="Keyboard.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Update="Properties\Resources.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Update="Properties\Resources.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
+    <!-- [XPLAT] Keypad button glyphs, addressed as avares://Keypad/Resources/<name>.png. -->
+    <AvaloniaResource Include="Resources/**" />
   </ItemGroup>
 
 </Project>

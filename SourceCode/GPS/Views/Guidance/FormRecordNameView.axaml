@@ -1,0 +1,265 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Create New Record" name-entry dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Guidance/FormRecordName`
+    (FormRecordName.cs + FormRecordName.Designer.cs). The operator types a record name
+    (sanitised live against glm.fileRegex), optionally appends the current date and/or time,
+    then saves. Per AAP §0.3.3 this is a faithful parity reimplementation of the current
+    Windows Forms look, never a redesign: no new colours, no relayout, no UX changes.
+
+    WINDOW SHELL — mirrors FormRecordName.Designer.cs exactly:
+      ClientSize 676 x 234        -> Width / Height. The form is borderless (FormBorderStyle.None
+                                     -> SystemDecorations="None"), so the window size equals the
+                                     WinForms client size and the absolute layout below is 1:1.
+      BackColor Gainsboro         -> Background="Gainsboro" (Color.Gainsboro == #FFDCDCDC). Kept as
+                                     a LITERAL parity value (this dialog hard-coded its face; it is
+                                     not part of the day/night SwapDayNightMode chrome) per this
+                                     file's spec.
+      FormBorderStyle.None        -> SystemDecorations="None".
+      ControlBox = false          -> covered by the borderless shell.
+      ShowInTaskbar = false       -> ShowInTaskbar="False".
+      (Fixed, not resizable)      -> CanResize="False".
+      StartPosition CenterParent  -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS;
+                                     this replaces the WinForms ScreenHelper on-screen reposition,
+                                     which is intentionally NOT ported — the same decision taken by
+                                     the sibling FormFieldDirView).
+      (no TopMost in the source)  -> Topmost is intentionally NOT set (parity).
+      Font Tahoma 14.25pt         -> FontFamily="Tahoma" + FontSize="19". WinForms points are
+                                     converted to Avalonia device-independent pixels (pt * 96 / 72):
+                                     14.25 -> 19, 18 -> 24, 12 -> 16 (same convention as the sibling
+                                     FormFieldDirView / FormShiftPosView). Because the window is
+                                     sized 676 x 234 in DIP (1:1 with the WinForms client px), the
+                                     converted fonts keep the original physical proportions.
+      Text "Create New Record"    -> Title (design-time; the code-behind shows it / keeps the caption).
+
+    LAYOUT — absolute Canvas, exactly like the WinForms designer:
+      FormRecordName.Designer.cs used absolute Location/Size on a fixed 676 x 234 client with no
+      anchoring (only the bottom-right Cancel/Save carried Anchor flags, which on a non-resizable
+      window are inert), so a single top-level Canvas reproduces every pixel faithfully — the same
+      strategy proven by the sibling Canvas views (FormShiftPosView, Pickers/FormRecordPickerView,
+      Settings/*). Every Canvas.Left / Canvas.Top / Width / Height below is the exact designer value.
+
+    THEMING:
+      The window/textbox faces are the WinForms LITERALS (Gainsboro window, AliceBlue textbox) per
+      this file's spec. The neutral text (the labels + the textbox text, which the WinForms source
+      drew with SystemColors.ActiveCaptionText / the default control text) is bound to App.axaml's
+      day/night palette via {DynamicResource AogTextBrush} so it follows the live Light<->Dark switch
+      (the same neutral-text-to-AogTextBrush choice as the sibling FormFieldDirView). In the default
+      day (Light) theme AogTextBrush resolves to the near-black #FF0A0A14, reproducing the original
+      dark-on-light caption appearance; the fixed light faces are intentional parity values.
+
+    WIRING CONTRACT — the partner code-behind (FormRecordNameView.axaml.cs, a separate file) owns ALL
+    behaviour:
+      * This view is IMPERATIVE, not MVVM: intentionally NO x:DataType, NO DataContext, NO {Binding}.
+        The x:Name'd controls below are the entire integration surface and keep their ORIGINAL
+        WinForms names so the migrated code-behind addresses them exactly as FormRecordName.cs did.
+        No event handlers are wired in this markup — the code-behind attaches them by name (reproducing
+        the WinForms handlers) — so the view compiles independently of whatever handler names the
+        code-behind chooses (the documented convention of the sibling FormShiftPosView):
+          - labelEnterRecordName : prompt caption. Runtime text = gStr.gsEnterRecordName
+                                   (FormRecordName.cs ctor). The literal below is the design-time text.
+          - tboxFieldName        : the focal text input. Its TextChanged (glm.fileRegex sanitisation,
+                                   mirror the trimmed text into labelFilename, and enable/disable
+                                   buttonSave on a non-empty trimmed name) and its tap -> on-screen
+                                   keyboard (FormGPS.isKeyboardOn) flow are attached in the code-behind,
+                                   so no events are declared here.
+          - labelFilename        : live preview of the resulting file name. Starts EMPTY
+                                   (FormRecordName_Load sets it to ""); the code-behind fills it.
+          - checkBoxRecordAddDate: append-date toggle (WinForms CheckBox, Appearance.Button). The
+                                   code-behind reads .IsChecked at save and appends " yyyy-MM-dd".
+          - checkBoxRecordAddTime: append-time toggle. The code-behind reads .IsChecked at save and
+                                   appends " HH-mm".
+          - label5 / label4      : the two "+" join glyphs in the append row.
+          - buttonRecordCancel   : DialogResult.Cancel -> close (buttonRecordCancel_Click).
+          - buttonSave           : DialogResult.OK -> compose filename (buttonSave_Click). Starts
+                                   IsEnabled="False" (FormRecordName_Load), enabled by the code-behind
+                                   once the trimmed name is non-empty.
+
+    Button / toggle glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares://
+    URIs (JobNameCalendar / JobNameTime / Cancel64 / OK64, each a native 64 x 64 PNG) — the convention
+    used by every sibling GPS view. No System.Windows.Forms, no OpenTK.GLControl, no GMap, no
+    ColorPicker types are referenced. Avalonia 11.3.x; compiled-binding-safe (no bindings present).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormRecordNameView"
+        Title="Create New Record"
+        Width="676"
+        Height="234"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19"
+        Background="{DynamicResource AogLegacyGainsboroBrush}">
+
+    <Window.Styles>
+        <!--
+            checkBoxRecordAddDate / checkBoxRecordAddTime — the WinForms CheckBoxes carried
+            Appearance.Button + FlatStyle.Flat + FlatAppearance.BorderColor = Silver +
+            FlatAppearance.CheckedBackColor = MediumAquamarine + BackColor = Transparent, i.e. a flat
+            image button that is transparent when unchecked and fills MediumAquamarine when checked.
+            Reproduced as a retemplated ToggleButton: a single ContentPresenter whose face is driven
+            by the control's own Background/BorderBrush/BorderThickness (TemplateBinding), so the
+            :checked style simply flips Background to MediumAquamarine and the fill holds across
+            hover / pressed automatically — the proven ConfigVehicleControl / FormColorPickerView
+            ":checked" idiom, which needs no Fluent template-part names.
+        -->
+        <Style Selector="ToggleButton.jobNameToggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Silver" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <!-- FlatAppearance.CheckedBackColor = MediumAquamarine (#FF66CDAA). -->
+        <Style Selector="ToggleButton.jobNameToggle:checked">
+            <Setter Property="Background" Value="MediumAquamarine" />
+        </Style>
+
+        <!--
+            buttonRecordCancel / buttonSave — the WinForms buttons carried FlatStyle.Flat +
+            FlatAppearance.BorderSize = 0 + BackColor = Transparent, so only the 64 x 64 glyph shows.
+            These setters keep the Fluent Button face transparent in every interaction state (the
+            same flatImage technique as the sibling FormFieldDirView / FormYesView). The Fluent
+            template is retained (so the keyboard focus adorner still shows); only its hover / pressed
+            / disabled fill is neutralised on PART_ContentPresenter. The :disabled face stays
+            transparent and the glyph is dimmed via Opacity, reproducing the greyed look WinForms
+            applies to the initially-disabled buttonSave.
+        -->
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Absolute layout: client 676 x 234, fixed (non-resizable). Each Canvas.Left/Top/Width/Height
+         is the exact FormRecordName.Designer.cs value. -->
+    <Canvas Width="676" Height="234">
+
+        <!-- labelEnterRecordName: designer (31,22), Tahoma 14.25pt Regular -> 19 DIP. Runtime text =
+             gStr.gsEnterRecordName (set in the code-behind); the literal is the design-time caption. -->
+        <TextBlock x:Name="labelEnterRecordName"
+                   Canvas.Left="31" Canvas.Top="22"
+                   FontSize="19"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="Enter Record Name" />
+
+        <!-- tboxFieldName: designer (24,45) 634 x 36, BackColor AliceBlue (literal parity), Tahoma 18pt
+             Bold -> 24 DIP. Focal input. TextChanged (glm.fileRegex sanitisation + buttonSave enable +
+             labelFilename mirror) and tap -> on-screen keyboard are wired in the code-behind, so no
+             events are declared here. -->
+        <TextBox x:Name="tboxFieldName"
+                 Canvas.Left="24" Canvas.Top="45"
+                 Width="634" Height="36"
+                 FontSize="24" FontWeight="Bold"
+                 Background="AliceBlue"
+                 Foreground="{DynamicResource AogTextBrush}"
+                 VerticalContentAlignment="Center"
+                 AutomationProperties.Name="Record name" />
+
+        <!-- labelFilename: designer (31,86), Tahoma 12pt Bold -> 16 DIP. Live preview of the resulting
+             file name. Starts EMPTY (FormRecordName_Load sets Text = ""); the code-behind fills it from
+             the trimmed input (plus any appended date/time). -->
+        <TextBlock x:Name="labelFilename"
+                   Canvas.Left="31" Canvas.Top="86"
+                   FontSize="16" FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="" />
+
+        <!-- label5: "+" join glyph before the date toggle. Designer (31,166), 14.25pt -> 19 DIP. -->
+        <TextBlock x:Name="label5"
+                   Canvas.Left="31" Canvas.Top="166"
+                   FontSize="19"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="+" />
+
+        <!-- checkBoxRecordAddDate: append-date toggle. Designer (62,142) 86 x 70, glyph JobNameCalendar
+             (64 x 64). The code-behind reads .IsChecked at save and appends " yyyy-MM-dd". -->
+        <ToggleButton x:Name="checkBoxRecordAddDate"
+                      Classes="jobNameToggle"
+                      Canvas.Left="62" Canvas.Top="142"
+                      Width="86" Height="70"
+                      AutomationProperties.Name="Append date">
+            <Image Source="avares://AgOpenGPS/btnImages/JobNameCalendar.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </ToggleButton>
+
+        <!-- label4: "+" join glyph before the time toggle. Designer (188,166), 14.25pt -> 19 DIP. -->
+        <TextBlock x:Name="label4"
+                   Canvas.Left="188" Canvas.Top="166"
+                   FontSize="19"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="+" />
+
+        <!-- checkBoxRecordAddTime: append-time toggle. Designer (219,142) 86 x 70, glyph JobNameTime
+             (64 x 64). The code-behind reads .IsChecked at save and appends " HH-mm". -->
+        <ToggleButton x:Name="checkBoxRecordAddTime"
+                      Classes="jobNameToggle"
+                      Canvas.Left="219" Canvas.Top="142"
+                      Width="86" Height="70"
+                      AutomationProperties.Name="Append time">
+            <Image Source="avares://AgOpenGPS/btnImages/JobNameTime.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </ToggleButton>
+
+        <!-- buttonRecordCancel: designer (458,143) 77 x 79, glyph Cancel64 (64 x 64). Flat/transparent;
+             DialogResult.Cancel -> close (wired in the code-behind). -->
+        <Button x:Name="buttonRecordCancel"
+                Classes="flatImage"
+                Canvas.Left="458" Canvas.Top="143"
+                Width="77" Height="79"
+                AutomationProperties.Name="Cancel">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+        <!-- buttonSave: designer (579,144) 83 x 79, glyph OK64 (64 x 64). Flat/transparent; starts
+             IsEnabled="False" (FormRecordName_Load), enabled by the code-behind on a non-empty trimmed
+             name. DialogResult.OK -> compose filename (wired in the code-behind). -->
+        <Button x:Name="buttonSave"
+                Classes="flatImage"
+                Canvas.Left="579" Canvas.Top="144"
+                Width="83" Height="79"
+                IsEnabled="False"
+                AutomationProperties.Name="Save">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

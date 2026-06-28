@@ -1,0 +1,148 @@
+<!-- [XPLAT] migrated from net48/WinForms FormPGN.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormPGN"
+        x:DataType="vm:FormPGNViewModel"
+        Title="PGN"
+        WindowStartupLocation="CenterOwner"
+        RequestedThemeVariant="Light"
+        Background="White"
+        Width="420"
+        Height="640"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the deleted WinForms `Forms/FormPGN`
+        read-only "PGN Guide" reference window (Forms/FormPGN.designer.cs + FormPGN.cs +
+        FormPGN.resx). Per AAP §0.3.3 this is a visual PARITY reimplementation of the original
+        Windows Forms look — never a redesign. The window is a static, scrollable, two-column
+        reference (PGN identifier | description) closed by a single OK button; it carries no
+        interactive logic of its own.
+
+        Bound (compiled bindings, x:DataType="vm:FormPGNViewModel") to the display-only
+        FormPGNViewModel. Every value rendered here is immutable reference data reproduced
+        verbatim from the WinForms designer/resx, plus the FROZEN PGN wire-protocol summary
+        reproduced from docs/pgn-protocol.md. None of it may drift during the migration.
+
+        Root-attribute parity mapping (WinForms FormPGN.designer.cs -> Avalonia):
+          • Window.Title "PGN"                 (agent-prompt directive for the root element;
+                                                the WinForms title bar Text was "PGN Guide",
+                                                surfaced separately as VM.WindowTitle).
+          • BackColor White                    -> Background="White".
+          • Font Tahoma 14.25F                  -> FontFamily="Tahoma" FontSize="14.25".
+          • FormBorderStyle FixedSingle        -> CanResize="False".
+          • TopMost = true                      -> Topmost="True".
+          • ShowInTaskbar = false               -> ShowInTaskbar="False".
+          • StartPosition CenterScreen          -> WindowStartupLocation="CenterOwner"
+                                                (agent-prompt directive; the guide is opened
+                                                from an owner window).
+          • RequestedThemeVariant="Light"       -> AgIO is light-only (App.axaml pins Light);
+                                                set explicitly here for self-documentation.
+
+        The OK button reproduces the WinForms btnSerialOK (which used the OK64 bitmap). The
+        migrated AgIO.csproj registers NO btnImages assets as <AvaloniaResource> and excludes
+        Properties/Resources.Designer.cs from compilation (no System.Drawing), so — consistent
+        with every other migrated AgIO view — the affordance is rendered as TEXT ("OK"), not an
+        image. OnOkClick in the code-behind (FormPGN.axaml.cs) mirrors the WinForms
+        btnSerialOK_Click -> Close(); the dialog owns no result.
+
+        The original FormPGN embedded NO reference picture (FormPGN.resx held only label3.Text,
+        the descriptions). Accordingly the PGN table is laid out as static TextBlocks inside a
+        ScrollViewer (an ItemsControl over VM.PgnReferenceEntries), exactly as the agent-prompt's
+        text-fallback path prescribes — no avares:// imagery is referenced.
+
+        The VM presents the four logical groups (AutoSteer / Machine / Subnet / Hello) as a
+        single flat ordered list; the order and content are preserved 1:1 from the WinForms
+        designer/resx. The cosmetic blank lines that separated those groups in WinForms are not
+        reproduced (purely decorative spacing); content parity is what matters and is exact.
+    -->
+    <DockPanel Margin="12">
+
+        <!-- WinForms btnSerialOK (Anchor Bottom|Right, DialogResult.OK, OK64 bitmap).
+             Text affordance (no System.Drawing imagery on this platform). Touch-friendly
+             (105x64, comfortably above the 44x44 minimum) and right-aligned to mirror the
+             WinForms bottom-right anchor. IsDefault maps Enter to OK for keyboard operability.
+             OnOkClick -> Close() lives in the code-behind (FormPGN.axaml.cs). -->
+        <Button DockPanel.Dock="Bottom"
+                x:Name="btnSerialOK"
+                Content="OK"
+                Width="105"
+                Height="64"
+                MinWidth="64"
+                MinHeight="44"
+                Margin="0,12,0,0"
+                Padding="16,4"
+                HorizontalAlignment="Right"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                IsDefault="True"
+                Click="OnOkClick" />
+
+        <!-- FROZEN PGN wire-protocol reference (docs/pgn-protocol.md), bound to the VM.
+             FrameStructureDescription names the header bytes 0x80 / 0x81 / 0x7F (and the
+             0x7C source-byte exception for GPS PGN 0xD6); CrcDescription states the additive
+             checksum rule. These strings are contract data and must not be altered.
+             A thin top rule separates this secondary reference from the table above; the
+             muted (#555555 on white, ~7:1 contrast — well above WCAG AA) small text keeps it
+             visually subordinate to the main table without sacrificing legibility. -->
+        <StackPanel DockPanel.Dock="Bottom"
+                    Margin="0,12,0,0"
+                    Spacing="4">
+            <Border BorderBrush="#CCCCCC"
+                    BorderThickness="0,1,0,0"
+                    Margin="0,0,0,8" />
+            <TextBlock Text="{Binding FrameStructureDescription}"
+                       FontSize="11"
+                       Foreground="#555555"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding CrcDescription}"
+                       FontSize="11"
+                       Foreground="#555555"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- Column headers: WinForms lblMessage2 "PGN" (id column) + label1 "Description".
+             Bound to VM.PgnColumnHeader / VM.DescriptionColumnHeader. The 64px id column
+             aligns with the rows below; bold weight distinguishes the header row. -->
+        <Grid DockPanel.Dock="Top"
+              ColumnDefinitions="64,*"
+              Margin="0,0,0,6">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding PgnColumnHeader}"
+                       FontWeight="Bold" />
+            <TextBlock Grid.Column="1"
+                       Text="{Binding DescriptionColumnHeader}"
+                       FontWeight="Bold" />
+        </Grid>
+
+        <!-- Scrollable reference rows: WinForms label2 (decimal PGN ids 254..120) + label3
+             (descriptions). Rendered as static two-column rows over VM.PgnReferenceEntries.
+             The ScrollViewer (vertical only) is the DockPanel fill element, so the list grows
+             into the available height and scrolls when it overflows — matching the WinForms
+             tall reference panel while staying within a fixed, touch-friendly window. -->
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding PgnReferenceEntries}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:FormPGNViewModel+PgnReferenceEntry">
+                        <Grid ColumnDefinitions="64,*" Margin="0,2">
+                            <!-- PgnId is a byte; rendered as its decimal value (254, 253, ...,
+                                 120) to match the WinForms label2 decimal column exactly. -->
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding PgnId}" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Description}"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

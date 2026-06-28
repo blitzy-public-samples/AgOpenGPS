@@ -1,0 +1,271 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Flags viewer / editor (Avalonia view).
+
+    1:1 PARITY reimplementation of the WinForms `Forms/Field/FormFlags` (FormFlags.cs +
+    FormFlags.Designer.cs + FormFlags.resx). A modeless viewer/editor for the field flags
+    placed on the map: it shows the currently-selected flag's Latitude / Longitude /
+    Easting / Northing / Heading / ID and its free-text notes, lets the operator cycle the
+    selection North (next) / South (previous), edit the notes, delete the selected flag, and
+    displays the live distance from the GPS pivot to that flag (refreshed once a second by the
+    code-behind, reproducing the WinForms timer1 Interval = 1000 ms). Opened with Show (modeless,
+    e.g. from FormEnterFlagView). Per AAP §0.3.3 this is visual + behavioural FIDELITY to the
+    currently rendered Windows Forms UI, never a redesign: no new colours, no relayout, no UX
+    changes.
+
+    WINDOW SHELL — mirrors FormFlags.Designer.cs / .cs:
+      Text "Flags"                    -> Title (the code-behind sets the localised runtime text
+                                         gStr.gsFlags; the literal here is the design-time caption).
+      ClientSize 300 x 318            -> the root Grid Width 300; SizeToContent="WidthAndHeight"
+                                         makes the window's CLIENT area fit the content exactly so
+                                         nothing is clipped when the WinForms point sizes are
+                                         converted up to Avalonia device-independent pixels.
+      FormBorderStyle SizableToolWindow + ControlBox=false
+                                      -> standard (non-resizable) decorations are kept so the
+                                         "Flags" caption shows; CanResize="False" reproduces the
+                                         fixed-size, no-min/max behaviour. (Avalonia cannot show a
+                                         caption while hiding the close button without custom chrome;
+                                         the operator normally closes via btnExit / OK.)
+      ShowInTaskbar = false           -> ShowInTaskbar="False".
+      StartPosition = CenterParent    -> WindowStartupLocation="CenterOwner" (replaces the WinForms
+                                         ScreenHelper.IsOnScreen reposition in FormFlags_Load).
+      BackColor Gainsboro             -> Background="{DynamicResource AogFrameBrush}" and
+                                         Foreground="{DynamicResource AogTextBrush}", so the dialog
+                                         tracks the app day/night palette defined in App.axaml.
+                                         These are ThemeDictionary keys, hence {DynamicResource}
+                                         (NOT {StaticResource}) so the Light<->Dark switch is live.
+      Font Tahoma                     -> FontFamily="Tahoma"; each child carries its own point size
+                                         converted to Avalonia DIP as (pt * 96 / 72):
+                                         12pt -> 16, 14.25pt -> 19, 24pt -> 32.
+
+    WIRING CONTRACT — the partner code-behind (FormFlagsView.axaml.cs) owns ALL behaviour:
+      * This view is IMPERATIVE, not MVVM: intentionally NO x:DataType, NO DataContext, NO
+        {Binding}. The x:Name'd controls below are the entire integration surface and keep their
+        ORIGINAL WinForms names so the migrated code-behind addresses them exactly as FormFlags.cs
+        did (UpdateLabels writes lblLatStart/lblLonStart/lblEasting/lblNorthing/lblHeading/
+        lblFlagSelected/tboxFlagNotes; timer tick writes lblDistanceToFlag). No event handlers are
+        wired in this markup — the code-behind attaches them by name — so the view compiles
+        independently of whatever handler names the code-behind chooses:
+          - btnNorth / btnSouth : cycle the selected flag. The WinForms originals were
+                                  AgLibrary.Controls.RepeatButton responding to MouseDown, so they
+                                  are reproduced as Avalonia RepeatButton (raises Click repeatedly
+                                  while held); the code-behind increments / decrements
+                                  flagNumberPicked and calls UpdateLabels.
+          - tboxFlagNotes       : the selected flag's notes. Code-behind mirrors the WinForms
+                                  Leave (write notes back), Click (show the on-screen keyboard when
+                                  isKeyboardOn) and Enter-key suppression handlers.
+          - btnDeleteFlag       : delete the selected flag (mf.DeleteSelectedFlag) then refresh /
+                                  close when none remain.
+          - btnExit             : save flags (mf.FileSaveFlags) and close.
+
+    ASSETS — button glyphs are served from the GPS assembly via avares:// URIs
+    (avares://AgOpenGPS/btnImages/{UpArrow64,DnArrow64,FlagDelete,OK64}.png — the same native
+    64 x 64 assets the WinForms Designer pulled from AgOpenGPS.Properties.Resources, and the same
+    convention as the sibling GPS views). All four buttons were FlatStyle.Flat with
+    FlatAppearance.BorderSize = 0, so they use the shared flatImage face (transparent, borderless)
+    defined below — exactly like the migrated FormSteerView flat image buttons.
+
+    No WinForms, no System.Drawing, no OpenTK, no GMap, no ColorPicker types are referenced.
+    Avalonia 11.3.x.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormFlagsView"
+        Title="Flags"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}"
+        Foreground="{DynamicResource AogTextBrush}">
+
+    <Window.Styles>
+        <!-- Flat, image-only push buttons (WinForms FlatStyle.Flat + FlatAppearance.BorderSize=0 +
+             transparent face). Avalonia type selectors match the EXACT type (not subclasses), so
+             both a Button selector and a RepeatButton selector are required — the same technique
+             used by the sibling FormSteerView. -->
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+        <Style Selector="RepeatButton.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+    </Window.Styles>
+
+    <!-- ClientSize 300 wide; the WinForms Designer used absolute Label/Button positions, reproduced
+         here (per the file spec) as a 6-row Grid in the SAME top-to-bottom order as the original,
+         keyed by Designer Y: [flag ID + N/S cycle arrows] -> [notes] -> [distance] -> [Lat/Lon] ->
+         [N/E/H] -> [delete / exit]. Each value control keeps its ORIGINAL x:Name and its WinForms
+         design-time placeholder text (the code-behind overwrites them at runtime). -->
+    <Grid Width="300" Margin="8" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
+
+        <!-- ============ Row 0: selected flag ID + North/South cycle arrows ============ -->
+        <!-- lblFlagSelected: the flag ID (Designer Tahoma 24pt Bold -> 32 DIP, "99" placeholder).
+             btnNorth -> next flag (UpArrow64), btnSouth -> previous flag (DnArrow64); both were
+             RepeatButtons (hold-to-repeat), 94 x 59. -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" VerticalAlignment="Center">
+            <TextBlock x:Name="lblFlagSelected"
+                       Grid.Column="0"
+                       VerticalAlignment="Center"
+                       FontSize="32" FontWeight="Bold"
+                       Text="99" />
+            <RepeatButton x:Name="btnNorth"
+                          Grid.Column="2"
+                          Classes="flatImage"
+                          Width="94" Height="59"
+                          VerticalAlignment="Center"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center"
+                          AutomationProperties.Name="North">
+                <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png"
+                       Width="48" Height="48" Stretch="Uniform" />
+            </RepeatButton>
+            <RepeatButton x:Name="btnSouth"
+                          Grid.Column="3"
+                          Classes="flatImage"
+                          Width="94" Height="59"
+                          Margin="8,0,0,0"
+                          VerticalAlignment="Center"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center"
+                          AutomationProperties.Name="South">
+                <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png"
+                       Width="48" Height="48" Stretch="Uniform" />
+            </RepeatButton>
+        </Grid>
+
+        <!-- ============ Row 1: flag notes ============ -->
+        <!-- tboxFlagNotes: WinForms Multiline=true with ScrollBars=Horizontal. Reproduced as a
+             multi-line TextBox (AcceptsReturn) that does NOT wrap and scrolls horizontally; the
+             code-behind suppresses the Enter key and shows the on-screen keyboard on tap. Designer
+             height 69; Tahoma 12pt -> 16 DIP; design-time placeholder "Default". -->
+        <TextBox x:Name="tboxFlagNotes"
+        AutomationProperties.Name="Flag note"
+                 Grid.Row="1"
+                 Height="69"
+                 FontSize="16"
+                 AcceptsReturn="True"
+                 TextWrapping="NoWrap"
+                 VerticalContentAlignment="Top"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                 Text="Default" />
+
+        <!-- ============ Row 2: live distance to the selected flag ============ -->
+        <!-- labelDistanceToFlag: caption (code-behind localises to gStr.gsDistanceToFlag), 16 DIP.
+             lblDistanceToFlag: the live value, e.g. "12.34 m" (Designer Tahoma 14.25pt Bold -> 19). -->
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*" VerticalAlignment="Center">
+            <TextBlock x:Name="labelDistanceToFlag"
+                       Grid.Column="0"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="Distance To Flag:" />
+            <TextBlock x:Name="lblDistanceToFlag"
+                       Grid.Column="1"
+                       Margin="10,0,0,0"
+                       VerticalAlignment="Center"
+                       FontSize="19" FontWeight="Bold"
+                       Text="-99.999999" />
+        </Grid>
+
+        <!-- ============ Row 3: Latitude / Longitude readout ============ -->
+        <!-- label3 "Lat:" + lblLatStart ; label4 "Lon:" + lblLonStart. All Tahoma 12pt -> 16 DIP. -->
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
+            <TextBlock x:Name="label3"
+                       Grid.Column="0"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="Lat:" />
+            <TextBlock x:Name="lblLatStart"
+                       Grid.Column="1"
+                       Margin="6,0,0,0"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="-99.999999" />
+            <TextBlock x:Name="label4"
+                       Grid.Column="3"
+                       Margin="0,0,0,0"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="Lon:" />
+            <TextBlock x:Name="lblLonStart"
+                       Grid.Column="4"
+                       Margin="6,0,0,0"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="-188.888888" />
+        </Grid>
+
+        <!-- ============ Row 4: Northing / Easting / Heading readout ============ -->
+        <!-- label1 "N:" + lblNorthing (shows northing) ; label5 "E:" + lblEasting (shows easting) ;
+             label6 "H:" + lblHeading (degrees). All Tahoma 12pt -> 16 DIP. -->
+        <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
+            <TextBlock x:Name="label1"
+                       Grid.Column="0"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="N:" />
+            <TextBlock x:Name="lblNorthing"
+                       Grid.Column="1"
+                       Margin="6,0,0,0"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="Northing" />
+            <TextBlock x:Name="label5"
+                       Grid.Column="3"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="E:" />
+            <TextBlock x:Name="lblEasting"
+                       Grid.Column="4"
+                       Margin="6,0,0,0"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="Easting" />
+            <TextBlock x:Name="label6"
+                       Grid.Column="6"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="H:" />
+            <TextBlock x:Name="lblHeading"
+                       Grid.Column="7"
+                       Margin="6,0,0,0"
+                       VerticalAlignment="Center"
+                       FontSize="16"
+                       Text="359.8" />
+        </Grid>
+
+        <!-- ============ Row 5: delete flag (left) / save and exit (right) ============ -->
+        <!-- btnDeleteFlag: delete the selected flag (FlagDelete glyph), 70 x 79.
+             btnExit: save flags and close (OK64 glyph), 78 x 79. Both FlatStyle.Flat. -->
+        <Grid Grid.Row="5" ColumnDefinitions="Auto,*,Auto" Margin="0,4,0,0">
+            <Button x:Name="btnDeleteFlag"
+                    Grid.Column="0"
+                    Classes="flatImage"
+                    Width="70" Height="79"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="Delete Flag">
+                <Image Source="avares://AgOpenGPS/btnImages/FlagDelete.png"
+                       Width="56" Height="56" Stretch="Uniform" />
+            </Button>
+            <Button x:Name="btnExit"
+                    Grid.Column="2"
+                    Classes="flatImage"
+                    Width="78" Height="79"
+                    IsDefault="True"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    AutomationProperties.Name="OK">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                       Width="56" Height="56" Stretch="Uniform" />
+            </Button>
+        </Grid>
+
+    </Grid>
+</Window>

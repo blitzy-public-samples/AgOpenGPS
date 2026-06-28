@@ -1,0 +1,388 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Create Field From Existing" dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Field/FormFieldExisting`
+    (FormFieldExisting.cs + FormFieldExisting.Designer.cs + FormFieldExisting.resx). The operator
+    picks an existing field from the 3-column list (Field name / Distance from the current
+    position / Boundary area) to use as a TEMPLATE, types a new field name (sanitised live against
+    glm.fileRegex in the code-behind), optionally appends the vehicle name / date / time, chooses
+    which artefacts to copy (Flags / applied "Mapping" area / Headland / guidance Lines) and saves,
+    cloning the chosen template into a new field. Per AAP §0.3.3 this is a faithful parity
+    reimplementation of the current Windows Forms look, never a redesign: no new colours, no
+    relayout, no UX changes.
+
+    WIRING CONTRACT — the partner code-behind (FormFieldExistingView.axaml.cs) owns ALL behaviour,
+    NOT this markup:
+      * Code-behind dialog: NO DataContext, NO x:DataType, NO MVVM bindings on the controls,
+        exactly like the sibling FormFieldDirView / FormFilePickerView. Every control is addressed
+        imperatively by its x:Name; the code-behind attaches the Click handlers and assigns the
+        translated gStr.* strings at runtime (label1 = gStr.gsEditFieldName, btnSort text =
+        gStr.gsSort, Title = gStr.gsCreateNewField, lblTemplateChosen reset to its placeholder).
+      * The list ROWS are bound with classic (reflection) {Binding Name/Distance/Area} against a
+        small row record (FieldRow { Name, Distance, Area }) the code-behind defines and fills from
+        RegistrySettings.fieldsDirectory. Because the GPS app (like its sibling AgIO) sets
+        AvaloniaUseCompiledBindingsByDefault=true, the root sets x:CompileBindings="False" — the
+        canonical opt-out that makes every {Binding ...} below a reflection binding without an
+        x:DataType (matches the sibling FormFilePickerView). On Sort the code-behind cycles the
+        order, swaps the chName / chDistance / chArea header .Text, and re-fills the rows.
+      * btnSave starts IsEnabled="False" (WinForms FormFieldExisting_Load set btnSave.Enabled =
+        false); the code-behind enables it once a non-empty trimmed name / a valid list selection
+        is present (tboxFieldName_TextChanged + lvLines selection).
+      * tboxFieldName declares NO events here; its TextChanged (glm.fileRegex sanitisation) and its
+        tap -> on-screen keyboard flow (FormGPS.isKeyboardOn) are attached by name in the code-behind.
+
+    Colours come from App.axaml's day/night ThemeDictionaries via {DynamicResource ...} (so the live
+    Light&lt;-&gt;Dark switch is observed) — no WinForms colours, no GDI namespaces. Button glyphs are
+    served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs — the convention used
+    by every sibling GPS view. Fonts convert WinForms points to Avalonia device-independent pixels
+    (pt x 96/72): 21.75 -> 29 (list), 18 -> 24 (name box / Sort), 14.25 -> 19 (labels), 8.25 -> 11
+    (toggle captions). The window is sized in DIP 1:1 with the WinForms client px (1004 x 670) so the
+    original physical proportions are preserved.
+
+    Window shell — mirrors FormFieldExisting.Designer.cs:
+      ClientSize 1004 x 670       -> Width / Height (SystemDecorations="None" => client == window).
+      FormBorderStyle.None         -> SystemDecorations="None".
+      ControlBox = false           -> covered by the borderless shell.
+      ShowInTaskbar = false        -> ShowInTaskbar="False".
+      (Fixed, not resizable)       -> CanResize="False".
+      StartPosition CenterParent   -> WindowStartupLocation="CenterOwner".
+      Font Tahoma                  -> FontFamily="Tahoma".
+      BackColor Gainsboro          -> Background="{DynamicResource AogFrameBrush}" (themed chrome).
+      Text "Field Save As"         -> Title (design-time; the code-behind assigns gStr.gsCreateNewField).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormFieldExistingView"
+        x:CompileBindings="False"
+        Title="Create Field From Existing"
+        Width="1004"
+        Height="670"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <Window.Styles>
+        <!-- Flat, borderless, transparent image buttons — the cross-platform equivalent of the
+             WinForms FlatStyle.Flat + FlatAppearance.BorderSize = 0 + BackColor = Transparent
+             carried by every button in FormFieldExisting.Designer.cs. The Fluent Button template
+             otherwise paints a hover / pressed / disabled fill; these setters keep the face
+             transparent in all interaction states so only the glyph shows (the same technique used
+             by the sibling FormFieldDirView / FormFilePickerView). -->
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <!-- A disabled image button dims its glyph, reproducing the greyed look WinForms applies to
+             a disabled Button.Image (e.g. the initially-disabled btnSave). An Avalonia <Image> is
+             unaffected by the Fluent theme's disabled foreground, so the dim is applied explicitly
+             here; it reverts to full opacity the moment the code-behind sets btnSave.IsEnabled = true. -->
+        <Style Selector="Button.flatImage:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+
+        <!-- The four copy-option toggles = WinForms CheckBoxes with Appearance=Button,
+             FlatAppearance.BorderSize = 0 and FlatAppearance.CheckedBackColor = MediumAquamarine.
+             As Avalonia ToggleButtons: a flat image button, transparent when unchecked and
+             MediumAquamarine (#FF66CDAA) when checked. The custom template lets the control's own
+             Background drive the fill so the checked colour holds across hover / pressed
+             automatically (the proven :checked idiom used by the sibling FormColorPickerView /
+             ConfigVehicleControl). -->
+        <Style Selector="ToggleButton.copyToggle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="ToggleButton.copyToggle:checked">
+            <Setter Property="Background" Value="#FF66CDAA" />
+        </Style>
+
+        <!-- Column-header captions. A WinForms ListView (View=Details) renders its header row in the
+             control's own Font (Tahoma 21.75pt = 29 DIP), left aligned with a small text indent. -->
+        <Style Selector="TextBlock.colHeader">
+            <Setter Property="FontSize" Value="29" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="6,2,4,2" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Foreground" Value="{DynamicResource AogTextBrush}" />
+        </Style>
+        <!-- Row cells inside the ListBox.ItemTemplate share the list's 29 DIP font and the same
+             indent so the values line up directly under the headers. -->
+        <Style Selector="TextBlock.cell">
+            <Setter Property="FontSize" Value="29" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="6,2,4,2" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <!-- Tighten the Fluent ListBoxItem to the WinForms ListView row rhythm: no extra item
+             padding / corner radius, stretch the row content full width so the selection highlight
+             spans the whole row (WinForms FullRowSelect=true), and keep a touch-friendly 40px row. -->
+        <Style Selector="ListBox#lvLines ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Five logical bands stacked vertically (mirrors the designer top-to-bottom):
+          0  the 3-column field list (the dominant control)
+          1  chosen-template label (left) + Sort (right)
+          2  new-name textbox (left) + backspace (right)
+          3  the "Edit Field Name" caption
+          4  action band: name-builders (left) + copy toggles (centre) + Cancel / Save (right)
+        Grid / StackPanel / DockPanel only — no Canvas (per this file's allowed-control set).
+    -->
+    <Grid Margin="6" RowDefinitions="*,Auto,Auto,Auto,Auto" RowSpacing="8">
+
+        <!-- ============================ Band 0 : field list ============================ -->
+        <!-- WinForms lvLines (View=Details) @ (6,5) 993 x 445 — the dominant control. A Details
+             ListView draws its column-header row INSIDE its own bounds, so an Auto header row plus a
+             "*" list row reproduce that: the header does NOT scroll, only the ListBox scrolls its rows. -->
+        <Grid Grid.Row="0" RowDefinitions="Auto,*">
+
+            <!-- Non-scrolling column-header row over the *,140,140 columns (matching the WinForms
+                 chName / chDistance / chArea widths — Field flexible, Distance & Area fixed). The
+                 code-behind assigns the runtime gStr text and SWAPS these three .Text values when
+                 Sort cycles the order. The 1px bottom Border is the header underline and the per-cell
+                 right Borders are the vertical rules (WinForms GridLines=true). -->
+            <Border Grid.Row="0" BorderBrush="#FFB0B8C0" BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="*,140,140">
+                    <Border Grid.Column="0" BorderBrush="#FFB0B8C0" BorderThickness="0,0,1,0">
+                        <TextBlock x:Name="chName" Classes="colHeader" Text="Field" />
+                    </Border>
+                    <Border Grid.Column="1" BorderBrush="#FFB0B8C0" BorderThickness="0,0,1,0">
+                        <TextBlock x:Name="chDistance" Classes="colHeader" Text="Distance" />
+                    </Border>
+                    <TextBlock x:Name="chArea" Grid.Column="2" Classes="colHeader" Text="Area" />
+                </Grid>
+            </Border>
+
+            <!-- The field list. WinForms BackColor InactiveCaption (~#FFBFCDDB), Tahoma 21.75pt
+                 (= 29 DIP), FullRowSelect, MultiSelect=false. The rows (ItemsSource) are supplied by
+                 the code-behind from a FieldRow { Name, Distance, Area } record; the {Binding ...} are
+                 classic reflection bindings (the root sets x:CompileBindings="False"). BorderThickness
+                 0 — the window already frames it. -->
+            <ListBox x:Name="lvLines"
+            AutomationProperties.Name="Nearby fields to create from"
+                     Grid.Row="1"
+                     Background="#FFBFCDDB"
+                     BorderThickness="0"
+                     FontSize="29"
+                     SelectionMode="Single"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <!-- One row = Name / Distance / Area over the SAME *,140,140 columns as the
+                             header. The bottom rule + per-cell right rules reproduce the WinForms
+                             GridLines. -->
+                        <Border BorderBrush="#FFA8B6C6" BorderThickness="0,0,0,1">
+                            <Grid ColumnDefinitions="*,140,140">
+                                <Border Grid.Column="0" BorderBrush="#FFA8B6C6" BorderThickness="0,0,1,0">
+                                    <TextBlock Classes="cell" Text="{Binding Name}" />
+                                </Border>
+                                <Border Grid.Column="1" BorderBrush="#FFA8B6C6" BorderThickness="0,0,1,0">
+                                    <TextBlock Classes="cell" Text="{Binding Distance}" />
+                                </Border>
+                                <TextBlock Grid.Column="2" Classes="cell" Text="{Binding Area}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+
+        <!-- ===================== Band 1 : chosen template + Sort ====================== -->
+        <!-- WinForms lblTemplateChosen @ (8,453) Tahoma 14.25pt Bold (= 19 DIP), placeholder text
+             until a template is chosen. btnSort @ (834,470) 147 x 63: image Sort (ImageAlign
+             MiddleLeft) then "Sort" text — cycles the column order in the code-behind. -->
+        <DockPanel Grid.Row="1" LastChildFill="True">
+            <Button x:Name="btnSort"
+                    DockPanel.Dock="Right"
+                    Classes="flatImage"
+                    Width="147"
+                    Height="63"
+                    AutomationProperties.Name="Sort">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Image Source="avares://AgOpenGPS/btnImages/Sort.png"
+                           Width="40" Height="40" Stretch="Uniform" />
+                    <TextBlock Text="Sort"
+                               FontSize="24"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                </StackPanel>
+            </Button>
+            <TextBlock x:Name="lblTemplateChosen"
+                       Text="---"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource AogTextBrush}" />
+        </DockPanel>
+
+        <!-- ====================== Band 2 : new name + backspace ======================= -->
+        <!-- WinForms tboxFieldName @ (6,486) 657 x 36, Tahoma 18pt Bold (= 24 DIP). btnBackSpace @
+             (669,478) 71 x 51, image BackSpace (a WinForms RepeatButton; rendered here as a normal
+             Button per this file's spec — the repeat behaviour is non-critical). The textbox's
+             TextChanged / on-screen-keyboard flow is wired in the code-behind, so no events are
+             declared here. The WinForms White input background is intentionally NOT hard-coded — the
+             Fluent theme supplies the day/night-aware input background (no WinForms colours). -->
+        <DockPanel Grid.Row="2" LastChildFill="True">
+            <Button x:Name="btnBackSpace"
+                    DockPanel.Dock="Right"
+                    Classes="flatImage"
+                    Width="71"
+                    Height="51"
+                    Margin="6,0,0,0"
+                    AutomationProperties.Name="Backspace">
+                <Image Source="avares://AgOpenGPS/btnImages/BackSpace.png"
+                       Width="40" Height="40" Stretch="Uniform" />
+            </Button>
+            <TextBox x:Name="tboxFieldName"
+                     FontSize="24"
+                     FontWeight="Bold"
+                     MinHeight="44"
+                     VerticalContentAlignment="Center"
+                     AutomationProperties.Name="New field name" />
+        </DockPanel>
+
+        <!-- ======================= Band 3 : "Edit Field Name" ========================= -->
+        <!-- WinForms label1 @ (4,527) Tahoma 14.25pt (= 19 DIP). Runtime text = gStr.gsEditFieldName. -->
+        <TextBlock x:Name="label1"
+                   Grid.Row="3"
+                   Text="Edit Field Name"
+                   FontSize="19"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   HorizontalAlignment="Left" />
+
+        <!-- ===== Band 4 : name-builders (left) + copy toggles (centre) + actions (right) ===== -->
+        <Grid Grid.Row="4" ColumnDefinitions="Auto,*,Auto">
+
+            <!-- LEFT: the append-to-name builders. WinForms btnAddVehicleName (Con_VehicleMenu),
+                 btnAddDate (JobNameCalendar), btnAddTime (JobNameTime), each 76 x 74, separated by
+                 "+" labels. The handlers (append the vehicle name / yyyy-MM-dd / HH-mm) live in the
+                 code-behind. -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+                <Button x:Name="btnAddVehicleName" Classes="flatImage" Width="76" Height="74"
+                        AutomationProperties.Name="Add vehicle name">
+                    <Image Source="avares://AgOpenGPS/btnImages/Config/Con_VehicleMenu.png"
+                           Width="56" Height="56" Stretch="Uniform" />
+                </Button>
+                <TextBlock Text="+" FontSize="19" VerticalAlignment="Center"
+                           Foreground="{DynamicResource AogTextBrush}" />
+                <Button x:Name="btnAddDate" Classes="flatImage" Width="76" Height="74"
+                        AutomationProperties.Name="Add date">
+                    <Image Source="avares://AgOpenGPS/btnImages/JobNameCalendar.png"
+                           Width="56" Height="56" Stretch="Uniform" />
+                </Button>
+                <TextBlock Text="+" FontSize="19" VerticalAlignment="Center"
+                           Foreground="{DynamicResource AogTextBrush}" />
+                <Button x:Name="btnAddTime" Classes="flatImage" Width="76" Height="74"
+                        AutomationProperties.Name="Add time">
+                    <Image Source="avares://AgOpenGPS/btnImages/JobNameTime.png"
+                           Width="56" Height="56" Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+
+            <!-- CENTRE: the copy-option toggles. WinForms order left-to-right: chkFlags (FlagRed /
+                 "Flags"), chkApplied (SectionMasterOff / "Mapping"), chkHeadland (HeadlandMenu /
+                 "Headland"), chkGuidanceLines (ABTrackAB / "Lines"). Each = an image ToggleButton
+                 (76 x 74) over a small caption. Per this file's spec ONLY chkHeadland defaults
+                 checked; the code-behind reads IsChecked on Save to decide what to clone. -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="20"
+                        HorizontalAlignment="Center" VerticalAlignment="Top">
+                <StackPanel Orientation="Vertical" Spacing="2" HorizontalAlignment="Center">
+                    <ToggleButton x:Name="chkFlags" Classes="copyToggle" Width="76" Height="74"
+                                  AutomationProperties.Name="Copy flags">
+                        <Image Source="avares://AgOpenGPS/btnImages/FlagRed.png"
+                               Width="56" Height="56" Stretch="Uniform" />
+                    </ToggleButton>
+                    <TextBlock Text="Flags" FontSize="11" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Vertical" Spacing="2" HorizontalAlignment="Center">
+                    <ToggleButton x:Name="chkApplied" Classes="copyToggle" Width="76" Height="74"
+                                  AutomationProperties.Name="Copy applied area">
+                        <Image Source="avares://AgOpenGPS/btnImages/SectionMasterOff.png"
+                               Width="56" Height="56" Stretch="Uniform" />
+                    </ToggleButton>
+                    <TextBlock Text="Mapping" FontSize="11" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Vertical" Spacing="2" HorizontalAlignment="Center">
+                    <ToggleButton x:Name="chkHeadland" Classes="copyToggle" Width="76" Height="74"
+                                  IsChecked="True"
+                                  AutomationProperties.Name="Copy headland">
+                        <Image Source="avares://AgOpenGPS/btnImages/HeadlandMenu.png"
+                               Width="56" Height="56" Stretch="Uniform" />
+                    </ToggleButton>
+                    <TextBlock Text="Headland" FontSize="11" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Vertical" Spacing="2" HorizontalAlignment="Center">
+                    <ToggleButton x:Name="chkGuidanceLines" Classes="copyToggle" Width="76" Height="74"
+                                  AutomationProperties.Name="Copy guidance lines">
+                        <Image Source="avares://AgOpenGPS/btnImages/ABTrackAB.png"
+                               Width="56" Height="56" Stretch="Uniform" />
+                    </ToggleButton>
+                    <TextBlock Text="Lines" FontSize="11" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- RIGHT: Cancel then Save (WinForms btnSerialCancel @ x=814, btnSave @ x=911). btnSave
+                 starts disabled (WinForms FormFieldExisting_Load) and is enabled by the code-behind
+                 once a non-empty trimmed name / valid selection is present. -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="9" VerticalAlignment="Top">
+                <Button x:Name="btnSerialCancel" Classes="flatImage" Width="88" Height="77"
+                        AutomationProperties.Name="Cancel">
+                    <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                           Width="64" Height="64" Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnSave" Classes="flatImage" Width="86" Height="79"
+                        IsEnabled="False"
+                        AutomationProperties.Name="Save">
+                    <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                           Width="64" Height="64" Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,6 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
+# [XPLAT] migrated from net48/WinForms to net8.0 + Avalonia (in place) — see MIGRATION_DOCS/TRANSITION_MAP.md
 VisualStudioVersion = 18.2.11408.102
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgOpenGPS", "GPS\AgOpenGPS.csproj", "{73933709-370E-43B3-8563-CC0F48FF587B}"

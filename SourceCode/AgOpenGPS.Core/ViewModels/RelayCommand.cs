@@ -31,10 +31,14 @@ namespace AgOpenGPS.Core.ViewModels
             _execute();
         }
 
-        public event EventHandler CanExecuteChanged
+        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+        // Portable CanExecuteChanged: replaces WPF CommandManager.RequerySuggested (PresentationCore).
+        // Avalonia re-queries CanExecute when this event is raised; call RaiseCanExecuteChanged() to refresh.
+        public event EventHandler CanExecuteChanged;
+
+        public void RaiseCanExecuteChanged()
         {
-            add => CommandManager.RequerySuggested += value;
-            remove => CommandManager.RequerySuggested -= value;
+            CanExecuteChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -62,10 +66,13 @@ namespace AgOpenGPS.Core.ViewModels
             return _canExecute == null || _canExecute((T)parameter);
         }
 
-        public event EventHandler CanExecuteChanged
+        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+        // Portable CanExecuteChanged: replaces WPF CommandManager.RequerySuggested (PresentationCore).
+        public event EventHandler CanExecuteChanged;
+
+        public void RaiseCanExecuteChanged()
         {
-            add { CommandManager.RequerySuggested += value; }
-            remove { CommandManager.RequerySuggested -= value; }
+            CanExecuteChanged?.Invoke(this, EventArgs.Empty);
         }
 
         public void Execute(object parameter)

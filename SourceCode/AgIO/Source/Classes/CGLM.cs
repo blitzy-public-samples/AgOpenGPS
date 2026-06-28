@@ -1,8 +1,13 @@
-﻿using System;
-using System.Windows.Forms;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 
 namespace AgIO
 {
+    // [XPLAT] CS8981 suppressed: the all-lowercase type name 'glm' is preserved deliberately — it mirrors the
+    // OpenGL-Mathematics (glm) C++ library naming used throughout AgOpenGPS and is referenced by name at many
+    // behavior-frozen call sites, so renaming is out of CP2 scope. The suppression keeps the in-scope AgIO
+    // project building under Release (TreatWarningsAsErrors). See MIGRATION_DOCS/TRANSITION_MAP.md.
+#pragma warning disable CS8981
     public static class glm
     {
         //Regex file expression
@@ -33,4 +38,5 @@ namespace AgIO
         }
 
     }
+#pragma warning restore CS8981
 }

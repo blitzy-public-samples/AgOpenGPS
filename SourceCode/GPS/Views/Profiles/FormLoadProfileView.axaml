@@ -1,0 +1,312 @@
+<!-- [XPLAT] migrated from net48/WinForms FormLoadProfile — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Load Environment" profile dialog (Avalonia view).
+
+    1:1 visual + behavioural PARITY reimplementation of the WinForms
+    `Forms/Profiles/FormLoadProfile` (FormLoadProfile.cs + FormLoadProfile.Designer.cs). It lists
+    every environment profile (*.xml under RegistrySettings.environmentDirectory) in a single-column
+    selectable list and lets the operator load the selected profile, delete it, or cancel. Per AAP
+    §0.3.3 this is a faithful parity reimplementation of the current Windows Forms look — never a
+    redesign: no new colours, no relayout, no UX changes.
+
+    WIRING CONTRACT — this view is a CODE-BEHIND dialog, NOT MVVM (exactly like the sibling
+    Pickers/FormRecordPickerView and FormFilePickerView):
+      * There is intentionally NO x:DataType, NO DataContext and NO {Binding} anywhere. The partner
+        code-behind (FormLoadProfileView.axaml.cs, same folder) owns ALL behaviour and addresses
+        every control imperatively BY x:Name — it sets the runtime title ("Load Environment"),
+        assigns the translated caption text (labelLoadProfile = "Load Environment:", textProfileDelete
+        = gStr.gsDelete, textLoad = gStr.gsLoad, textCancel = gStr.gsCancel), fills
+        listViewProfiles.ItemsSource with the profile-name strings, and SUBSCRIBES to the control
+        events. Consequently NO Click/SelectionChanged handlers are declared in this markup (the
+        handler method names live solely in the code-behind, mirroring the established list-dialog
+        siblings). The named controls below MUST keep these exact x:Names so the code-behind compiles
+        and binds against them:
+            labelLoadProfile, listViewProfiles,
+            buttonProfileDelete, textProfileDelete,
+            buttonCancel, textCancel,
+            buttonLoad, textLoad
+        The code-behind reproduces the WinForms wiring:
+            listViewProfiles.SelectionChanged  -> ListViewProfiles_SelectionChanged
+                                                   (enable buttonLoad + buttonProfileDelete on a selection)
+            buttonProfileDelete.Click          -> ButtonProfileDelete_Click (delete selected *.xml, reload)
+            buttonLoad.Click                   -> ButtonLoad_Click          (load selected profile)
+            buttonCancel.Click                 -> ButtonCancel_Click        (close)
+
+    WINDOW SHELL — mirrors FormLoadProfile.Designer.cs exactly:
+      Text "Load Environment"      -> Title (design-time; the code-behind re-sets it literally on Load,
+                                      not via gStr — matching FormLoadProfile_Load).
+      ClientSize 639 x 437          -> Width / Height (SystemDecorations="None" => client == window).
+      MinimumSize 650 x 360         -> MinWidth / MinHeight (Avalonia clamps the 639 initial width up to
+                                      650 at startup, faithfully reproducing the WinForms ClientSize <
+                                      MinimumSize quirk).
+      BackColor WhiteSmoke          -> Background "#FFF5F5F5" (WinForms Color.WhiteSmoke == #FFF5F5F5).
+                                      This dialog was never day/night themed in WinForms, so the App.axaml
+                                      day/night brushes are deliberately NOT used here (a theme-driven
+                                      light text would be unreadable on this fixed light surface) — the
+                                      same fixed-light approach as the sibling FormFilePickerView.
+      ControlBox = false            -> no OS chrome: SystemDecorations="None" plus the 1px RootBorder
+                                      below gives the window a visible edge with no min/max/close buttons
+                                      (closing happens only via the in-window Load/Cancel buttons,
+                                      exactly like the WinForms ControlBox=false form).
+      (FormBorderStyle Sizable)     -> CanResize="True": the WinForms listView anchors Top|Bottom|Left|
+                                      Right and the form sets a MinimumSize, so the dialog is resizable
+                                      and the list stretches — hence a Grid (not an absolute Canvas).
+      ShowInTaskbar = false         -> ShowInTaskbar="False".
+      StartPosition CenterParent    -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS).
+      Font Tahoma 14.25pt           -> FontFamily="Tahoma" FontSize="19" (14.25pt x 96/72 = 19 DIP);
+                                      the list overrides to 24 DIP (18pt) below.
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares://AgOpenGPS/
+    btnImages/<name>.png (Trash / Cancel64 / OK64 — all native 64 x 64 on disk), the avares:// convention
+    used by every sibling GPS view (FormYesView / FormRecordPickerView / FormFilePickerView).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.Profiles.FormLoadProfileView"
+        Title="Load Environment"
+        Width="639"
+        Height="437"
+        MinWidth="650"
+        MinHeight="360"
+        CanResize="True"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+        FontFamily="Tahoma"
+        FontSize="19">
+
+    <!--
+        Flat / transparent image-button face — the cross-platform equivalent of the WinForms
+        FlatStyle.Flat + FlatAppearance.BorderSize = 0 + image-faced buttons in
+        FormLoadProfile.Designer.cs. The Fluent Button template otherwise paints a hover / pressed /
+        disabled fill; these setters keep the face transparent in every interaction state so only the
+        glyph + caption show. The :disabled Opacity dims the whole button (glyph AND caption),
+        reproducing the greyed look WinForms applies to a disabled button (buttonLoad and
+        buttonProfileDelete both start disabled). Same technique as the sibling FormFieldDirView /
+        FormRecordPickerView.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        RootBorder == the visible window edge. SystemDecorations="None" removes the OS frame, so a
+        thin (1px) neutral border (the same #FF808080 the sibling FormRecordPickerView uses) gives the
+        borderless window a defined edge. Its interior fills with WhiteSmoke (the WinForms BackColor).
+    -->
+    <Border BorderBrush="#FF808080"
+            BorderThickness="1"
+            Background="#FFF5F5F5">
+
+        <!--
+            Three logical bands reproduce the WinForms anchored layout (a Grid, not an absolute Canvas,
+            because the list stretches with the resizable window):
+              Row 0 (Auto) — labelLoadProfile across the top.
+              Row 1 (*)    — the profile list (fills) with buttonProfileDelete pinned top-right.
+              Row 2 (Auto) — Cancel + Load image buttons pinned bottom-right.
+            The outer Margin (9,14,13,12) reproduces the WinForms client insets: list left edge x=9,
+            top inset so the list lands at y=63, right edge of the delete/Load buttons at x=626, and the
+            buttons' bottom edge at y=425 — matching the Designer coordinates.
+        -->
+        <Grid Margin="9,14,13,12"
+              RowDefinitions="Auto,*,Auto">
+
+            <!--
+                labelLoadProfile — WinForms Label @ (31,26) size 198 x 23, Tahoma 14.25pt Bold (-> 19
+                DIP), ForeColor Black, MiddleLeft. The 22px left + 12px top margin place it at the
+                WinForms (31,26) within the 9,14-inset grid; the 13px bottom margin sizes Row 0 so the
+                list (Row 1) starts at y=63. Foreground is hard-coded Black (the WinForms ForeColor) so
+                it stays legible on the fixed WhiteSmoke surface regardless of the app theme variant.
+                Text is the Designer default; the code-behind reassigns "Load Environment:" on Load.
+            -->
+            <TextBlock x:Name="labelLoadProfile"
+                       Grid.Row="0"
+                       Text="Load Environment:"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Center"
+                       Margin="22,12,0,13" />
+
+            <!--
+                Row 1 — the profile list (stretches) plus the Delete button pinned to the top-right.
+                ColumnDefinitions "*,Auto": column 0 is the stretching list (WinForms listViewProfiles
+                anchored on all four sides); column 1 is the fixed 80px-wide Delete button column
+                (WinForms buttonProfileDelete anchored Top|Right). The 3px right margin on the list
+                reproduces the WinForms gap between the list (right edge x=543) and the Delete button
+                (left edge x=546).
+            -->
+            <Grid Grid.Row="1"
+                  ColumnDefinitions="*,Auto">
+
+                <!--
+                    listViewProfiles — WinForms ListView (View=Details, single column, HeaderStyle=None,
+                    FullRowSelect, GridLines, MultiSelect=false) @ (9,63) 534 x 254, BackColor
+                    InactiveCaption (~#FFBFCDDB, the exact value the sibling list dialogs use), Tahoma
+                    18pt Bold (-> 24 DIP). Avalonia has no Details-ListView, so the closest control is a
+                    single-selection ListBox with no header. The profile-name strings are assigned to
+                    ItemsSource by the code-behind and render via the default item template (no
+                    ItemTemplate / no {Binding}, honouring the code-behind-only discipline); FontFamily/
+                    FontSize/FontWeight set here inherit to each item's text. Foreground is pinned Black
+                    for legibility on the fixed light #FFBFCDDB panel. BorderThickness 0 (the RootBorder
+                    already frames the dialog); horizontal scrolling is disabled so long names trim to
+                    the column width as the WinForms LabelWrap=false list did.
+                -->
+                <ListBox x:Name="listViewProfiles" AutomationProperties.Name="Profile list"
+                         Grid.Column="0"
+                         Background="#FFBFCDDB"
+                         BorderThickness="0"
+                         Foreground="Black"
+                         FontFamily="Tahoma"
+                         FontSize="24"
+                         FontWeight="Bold"
+                         SelectionMode="Single"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         Margin="0,0,3,0">
+                    <!-- Tighten the Fluent ListBoxItem to the WinForms row rhythm and stretch the row
+                         content full width so the selection highlight spans the whole row (WinForms
+                         FullRowSelect=true). Setters only — no bindings. -->
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="8,2" />
+                            <Setter Property="CornerRadius" Value="0" />
+                        </Style>
+                    </ListBox.Styles>
+                </ListBox>
+
+                <!--
+                    buttonProfileDelete — WinForms button @ (546,63) 80 x 92, anchored Top|Right,
+                    Enabled=false initially, FlatStyle.Flat, image Trash (ImageAlign TopCenter) + text
+                    "Delete" (TextAlign BottomCenter). Reproduced as a DockPanel: the caption docks to
+                    the bottom and the 64 x 64 glyph fills the top — exactly the WinForms image-top /
+                    text-bottom arrangement. Starts IsEnabled="False"; the code-behind enables it when a
+                    profile is selected.
+                -->
+                <Button x:Name="buttonProfileDelete"
+                        Grid.Column="1"
+                        Classes="flatImage"
+                        Width="80"
+                        Height="92"
+                        IsEnabled="False"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        AutomationProperties.Name="Delete">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock x:Name="textProfileDelete"
+                                   DockPanel.Dock="Bottom"
+                                   Text="Delete"
+                                   FontSize="19"
+                                   Foreground="Black"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center" />
+                        <Image Source="avares://AgOpenGPS/btnImages/Trash.png"
+                               Width="64"
+                               Height="64"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Top" />
+                    </DockPanel>
+                </Button>
+            </Grid>
+
+            <!--
+                Row 2 — the bottom-right command buttons. WinForms: buttonCancel @ (461,333) then
+                buttonLoad @ (546,333), each 80 x 92, both anchored Bottom|Right with a 5px gap so Load
+                is the right-most button (its right edge aligns with buttonProfileDelete above). A
+                right-aligned, bottom-aligned horizontal StackPanel with children [Cancel, Load] and
+                Spacing 5 reproduces that. The 12px top margin separates the band from the list.
+            -->
+            <StackPanel Grid.Row="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Spacing="5"
+                        Margin="0,12,0,0">
+
+                <!--
+                    buttonCancel — WinForms button @ (461,333) 80 x 92, anchored Bottom|Right,
+                    DialogResult.Cancel, FlatStyle.Flat, image Cancel64 (ImageAlign TopCenter) + text
+                    "Cancel" (TextAlign BottomCenter). The code-behind closes the dialog on Click.
+                -->
+                <Button x:Name="buttonCancel"
+                        Classes="flatImage"
+                        Width="80"
+                        Height="92"
+                        AutomationProperties.Name="Cancel">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock x:Name="textCancel"
+                                   DockPanel.Dock="Bottom"
+                                   Text="Cancel"
+                                   FontSize="19"
+                                   Foreground="Black"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center" />
+                        <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                               Width="64"
+                               Height="64"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Top" />
+                    </DockPanel>
+                </Button>
+
+                <!--
+                    buttonLoad — WinForms button @ (546,333) 80 x 92, anchored Bottom|Right,
+                    Enabled=false initially, DialogResult.OK, FlatStyle.Flat, image OK64 (ImageAlign
+                    TopCenter) + text "Load" (TextAlign BottomCenter). Starts IsEnabled="False"; the
+                    code-behind enables it when a profile is selected and loads it on Click.
+                -->
+                <Button x:Name="buttonLoad"
+                        Classes="flatImage"
+                        Width="80"
+                        Height="92"
+                        IsEnabled="False"
+                        AutomationProperties.Name="Load">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock x:Name="textLoad"
+                                   DockPanel.Dock="Bottom"
+                                   Text="Load"
+                                   FontSize="19"
+                                   Foreground="Black"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center" />
+                        <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                               Width="64"
+                               Height="64"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Top" />
+                    </DockPanel>
+                </Button>
+
+            </StackPanel>
+
+        </Grid>
+    </Border>
+</Window>

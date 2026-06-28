@@ -1,4 +1,5 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Library</OutputType>
@@ -6,15 +7,26 @@
 
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="OpenTK" Version="3.3.3" />
-    <PackageReference Include="System.Memory" Version="4.6.0" />
+    <!-- [XPLAT] AAP G3/§0.5.1 mandates KEEPING OpenTK 3.3.3 (the DrawLib/GLW math + GL bindings).
+         OpenTK 3.3.3 ships only net48 assemblies, so restoring it under net8.0 raises NU1701
+         ("restored using .NETFramework instead of net8.0"). The bindings are pure math + P/Invoke
+         GL entry points that run correctly on net8.0; the warning is benign and explicitly tracked
+         for the rendering checkpoint. NoWarn is scoped to this single package so all other NuGet
+         compatibility warnings remain active (Release builds treat warnings as errors). -->
+    <PackageReference Include="OpenTK" Version="3.3.3" NoWarn="NU1701" />
+    <!-- [XPLAT] SkiaSharp provides the cross-platform PNG codec used by BingMapStreamer to
+         decode/encode the BackPic.png field-file (replaces Windows-only GDI+ System.Drawing).
+         Native assets for win/linux/macos are pulled in transitively. -->
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
     <ProjectReference Include="..\AgLibrary\AgLibrary.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Reference Include="PresentationCore" />
-    <Reference Include="System.Net.Http" />
-  </ItemGroup>
+  <!-- [XPLAT] Removed legacy framework references:
+         * System.Memory (4.6.0)   — net48 BCL polyfill; in-box on net8.0.
+         * PresentationCore (WPF)  — Windows-only WPF; the last WPF type (System.Windows.Visibility
+                                     in FieldTableViewModel) was replaced with a plain bool.
+         * System.Net.Http (GAC)   — in-box on net8.0; AgShareClient's using System.Net.Http resolves
+                                     without an explicit assembly reference. -->
 
   <ItemGroup>
     <Compile Update="Translations\gStr.Designer.cs">

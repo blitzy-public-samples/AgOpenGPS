@@ -1,0 +1,349 @@
+<!-- [XPLAT] migrated from net48/WinForms FormRadio.cs + FormRadio.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        xmlns:agio="clr-namespace:AgIO"
+        xmlns:sys="using:System"
+        x:Class="AgIO.Views.FormRadio"
+        x:DataType="vm:FormRadioViewModel"
+        Title="Radio Settings"
+        RequestedThemeVariant="Light"
+        Width="820" Height="627"
+        MinWidth="820" MinHeight="627"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14">
+    <!-- [XPLAT] migrated from net48/WinForms FormRadio.cs + FormRadio.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms AgIO "Radio Settings"
+        configuration dialog (Forms/FormRadio.Designer.cs + Forms/FormRadio.cs). It configures a serial
+        radio used as an RTK correction source and manages the operator's list of radio channels. This is
+        a 1:1 PARITY rebuild, never a redesign (AAP §0.3.3): same window title/size, same controls, same
+        command set — only the Windows-Forms host and the FormLoop (mf) god-object coupling are removed.
+
+        Parity mapping to FormRadio.Designer.cs (within the migrated view-model's supported surface):
+          • Form Text "Radio Settings"          -> Title="Radio Settings".
+          • ClientSize 820 x 627                 -> Width="820" Height="627" (CanResize="True" because the
+                                                   WinForms lvChannels anchored Top|Bottom|Left|Right — the
+                                                   dialog was resizable).
+          • MinimumSize 838 x 668 (outer)        -> MinWidth="820" MinHeight="627" (the WinForms outer
+                                                    MinimumSize equals the designed client size plus window
+                                                    chrome, i.e. the dialog could GROW but never shrink below
+                                                    its designed layout; the Avalonia min is the equivalent
+                                                    client floor so the layout can never be cramped).
+
+          • StartPosition CenterParent           -> WindowStartupLocation="CenterOwner".
+          • Form Font Tahoma                      -> FontFamily="Tahoma".
+          • cboxRadioPort (DropDownList)         -> Port ComboBox, ItemsSource="{Binding AvailablePorts}",
+                                                   SelectedItem="{Binding SelectedPort}".
+          • cboxBaud (DropDownList, 8 fixed      -> Baud ComboBox with the same 8 fixed <sys:String> items,
+            items 4800..256000)                    SelectedItem="{Binding SelectedBaud}".
+          • btnOpenSerial (USB_Connect bitmap)   -> "Open" Button   -> OpenRadioCommand (folds the WinForms
+                                                   btnSetChannel "SL&F=" set-on-open into one command).
+          • btnCloseSerial (USB_Disconnect)      -> "Close" Button  -> CloseRadioCommand.
+          • cboxIsRadioOn (CheckBox "Radio")     -> "Radio On" CheckBox, IsChecked="{Binding IsRadioOn}".
+          • labelChannels "Channels"             -> "Channels" TextBlock.
+          • lvChannels (ListView, View.Details,  -> ListBox x:Name="lvChannels" with a four-column item
+            cols Id/Name/Frequency/Distance,       template (Id | Name | Frequency | Location) + a matching
+            FullRowSelect, GridLines)              header row; bold, light background, full-row selection,
+                                                   large touch rows.
+          • btnAddChannel (AddNew bitmap)        -> "Add" Button    -> AddChannelCommand.
+          • btnEditChannel (Edit bitmap)         -> "Edit" Button   -> EditChannelCommand.
+          • btnDeleteChannel (Trash bitmap)      -> "Delete" Button -> DeleteChannelCommand.
+          • btnRadioOK (OK64 bitmap)             -> "OK" Button     -> OkCommand (IsDefault), x:Name btnSerialOK.
+          • btnRadioCancel (Cancel64 bitmap)     -> "Cancel" Button -> CancelCommand (IsCancel), x:Name btnCancel.
+
+        Deliberately OMITTED (parity within the migrated FormRadioViewModel contract — the view-model does
+        NOT expose these, and binding to non-existent members would break compiled bindings; the agent-prompt
+        also does not list them):
+          • btnSetChannel ("SL&F=" set channel)  — folded into OpenRadioCommand (set-on-open) by the VM.
+          • btnRescan (re-enumerate ports)       — the VM enumerates AvailablePorts once at construction.
+          • tbCommand / tbResponse / btnSendCommand (the raw radio command/response test console) — dropped
+            from the migrated VM (no Command/Response/SendCommand members).
+
+        4th column = "Location" (agent-prompt: Id/Name/Frequency/Location). The WinForms 4th column showed a
+        computed great-circle "Distance"; that value is produced by FormRadioViewModel.GetChannelDistance(),
+        a per-VM METHOD that cannot be invoked per-row from a compiled binding whose item DataContext is a
+        bare CRadioChannel. The directly-bindable underlying Location is therefore shown, exactly as the
+        agent-prompt specifies. (GetChannelDistance remains available to code-behind if a distance column is
+        reinstated later.)
+
+        Buttons render as TEXT, not the WinForms OK64 / Cancel64 / AddNew / Edit / Trash / USB_* bitmaps:
+        the migrated AgIO.csproj registers NO btnImages assets as <AvaloniaResource> (only
+        GPS/AgOpenGPS.csproj does), and Properties/Resources.Designer.cs is excluded from compilation
+        (System.Drawing purged). Every migrated AgIO view therefore renders affordances as text —
+        referencing avares://AgIO/btnImages/* here would not resolve and would render a broken image. This
+        matches the documented convention in the sibling FormSource.axaml / FormRadioChannel.axaml — see
+        MIGRATION_DOCS/TRANSITION_MAP.md.
+
+        Bound to FormRadioViewModel via COMPILED bindings (x:DataType above). The view-model owns all
+        behaviour (port open/close, channel add/edit/delete, NTRIP mutual-exclusion, settings persistence);
+        the dialog close, the timed-message toast and the add/edit-channel editor launch are surfaced as
+        view-model intent events that the code-behind (FormRadio.axaml.cs) binds to window actions.
+
+        Theme: Light only — App.axaml pins RequestedThemeVariant="Light" (AgIO has no day/night toggle); it
+        is restated on the window for explicitness/parity, mirroring FormSource.axaml.
+    -->
+    <DockPanel Margin="8" LastChildFill="True">
+
+        <!--
+            Top configuration row (WinForms top band): Port + Baud selectors with their labels and the
+            Open / Close serial buttons. The port/baud selectors and Open are disabled while the shared
+            radio port is open, and Close is enabled only while it is open — reproducing the WinForms
+            SetButtonState()/btnOpenSerial_Click enable/disable logic via the IsRadioPortOpen flag.
+        -->
+        <Border DockPanel.Dock="Top"
+                BorderBrush="#40000000"
+                BorderThickness="0,0,0,1"
+                Padding="2,0,2,8"
+                Margin="0,0,0,6">
+            <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Bottom">
+
+                <!-- WinForms lblCurrentPort "Port" + cboxRadioPort (DropDownList, Tahoma 18 Bold). -->
+                <StackPanel Orientation="Vertical" Spacing="2">
+                    <TextBlock Text="Port"
+                               FontWeight="Bold"
+                               FontSize="11.25"
+                               HorizontalAlignment="Center" />
+                    <ComboBox x:Name="cboxRadioPort"
+                              ItemsSource="{Binding AvailablePorts}"
+                              SelectedItem="{Binding SelectedPort}"
+                              IsEnabled="{Binding !IsRadioPortOpen}"
+                              Width="150"
+                              MinHeight="37"
+                              FontSize="18"
+                              FontWeight="Bold"
+                              VerticalContentAlignment="Center"
+                              AutomationProperties.Name="Radio serial port" />
+                </StackPanel>
+
+                <!-- WinForms lblCurrentBaud "Baud" + cboxBaud (DropDownList, 8 fixed items, Tahoma 18 Bold).
+                     The baud values are static (the view-model exposes only the selected baud string, not a
+                     list), so they are declared inline as <sys:String> items; SelectedItem binds to the
+                     string SelectedBaud so the persisted rate is pre-selected and edits flow back. -->
+                <StackPanel Orientation="Vertical" Spacing="2">
+                    <TextBlock Text="Baud"
+                               FontWeight="Bold"
+                               FontSize="11.25"
+                               HorizontalAlignment="Center" />
+                    <ComboBox x:Name="cboxBaud"
+                              SelectedItem="{Binding SelectedBaud}"
+                              IsEnabled="{Binding !IsRadioPortOpen}"
+                              Width="150"
+                              MinHeight="37"
+                              FontSize="18"
+                              FontWeight="Bold"
+                              VerticalContentAlignment="Center"
+                              AutomationProperties.Name="Radio baud rate">
+                        <sys:String>4800</sys:String>
+                        <sys:String>9600</sys:String>
+                        <sys:String>19200</sys:String>
+                        <sys:String>38400</sys:String>
+                        <sys:String>57600</sys:String>
+                        <sys:String>115200</sys:String>
+                        <sys:String>128000</sys:String>
+                        <sys:String>256000</sys:String>
+                    </ComboBox>
+                </StackPanel>
+
+                <!-- WinForms btnOpenSerial (USB_Connect): open the shared radio serial port and set the
+                     selected channel frequency on it -> OpenRadioCommand. Disabled while already open. -->
+                <Button x:Name="btnOpenSerial"
+                        Content="Open"
+                        Command="{Binding OpenRadioCommand}"
+                        IsEnabled="{Binding !IsRadioPortOpen}"
+                        Width="110" Height="58"
+                        MinHeight="44"
+                        VerticalAlignment="Bottom"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Open the radio serial port"
+                        AutomationProperties.Name="Open radio port" />
+
+                <!-- WinForms btnCloseSerial (USB_Disconnect): close the shared radio serial port ->
+                     CloseRadioCommand. Enabled only while the port is open. -->
+                <Button x:Name="btnCloseSerial"
+                        Content="Close"
+                        Command="{Binding CloseRadioCommand}"
+                        IsEnabled="{Binding IsRadioPortOpen}"
+                        Width="110" Height="58"
+                        MinHeight="44"
+                        VerticalAlignment="Bottom"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Close the radio serial port"
+                        AutomationProperties.Name="Close radio port" />
+            </StackPanel>
+        </Border>
+
+        <!--
+            Bottom command bar. Left group reproduces the WinForms cboxIsRadioOn "Radio" toggle as a
+            CheckBox; right group reproduces btnRadioCancel + btnRadioOK (Cancel to the LEFT of OK so OK
+            stays right-aligned, mirroring the WinForms placement). Buttons are text affordances.
+        -->
+        <Grid DockPanel.Dock="Bottom"
+              ColumnDefinitions="Auto,*,Auto"
+              Margin="0,8,0,0">
+
+            <!-- WinForms cboxIsRadioOn (Text "Radio"; toggles the radio correction source on confirm). -->
+            <CheckBox Grid.Column="0"
+                      x:Name="cboxIsRadioOn"
+                      Content="Radio On"
+                      IsChecked="{Binding IsRadioOn}"
+                      FontSize="15.75"
+                      VerticalAlignment="Center"
+                      AutomationProperties.Name="Radio on" />
+
+            <!-- Right group: Cancel then OK. -->
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="12"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
+
+                <!-- WinForms btnRadioCancel (DialogResult.Cancel). IsCancel maps Escape to this command. -->
+                <Button x:Name="btnCancel"
+                        Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True"
+                        Width="110" Height="60"
+                        MinHeight="44"
+                        FontSize="16"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Close without saving"
+                        AutomationProperties.Name="Cancel" />
+
+                <!-- WinForms btnRadioOK (DialogResult.OK / accept). IsDefault maps Enter to this command. -->
+                <Button x:Name="btnSerialOK"
+                        Content="OK"
+                        Command="{Binding OkCommand}"
+                        IsDefault="True"
+                        Width="110" Height="60"
+                        MinHeight="44"
+                        FontSize="16"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Save the radio settings and channel selection"
+                        AutomationProperties.Name="OK" />
+            </StackPanel>
+        </Grid>
+
+        <!-- WinForms labelChannels "Channels" (Tahoma 11.25 Bold), above the list. -->
+        <TextBlock DockPanel.Dock="Top"
+                   Text="Channels"
+                   FontWeight="Bold"
+                   FontSize="11.25"
+                   Margin="2,0,0,4" />
+
+        <!--
+            Channels area: the channel list (WinForms lvChannels) filling the remaining space, with the
+            Add / Edit / Delete buttons in a vertical stack to the RIGHT of the list (mirroring the WinForms
+            btnAddChannel/btnEditChannel/btnDeleteChannel column). The header band and the row template share
+            the SAME ColumnDefinitions so the labels stay aligned with the row cells.
+        -->
+        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,*">
+
+            <!-- Column header band (WinForms ListView column headers Id / Name / Frequency / Location). -->
+            <Border Grid.Column="0" Grid.Row="0"
+                    Background="#D6DCE6"
+                    BorderBrush="#40000000"
+                    BorderThickness="1,1,1,0"
+                    Padding="6,4">
+                <Grid ColumnDefinitions="70,*,180,180">
+                    <TextBlock Grid.Column="0" Text="Id"        FontWeight="Bold" />
+                    <TextBlock Grid.Column="1" Text="Name"      FontWeight="Bold" />
+                    <TextBlock Grid.Column="2" Text="Frequency" FontWeight="Bold" />
+                    <TextBlock Grid.Column="3" Text="Location"  FontWeight="Bold" />
+                </Grid>
+            </Border>
+
+            <!--
+                Channel list (WinForms lvChannels). ListBox is used rather than DataGrid because the AgIO
+                project does not reference the Avalonia.Controls.DataGrid package; the agent-prompt lists
+                ListBox as the primary option. Each row reproduces the four ListView sub-items via a Grid
+                whose ColumnDefinitions match the header above. FontWeight Bold + the light background
+                reproduce the WinForms bold list font over the InactiveCaption-tinted list; the per-item
+                bottom border reproduces the ListView GridLines; the 44px row min-height gives large,
+                touch-friendly rows (Phase 3 styling).
+            -->
+            <ListBox x:Name="lvChannels"
+                     Grid.Column="0" Grid.Row="1"
+                     ItemsSource="{Binding Channels}"
+                     SelectedItem="{Binding SelectedChannel}"
+                     FontSize="16" FontWeight="Bold"
+                     Background="#EEF1F6"
+                     Padding="0"
+                     BorderBrush="#40000000"
+                     BorderThickness="1"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     AutomationProperties.Name="Radio channels">
+                <ListBox.Styles>
+                    <!-- Full-row selection (WinForms FullRowSelect=true) + large touch rows. -->
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="6,4" />
+                        <Setter Property="MinHeight" Value="44" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="agio:CRadioChannel">
+                        <!-- GridLines parity: a thin separator under each row. -->
+                        <Border BorderBrush="#20000000" BorderThickness="0,0,0,1">
+                            <Grid ColumnDefinitions="70,*,180,180">
+                                <TextBlock Grid.Column="0" Text="{Binding Id}"        VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding Name}"      VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="2" Text="{Binding Frequency}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="3" Text="{Binding Location}"  VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- WinForms btnAddChannel / btnEditChannel / btnDeleteChannel: the channel-edit button column
+                 to the right of the list. Text affordances; each maps 1:1 to a view-model command. -->
+            <StackPanel Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
+                        Orientation="Vertical"
+                        Spacing="12"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Top">
+
+                <Button x:Name="btnAddChannel"
+                        Content="Add"
+                        Command="{Binding AddChannelCommand}"
+                        Width="110" Height="60"
+                        MinHeight="44"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Add a new radio channel"
+                        AutomationProperties.Name="Add channel" />
+
+                <Button x:Name="btnEditChannel"
+                        Content="Edit"
+                        Command="{Binding EditChannelCommand}"
+                        Width="110" Height="60"
+                        MinHeight="44"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Edit the selected radio channel"
+                        AutomationProperties.Name="Edit channel" />
+
+                <Button x:Name="btnDeleteChannel"
+                        Content="Delete"
+                        Command="{Binding DeleteChannelCommand}"
+                        Width="110" Height="60"
+                        MinHeight="44"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Delete the selected radio channel"
+                        AutomationProperties.Name="Delete channel" />
+            </StackPanel>
+        </Grid>
+
+    </DockPanel>
+</Window>

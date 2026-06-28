@@ -1,0 +1,280 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Move / Nudge Reference Track" tool palette (Avalonia view).
+
+    1:1 PARITY reimplementation of the WinForms `Forms/Guidance/FormRefNudge` (source:
+    FormRefNudge.cs + FormRefNudge.designer.cs — note the WinForms designer file name was the
+    lowercase `FormRefNudge.designer.cs`; that case hazard is resolved here). Per AAP section 0.3.3
+    this is visual + behavioural FIDELITY to the currently rendered Windows Forms UI, never a
+    redesign: no new colours, no relayout, no UX changes. The palette nudges the active reference
+    track sideways by a snap distance (half-tool or fixed) and offers a Cancel that rolls the track
+    list back to a snapshot.
+
+    SHELL — mirrors FormRefNudge.designer.cs (lines 219-238) exactly:
+      Text "Ref Adjust !!!!!" (design)  : Title. The runtime caption is set by the partner
+                                          code-behind to gStr.gsNudgeRefTrack ("Move Reference
+                                          Track"); the literal here is a readable design-time
+                                          placeholder showing that runtime value.
+      ClientSize 223 x 396              : a 223 x 396 Canvas + SizeToContent="WidthAndHeight", so the
+                                          CLIENT area is exactly 223 x 396 regardless of the OS
+                                          decorations drawn around it. (A literal Window Width/Height
+                                          on a DECORATED window would shrink the client by the
+                                          caption-bar height and clip the bottom OK / Cancel buttons,
+                                          whose lowest edge is at y=391.) This is the same approach
+                                          the sibling FixedDialog views FormHelpView and
+                                          FormShiftPosView use. [XPLAT] minor chrome-size variance
+                                          across OSes is acceptable.
+      BackColor Color.LightCoral        : Background="LightCoral". FIXED palette (not day/night
+                                          themed): FormRefNudge was never part of SwapDayNightMode,
+                                          so the App.axaml Aog* brushes are deliberately NOT used
+                                          here (parity).
+      FormBorderStyle.FixedDialog       : SystemDecorations="Full" + CanResize="False" (a decorated,
+                                          non-resizable dialog that keeps its caption bar).
+      ControlBox = false /              : [XPLAT] WinForms ControlBox=false (keep the caption but
+      MaximizeBox = false /               hide the system min / max / close buttons) has no portable
+      MinimizeBox = false                 Avalonia equivalent. SystemDecorations="Full" + the OS
+                                          title bar is the closest approximation, so the OS chrome
+                                          may still show those buttons; this is a benign chrome-only
+                                          variance — the in-form btnExit (commit) and btnCancelMain
+                                          (rollback) remain the primary affordances exactly as before.
+      ShowInTaskbar = false             : ShowInTaskbar="False".
+      StartPosition = CenterParent      : WindowStartupLocation="CenterOwner". The source's
+                                          position-restore lines are commented out, so NO saved
+                                          location / size is restored (parity).
+      (no TopMost in the source)        : Topmost is intentionally NOT set (parity).
+      Font (form default)               : FontFamily="Tahoma"; children carry their point sizes
+                                          converted to Avalonia DIP as (pt * 96 / 72): 18pt -> 24,
+                                          15.75pt -> 21.
+
+    NAMESPACE — x:Class uses the FLAT namespace "AgOpenGPS.Views" (NOT "AgOpenGPS.Views.Guidance")
+    even though this file lives in the Views/Guidance/ folder, exactly as the file specification
+    mandates. C# / Avalonia namespaces are independent of folder location, so this is valid and the
+    partner code-behind (FormRefNudgeView.axaml.cs) declares the matching
+    `namespace AgOpenGPS.Views { public partial class FormRefNudgeView : Window }`.
+
+    ASSETS — button glyphs are served from the GPS assembly ("AgOpenGPS") via avares:// URIs from
+    the btnImages/ folder (avares://AgOpenGPS/btnImages/{SnapLeftHalf, SnapRightHalf, SnapLeft,
+    SnapRight, Cancel64, OK64}.png — each a native 64 x 64 asset). [XPLAT] the file spec named a
+    "Resources/" folder, but the actual PNGs live in GPS/btnImages/ (the Resources/ folder holds
+    only .wav audio), and every sibling GPS Avalonia view references these same glyphs via
+    btnImages/ — so btnImages/ is used here to keep the glyphs loading; a Resources/ path would
+    fail to resolve and break the 1:1 visual parity.
+
+    WIRING CONTRACT — the partner code-behind (FormRefNudgeView.axaml.cs) owns ALL behaviour. This
+    view is CODE-BEHIND DRIVEN: intentionally NO x:DataType, NO DataContext, NO {Binding}. The
+    x:Name'd controls below are the entire integration surface and keep their ORIGINAL WinForms
+    names so the migrated handlers address them exactly as FormRefNudge.cs did. No Click handlers
+    are wired in this markup — the code-behind attaches them by name (btnAdjLeft_Click,
+    btnAdjRight_Click, btnHalfToolLeft_Click, btnHalfToolRight_Click, nudSnapDistance_Click,
+    btnExit_Click, btnCancelMain_Click) — so the .axaml and .axaml.cs can be authored independently
+    in parallel:
+      - btnHalfToolLeft / btnHalfToolRight : nudge the track left / right by half of
+                                             (tool.width - tool.overlap).
+      - btnAdjLeft / btnAdjRight           : nudge the track left / right by the snap distance.
+      - nudSnapDistance                    : read-only snap-distance display; a click opens the
+                                             on-screen numeric keypad (FormNumeric) in code-behind.
+      - lblOffset                          : running total offset readout (code-behind sets the text
+                                             to e.g. "12 cm").
+      - btnExit                            : commit (saves the track list) and close.
+      - btnCancelMain                      : roll the track list back to the snapshot and close.
+
+    No WinForms, no OpenTK, no GMap, no ColorPicker types are referenced — Avalonia 11.3.0 only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormRefNudgeView"
+        Title="Move Reference Track"
+        SystemDecorations="Full"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogLegacyLightCoralBrush}"
+        FontFamily="Tahoma">
+
+    <!--
+        Shared styles.
+
+        Button.imageButton — flat, chrome-less image buttons that reproduce the WinForms
+        FlatStyle.Flat + FlatAppearance.BorderSize=0 + BackColor=Transparent buttons: just the glyph,
+        with no button surface in any visual state. The :pointerover / :pressed template overrides
+        suppress the Fluent hover / press fill that would otherwise box the transparent glyph (the
+        same technique used by the sibling FormHelpView / FormPanView / Keypad controls).
+
+        Button.numBox — nudSnapDistance is rendered as a Button styled like a STATIC numeric field
+        (the WinForms NudlessNumericUpDown was a read-only numeric box whose click opened a keypad):
+        an AliceBlue face with a 1px grey border that stays put across hover / press, so it reads as
+        a value box rather than a glowing button.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="Button.numBox">
+            <Setter Property="Background" Value="AliceBlue" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <!-- Square corners: the WinForms NudlessNumericUpDown is a square-edged numeric field;
+                 pin CornerRadius=0 so the Fluent theme's default rounded corners do not soften it. -->
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+        <Style Selector="Button.numBox /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="AliceBlue" />
+        </Style>
+        <Style Selector="Button.numBox:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="AliceBlue" />
+            <Setter Property="BorderBrush" Value="Gray" />
+        </Style>
+        <Style Selector="Button.numBox:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="AliceBlue" />
+            <Setter Property="BorderBrush" Value="Gray" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root Canvas reproduces the WinForms absolute layout 1:1: every Canvas.Left / Canvas.Top +
+        Width / Height equals the exact designer Location / Size on the 223 x 396 client. Combined
+        with the window's SizeToContent this yields a client area of exactly 223 x 396.
+    -->
+    <Canvas Width="223" Height="396">
+
+        <!--
+            WhiteSmoke panel — stands in for the WinForms `tableLayoutPanel1`
+            (FormRefNudge.designer.cs lines 84-105): BackColor WhiteSmoke, Location (21,14),
+            Size 182 x 263. The original TableLayoutPanel arranged its five children in a 2-column
+            grid; here their exact designer Location / Size are reproduced on an inner Canvas for
+            pixel-accurate parity.
+        -->
+        <Border Canvas.Left="21" Canvas.Top="14"
+                Width="182" Height="263"
+                Background="WhiteSmoke">
+            <Canvas Width="182" Height="263">
+
+                <!-- btnHalfToolLeft — nudge half-tool-width LEFT. Designer (10,21) 69x58, glyph SnapLeftHalf. -->
+                <Button x:Name="btnHalfToolLeft"
+                        Classes="imageButton"
+                        Canvas.Left="10" Canvas.Top="21"
+                        Width="69" Height="58"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        AutomationProperties.Name="Nudge half tool width left">
+                    <Image Source="avares://AgOpenGPS/btnImages/SnapLeftHalf.png" Stretch="Uniform" />
+                </Button>
+
+                <!-- btnHalfToolRight — nudge half-tool-width RIGHT. Designer (101,21) 69x58, glyph
+                     SnapRightHalf. (The WinForms designer set ImageAlign=MiddleRight on this single
+                     button; like the other three arrows it is rendered with a centred uniform glyph
+                     here — visually equivalent at this scale and consistent with the file spec's
+                     uniform treatment of all four arrow buttons.) -->
+                <Button x:Name="btnHalfToolRight"
+                        Classes="imageButton"
+                        Canvas.Left="101" Canvas.Top="21"
+                        Width="69" Height="58"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        AutomationProperties.Name="Nudge half tool width right">
+                    <Image Source="avares://AgOpenGPS/btnImages/SnapRightHalf.png" Stretch="Uniform" />
+                </Button>
+
+                <!-- btnAdjLeft — nudge by snap distance LEFT. Designer (10,122) 69x58, glyph SnapLeft. -->
+                <Button x:Name="btnAdjLeft"
+                        Classes="imageButton"
+                        Canvas.Left="10" Canvas.Top="122"
+                        Width="69" Height="58"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        AutomationProperties.Name="Nudge left by snap distance">
+                    <Image Source="avares://AgOpenGPS/btnImages/SnapLeft.png" Stretch="Uniform" />
+                </Button>
+
+                <!-- btnAdjRight — nudge by snap distance RIGHT. Designer (101,122) 69x58, glyph SnapRight. -->
+                <Button x:Name="btnAdjRight"
+                        Classes="imageButton"
+                        Canvas.Left="101" Canvas.Top="122"
+                        Width="69" Height="58"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        AutomationProperties.Name="Nudge right by snap distance">
+                    <Image Source="avares://AgOpenGPS/btnImages/SnapRight.png" Stretch="Uniform" />
+                </Button>
+
+                <!-- nudSnapDistance — read-only snap-distance display (WinForms NudlessNumericUpDown,
+                     ReadOnly, Maximum 1000, Value 800, Tahoma 18pt Bold centred). Designer (37,214)
+                     107x36. Rendered as a numeric-box Button (Classes="numBox"); the "8" is a
+                     design-time placeholder the code-behind overwrites, and a click opens the
+                     numeric keypad. -->
+                <Button x:Name="nudSnapDistance"
+                        AutomationProperties.Name="Snap distance"
+                        Classes="numBox"
+                        Canvas.Left="37" Canvas.Top="214"
+                        Width="107" Height="36"
+                        FontSize="24" FontWeight="Bold"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Content="8" />
+
+            </Canvas>
+        </Border>
+
+        <!-- lblOffset — running total offset readout. WinForms Label (16,289) 187x31, Tahoma 18pt
+             Bold (-> 24 DIP), ForeColor Black, transparent, TextAlign MiddleCenter, Text "0.0 cm"
+             (placeholder; code-behind sets it to e.g. "12 cm"). A 24 DIP line fills the 31px band,
+             so the single line reads as vertically centred. -->
+        <TextBlock x:Name="lblOffset"
+                   Canvas.Left="16" Canvas.Top="289"
+                   Width="187" Height="31"
+                   FontSize="24" FontWeight="Bold"
+                   Foreground="Black"
+                   Background="Transparent"
+                   TextAlignment="Center"
+                   Text="0.0 cm" />
+
+        <!-- btnCancelMain — roll the track list back and close. WinForms Button (3,334) 78x57,
+             FlatStyle.Flat, BorderSize 0, BackColor Transparent, glyph Cancel64. -->
+        <Button x:Name="btnCancelMain"
+                Classes="imageButton"
+                Canvas.Left="3" Canvas.Top="334"
+                Width="78" Height="57"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                AutomationProperties.Name="Cancel">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+        </Button>
+
+        <!-- btnExit — commit (save tracks) and close. WinForms Button (111,334) 106x57,
+             FlatStyle.Flat, BorderSize 0, BackColor Transparent, glyph OK64 with
+             ImageAlign=MiddleRight (-> the glyph is right-aligned via HorizontalContentAlignment=
+             "Right" plus an explicit 56x56 image so it fits the 57px-tall button). The WinForms
+             Tahoma 15.75pt Bold (-> 21 DIP) + ForeColor ARGB(192,64,0) = #FFC04000 are preserved as
+             COSMETIC only — the source assigns NO Text, so the button shows the glyph alone. -->
+        <Button x:Name="btnExit"
+                Classes="imageButton"
+                Canvas.Left="111" Canvas.Top="334"
+                Width="106" Height="57"
+                FontSize="21" FontWeight="Bold"
+                Foreground="#FFC04000"
+                HorizontalContentAlignment="Right"
+                VerticalContentAlignment="Center"
+                AutomationProperties.Name="OK">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Width="56" Height="56" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

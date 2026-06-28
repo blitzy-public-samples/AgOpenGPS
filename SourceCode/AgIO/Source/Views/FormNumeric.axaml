@@ -1,0 +1,182 @@
+<!-- [XPLAT] migrated from net48/WinForms FormNumeric.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgIO — on-screen numeric keypad entry dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the deleted WinForms `Forms/FormNumeric`
+    (FormNumeric.cs + FormNumeric.Designer.cs). Per AAP §0.3.3 this is parity to the currently
+    rendered Windows Forms UI — never a redesign (no new colors, no relayout, no UX changes).
+    The dialog presents the current value in a large read-only display, the allowed minimum and
+    maximum beneath it, a pair of up/down nudge buttons, the shared on-screen NumKeypad for entry,
+    and explicit OK / Cancel command buttons.
+
+    DATA BINDING (MVVM, compiled bindings via x:DataType="vm:FormNumericViewModel"):
+      * tboxNumber.Text  -> EntryText  : the running typed string the keypad edits (read-only display).
+      * lblMin.Text      -> Min        : the inclusive minimum guard (WinForms lblMin).
+      * lblMax.Text      -> Max        : the inclusive maximum guard (WinForms lblMax).
+    FormNumericViewModel owns the editing rules (AppendKey), the nudges (Increment/Decrement) and
+    validation (TryGetResult); it owns NO OK/Cancel result state — the dialog outcome is produced by
+    the hosting Window's code-behind (Close(value) / Close(null)), mirroring the WinForms
+    DialogResult.OK / DialogResult.Cancel contract.
+
+    WIRING CONTRACT — the partner code-behind (FormNumeric.axaml.cs) owns ALL behaviour, NOT this markup:
+      * This view declares NO Click="..." handlers and NO event attributes. Every interactive control
+        is addressed purely by x:Name so the code-behind subscribes/handles via the generated x:Name
+        fields, with zero compile-time coupling to handler method names. The x:Names MUST stay exactly
+        keypad1, btnOK, btnCancel, btnDistanceUp, btnDistanceDn, tboxNumber, lblMin, lblMax.
+      * keypad1.ButtonPressed (the Keypad.GenericKeypad event, carrying e.KeyChar) is subscribed in the
+        code-behind, reproducing the WinForms RegisterKeypad1_ButtonPressed routing: 'K' (OK) validates
+        against Min/Max and closes with the value; 'X' (Cancel) closes with no value; every other token
+        (digits, '.', '-', 'C', 'B') is forwarded to FormNumericViewModel.AppendKey.
+      * btnOK / btnCancel reproduce the same OK / Cancel outcomes as explicit, touch-friendly buttons
+        (the NumKeypad additionally carries its own 'K'/'X' keys; both paths converge on the same logic).
+      * btnDistanceUp / btnDistanceDn reproduce the WinForms BtnDistanceUp_MouseDown /
+        BtnDistanceDn_MouseDown single-step nudges -> FormNumericViewModel.Increment / Decrement.
+
+    WINDOW SHELL — mirrors FormNumeric.Designer.cs (+ FormNumeric.cs ctor which set Text "Enter Value"):
+      Text "Enter Value"                       -> Title (the ctor overrode the designer's "Enter a Value").
+      BackColor SystemColors.ActiveCaption      -> Background "#99B4D1" (theme-independent parity color;
+                                                   AgIO is light-only per App.axaml — no day/night).
+      ShowInTaskbar = false                     -> ShowInTaskbar="False".
+      TopMost (modal-over-owner)                -> Topmost="True" (consistent with sibling AgIO dialogs).
+      StartPosition.CenterParent                -> WindowStartupLocation="CenterOwner".
+      FixedDialog (non-resizable)               -> CanResize="False" + SizeToContent="WidthAndHeight".
+      Font Tahoma (base)                        -> FontFamily="Tahoma" (children set explicit sizes below).
+
+    ASSETS: AgIO registers NO btnImages as <AvaloniaResource>, so avares://AgIO/... imagery would not
+    resolve; per the established AgIO convention every command affordance is rendered as text (no
+    System.Drawing, no WinForms, no avares images). WinForms points -> Avalonia DIP (x 96/72 ≈ x1.333):
+    27.75pt -> 37; 14.25pt -> 19.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        xmlns:keypad="clr-namespace:Keypad;assembly=Keypad"
+        x:Class="AgIO.Views.FormNumeric"
+        x:DataType="vm:FormNumericViewModel"
+        Title="Enter Value"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        Background="#99B4D1">
+
+    <!-- Fixed 456-wide content (matches the NumKeypad's intrinsic 456 px width) so SizeToContent
+         yields a deterministic window width; the three Auto rows stack the top bar, the keypad, and
+         the OK/Cancel command row, and SizeToContent computes the height. -->
+    <Grid Width="456" RowDefinitions="Auto,Auto,Auto">
+
+        <!--
+            TOP BAR (WinForms y 0..112): the nudge buttons sit to the LEFT of the value display, with
+            the min/max guard labels beneath it — reproducing the FormNumeric.Designer.cs arrangement
+            (btnDistanceDn @x4, btnDistanceUp @x112, tboxNumber @x208, lblMin @x205, lblMax @x332).
+        -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="6,8,6,4">
+
+            <!--
+                btnDistanceDn / btnDistanceUp — WinForms AgLibrary.Controls.RepeatButton nudges, each
+                91x92, wired to MouseDown (a single step per press). Reproduced as plain Buttons (one
+                step per click, matching the WinForms single-fire MouseDown) whose Click is wired in the
+                code-behind to FormNumericViewModel.Decrement / Increment. Down is LEFT, Up is RIGHT,
+                matching the designer's x4 / x112 ordering. Text glyphs (no avares imagery on AgIO).
+            -->
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        Spacing="6"
+                        VerticalAlignment="Center">
+                <Button x:Name="btnDistanceDn"
+                        Content="&#x25BC;"
+                        Width="88" Height="88"
+                        FontSize="28"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Decrease by 1" />
+                <Button x:Name="btnDistanceUp"
+                        Content="&#x25B2;"
+                        Width="88" Height="88"
+                        FontSize="28"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Increase by 1" />
+            </StackPanel>
+
+            <!-- Value display + guard labels (fill the remaining width, ≈ WinForms 246-wide column). -->
+            <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+
+                <!--
+                    tboxNumber — WinForms TextBox: Tahoma 27.75pt Bold, 246x52, ReadOnly, TextAlign
+                    Center. Read-only because every edit flows through the on-screen keypad (and the
+                    nudges), never physical keyboard focus. The designer's design-time placeholder is
+                    intentionally dropped; the value is supplied at runtime via the bound EntryText.
+                -->
+                <TextBox x:Name="tboxNumber"
+                         Height="52"
+                         FontSize="37" FontWeight="Bold"
+                         IsReadOnly="True"
+                         TextAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding EntryText}" />
+
+                <!--
+                    lblMin (LEFT) / lblMax (RIGHT) — WinForms Labels: Tahoma 14.25pt Bold, TopCenter,
+                    showing the inclusive allowed range. Bound to the view-model's Min / Max. Named so
+                    the code-behind can recolor them (the WinForms 'K' handler reddened the violated
+                    bound on an out-of-range entry).
+                -->
+                <Grid ColumnDefinitions="*,*" Margin="0,4,0,0">
+                    <TextBlock x:Name="lblMin"
+                               Grid.Column="0"
+                               FontSize="19" FontWeight="Bold"
+                               TextAlignment="Center"
+                               Text="{Binding Min}" />
+                    <TextBlock x:Name="lblMax"
+                               Grid.Column="1"
+                               FontSize="19" FontWeight="Bold"
+                               TextAlignment="Center"
+                               Text="{Binding Max}" />
+                </Grid>
+            </StackPanel>
+        </Grid>
+
+        <!--
+            keypad1 — the migrated Avalonia Keypad.NumKeypad UserControl (4x4 on-screen numeric keypad).
+            WinForms: BackColor ActiveCaption, Location (0,112), Size 454x429. Its ButtonPressed event is
+            subscribed in the code-behind (not declared here). Background matches the dialog's parity
+            color so the inter-button gutters blend seamlessly with the window.
+        -->
+        <keypad:NumKeypad x:Name="keypad1"
+                          Grid.Row="1"
+                          Width="456" Height="430"
+                          HorizontalAlignment="Center"
+                          Background="#99B4D1" />
+
+        <!--
+            OK / Cancel command row. Cancel precedes OK so OK stays right-aligned (the conventional
+            accept-on-the-right placement, consistent with the sibling FormYes dialog). btnCancel ->
+            close with no value (DialogResult.Cancel); btnOK (IsDefault, so Enter confirms) -> validate
+            and close with the value (DialogResult.OK). Both are wired in the code-behind. Touch-friendly
+            sizing; text content (no avares imagery on AgIO).
+        -->
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="12"
+                    Margin="6,6,6,8">
+            <Button x:Name="btnCancel"
+                    Content="Cancel"
+                    Width="120" Height="60"
+                    FontSize="18"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+            <Button x:Name="btnOK"
+                    Content="OK"
+                    IsDefault="True"
+                    Width="120" Height="60"
+                    FontSize="18"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</Window>

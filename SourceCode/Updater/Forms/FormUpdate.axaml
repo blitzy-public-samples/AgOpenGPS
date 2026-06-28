@@ -1,0 +1,163 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Updater.Forms.FormUpdate"
+        Title="AgOpenGPS Updater"
+        Width="750" Height="630"
+        CanResize="False"
+        ShowInTaskbar="True"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI">
+    <!--
+        [XPLAT] 1:1 Avalonia parity reimplementation of the WinForms FormUpdate (Forms/FormUpdate.Designer.cs).
+        A root DockPanel hosts three docked regions reproducing the original panels:
+          • panelHeader  -> Border Dock=Top    (750x90,  teal  Color.FromArgb(27,151,160))
+          • panelButtons -> Border Dock=Bottom (750x110, #B4B4C8 Color.FromArgb(180,180,200))
+          • panelMain    -> Border (fills)     (750x430, #D2D2E6 Color.FromArgb(210,210,230))
+        Each region hosts a Canvas so the original WinForms absolute pixel Locations/Sizes are reproduced
+        exactly (the window is fixed-size, so absolute positioning is the faithful 1:1 mapping).
+        Shared palette brushes (AccentBrush #1B97A0 / SuccessBrush #28A745) are pulled from App.axaml via
+        DynamicResource; all other colors are inline literals matching the original Color.FromArgb values.
+        Initial control states (IsVisible / IsEnabled / text / colors) are the designer defaults; the
+        FormUpdate.axaml.cs code-behind mutates LblLatestVersion foreground, the button backgrounds, and the
+        source-info / progress visibility at runtime.
+    -->
+    <DockPanel LastChildFill="True">
+
+        <!-- ===== Region 1: panelHeader (WinForms Dock=Top, 750x90, BackColor 27,151,160) ===== -->
+        <Border DockPanel.Dock="Top" Height="90" Background="{DynamicResource AccentBrush}">
+            <Canvas>
+                <!-- lblTitle: Segoe UI 26 Bold, White, Location (30,25) -->
+                <TextBlock x:Name="LblTitle"
+                           Canvas.Left="30" Canvas.Top="25"
+                           Text="AgOpenGPS Updater"
+                           FontSize="26" FontWeight="Bold"
+                           Foreground="White" />
+                <!-- lblGitHubStatus: Segoe UI 10, #64FF0A, Location (630,35), Size 110x40, TextAlign MiddleCenter -->
+                <Border Canvas.Left="630" Canvas.Top="35" Width="110" Height="40">
+                    <TextBlock x:Name="LblGitHubStatus"
+                               Text="🔐 Official"
+                               FontSize="10"
+                               Foreground="{DynamicResource VerifiedStatusBrush}"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+            </Canvas>
+        </Border>
+
+        <!-- ===== Region 2: panelButtons (WinForms Dock=Bottom, 750x110, BackColor 180,180,200 -> PanelFooterBrush) ===== -->
+        <Border DockPanel.Dock="Bottom" Height="110" Background="{DynamicResource PanelFooterBrush}">
+            <Canvas>
+                <!-- btnClose: red #DC5050 (220,80,80), Segoe UI 16 Bold White, Location (30,20), Size 250x70 -->
+                <Button x:Name="BtnClose"
+                        Canvas.Left="30" Canvas.Top="20"
+                        Width="250" Height="70"
+                        Content="Close"
+                        FontSize="16" FontWeight="Bold"
+                        Foreground="White" Background="{DynamicResource ButtonDangerBrush}"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Click="BtnCancel_Click" />
+                <!-- btnInstallUpdate: SuccessBrush #28A745, Segoe UI 18 Bold White, Location (420,20), Size 300x70, Enabled=false -->
+                <Button x:Name="BtnInstallUpdate"
+                        Canvas.Left="420" Canvas.Top="20"
+                        Width="300" Height="70"
+                        Content="Install Update"
+                        FontSize="18" FontWeight="Bold"
+                        Foreground="White" Background="{DynamicResource SuccessBrush}"
+                        IsEnabled="False"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Click="BtnInstallUpdate_Click" />
+            </Canvas>
+        </Border>
+
+        <!-- ===== Region 3: panelMain (WinForms Dock=Fill, 750x430, BackColor 210,210,230 -> PanelBrush) ===== -->
+        <Border Background="{DynamicResource PanelBrush}">
+            <Canvas>
+                <!-- lblCurrentVersion: Segoe UI 16, #0A0A14, Location (30,30) -->
+                <TextBlock x:Name="LblCurrentVersion"
+                           Canvas.Left="30" Canvas.Top="30"
+                           Text="Current Version: -"
+                           FontSize="16"
+                           Foreground="{DynamicResource BodyTextBrush}" />
+                <!-- lblLatestVersion: Segoe UI 18 Bold, #0A0A14, Location (30,70) -->
+                <TextBlock x:Name="LblLatestVersion"
+                           Canvas.Left="30" Canvas.Top="70"
+                           Text="Latest Version: -"
+                           FontSize="18" FontWeight="Bold"
+                           Foreground="{DynamicResource BodyTextBrush}" />
+                <!-- chkIncludePrerelease: Segoe UI 14, #0A0A14, Location (30,125) -->
+                <CheckBox x:Name="ChkIncludePrerelease"
+                          Canvas.Left="30" Canvas.Top="125"
+                          Content="Include pre-release"
+                          FontSize="14"
+                          Foreground="{DynamicResource BodyTextBrush}" />
+                <!-- btnToggleSource: gray #646464 (100,100,100), Segoe UI 12 Bold White, Location (550,25), Size 170x40 -->
+                <Button x:Name="BtnToggleSource"
+                        Canvas.Left="550" Canvas.Top="25"
+                        Width="170" Height="40"
+                        Content="Use USB"
+                        FontSize="12" FontWeight="Bold"
+                        Foreground="White" Background="{DynamicResource NeutralButtonBrush}"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Click="BtnToggleSource_Click" />
+                <!-- lblSourceInfo: Segoe UI 11 Italic, #646464, Location (30,160), Size 690x60, Visible=false -->
+                <TextBlock x:Name="LblSourceInfo"
+                           Canvas.Left="30" Canvas.Top="160"
+                           Width="690" Height="60"
+                           Text="Local: Place AgOpenGPS.zip in root of USB drive"
+                           FontSize="11" FontStyle="Italic"
+                           Foreground="{DynamicResource NeutralButtonBrush}"
+                           TextWrapping="Wrap"
+                           IsVisible="False" />
+                <!-- btnCheckForUpdates: AccentBrush #1B97A0, Segoe UI 16 Bold White, Location (30,210), Size 350x70 -->
+                <Button x:Name="BtnCheckForUpdates"
+                        Canvas.Left="30" Canvas.Top="210"
+                        Width="350" Height="70"
+                        Content="Check for Updates"
+                        FontSize="16" FontWeight="Bold"
+                        Foreground="White" Background="{DynamicResource AccentBrush}"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Click="BtnCheckForUpdates_Click" />
+                <!-- btnViewReleaseNotes: gray #646464, Segoe UI 16 Bold White, Location (400,210), Size 320x70, Enabled=false -->
+                <Button x:Name="BtnViewReleaseNotes"
+                        Canvas.Left="400" Canvas.Top="210"
+                        Width="320" Height="70"
+                        Content="View Release Notes"
+                        FontSize="16" FontWeight="Bold"
+                        Foreground="White" Background="{DynamicResource NeutralButtonBrush}"
+                        IsEnabled="False"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Click="BtnViewReleaseNotes_Click" />
+                <!-- lblStatus: Segoe UI 16 Bold, AccentBrush, Location (30,300), Size 690x60, TextAlign MiddleCenter -->
+                <Border Canvas.Left="30" Canvas.Top="300" Width="690" Height="60">
+                    <TextBlock x:Name="LblStatus"
+                               Text="Ready..."
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="{DynamicResource AccentBrush}"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+                <!-- progressBar1: Location (30,370), Size 690x40, Visible=false -->
+                <ProgressBar x:Name="ProgressBar1"
+                             Canvas.Left="30" Canvas.Top="370"
+                             Width="690" Height="40"
+                             Minimum="0" Maximum="100" Value="0"
+                             IsVisible="False" />
+                <!-- lblProgressPercent: Segoe UI 48 Bold, AccentBrush, Location (30,420), Size 690x80, TextAlign MiddleCenter, Visible=false -->
+                <Border Canvas.Left="30" Canvas.Top="420" Width="690" Height="80">
+                    <TextBlock x:Name="LblProgressPercent"
+                               Text="0%"
+                               FontSize="48" FontWeight="Bold"
+                               Foreground="{DynamicResource AccentBrush}"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               IsVisible="False" />
+                </Border>
+            </Canvas>
+        </Border>
+
+    </DockPanel>
+</Window>

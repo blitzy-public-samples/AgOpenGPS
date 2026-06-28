@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System.Globalization;
 
 namespace GPS_Out
 {
@@ -14,9 +15,9 @@ namespace GPS_Out
         //   *48          Checksum
 
         private string cSentence;
-        private frmStart mf;
+        private INmeaHost mf;
 
-        public PGN_VTG(frmStart CalledFrom)
+        public PGN_VTG(INmeaHost CalledFrom)
         {
             mf = CalledFrom;
         }
@@ -39,7 +40,7 @@ namespace GPS_Out
 
             cSentence += ",*";
             //cSentence += "*";
-            string Hex = mf.CheckSum(cSentence).ToString("X2");
+            string Hex = mf.CheckSum(cSentence).ToString("X2", CultureInfo.InvariantCulture);
             cSentence += Hex;
 
             return cSentence;

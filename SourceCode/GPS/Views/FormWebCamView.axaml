@@ -1,0 +1,208 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — WebCam viewer (Avalonia view).
+
+    Parity SHELL of the WinForms `Forms/FormWebCam` (FormWebCam.cs + FormWebCam.Designer.cs).
+    Per AAP §0.3.3 this is a 1:1 visual-parity reimplementation of the current Windows Forms
+    look, never a redesign — same window size, same control arrangement, same fonts.
+
+    FEATURE-GATE (AAP §0.5.1 / §0.6.3 — F-045 Webcam):
+      The original capture backend was a Windows-only, abandoned camera-capture library hosted in
+      a WinForms player control (the removed library and player type are named in
+      MIGRATION_DOCS/TRANSITION_MAP.md). It is REMOVED. This markup intentionally contains no
+      reference to that removed capture stack and no Windows-only UI-toolkit or GL-host types — it
+      is pure Avalonia. This view preserves the UI SHELL for parity,
+      but the capture path is feature-gated and disabled by default (isWebCamOn = false), so on
+      a platform with no available capture backend the code-behind reveals `lblUnavailable`
+      instead of a live video frame — the established no-op graceful-degradation pattern.
+
+    WINDOW SHELL — mirrors FormWebCam.Designer.cs:
+      Text "WebCam"                 -> Title="WebCam"
+      ClientSize 398 x 268          -> Width="398" Height="268" (normal titled window; the small
+                                       title-bar chrome delta is expected for a decorated window —
+                                       FormWebCam was NOT borderless: FormBorderStyle defaulted to
+                                       Sizable, hence CanResize="True" below).
+      FormBorderStyle = Sizable     -> CanResize="True" (videoSurface FILLS on resize, reproducing
+                                       the WinForms Anchor Top|Bottom|Left|Right on the player; the
+                                       bottom command band stays put, reproducing Anchor Bottom).
+      StartPosition = CenterParent  -> WindowStartupLocation="CenterOwner" (shown owned/modal by
+                                       FormGPS, per the AAP Avalonia wiring).
+      ShowInTaskbar = false         -> ShowInTaskbar="False"
+      Font = Tahoma 8.25pt          -> FontFamily="Tahoma" FontSize="11" (8.25pt x 96/72 = 11 DIP;
+                                       Avalonia FontSize is device-independent pixels).
+      BackColor was NOT set in the designer (system default Control). This view therefore sets no
+      explicit Window Background and inherits App.axaml's app-wide FluentTheme chrome — faithful to
+      the source using the OS default, and the reason App.axaml is this file's only dependency.
+      There is intentionally NO x:DataType / DataContext / {Binding}: this is a code-behind-driven
+      view, exactly like the sibling FormDialogView / FormInputDialogView.
+
+    CODE-BEHIND CONTRACT — FormWebCamView.axaml.cs (partial class AgOpenGPS.Views.FormWebCamView : Window):
+      * Parameterless ctor calling InitializeComponent(); shown via ShowDialog over an owner.
+      * Owns and addresses by name the five controls below — deviceComboBox, startButton,
+        stopButton, videoSurface, lblUnavailable. Handlers (the WinForms FormWebCam_Load /
+        deviceComboBox_SelectedIndexChanged / startButton_Click / stopButton_Click +
+        UpdateButtons enable/disable logic) are attached PROGRAMMATICALLY in the code-behind to
+        the named fields — NOT declared as XAML attributes here — so the markup never depends on a
+        specific handler-method name. Both buttons start disabled (IsEnabled="False"), matching the
+        designer (startButton.Enabled = false; stopButton.Enabled = false).
+      * When the capture backend is unavailable (the default cross-platform state) the code-behind
+        sets lblUnavailable.IsVisible = true; the design-time default is collapsed (IsVisible="False").
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs —
+    the same btnImages/ assets the other GPS Avalonia views consume. Play.png / Stop.png are the
+    exact images the WinForms designer used (startButton.BackgroundImage = Resources.Play;
+    stopButton.BackgroundImage = Resources.Stop), both native 57 x 37.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormWebCamView"
+        Title="WebCam"
+        Width="398"
+        Height="268"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="11">
+
+    <!--
+        Flat, chrome-less image buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + UseVisualStyleBackColor (transparent): just the centered
+        glyph, with no button surface in any visual state. The :pointerover / :pressed / :disabled
+        template overrides suppress the Fluent hover / press / disabled fill that would otherwise
+        box the glyph — both buttons render disabled at first show, so :disabled is included too.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Two rows reproduce the WinForms anchoring: the video display surface takes all remaining
+        space (Anchor Top|Bottom|Left|Right => Height="*"); the command band is pinned to the
+        bottom at its natural height (Anchor Bottom => Height="Auto").
+    -->
+    <Grid RowDefinitions="*,Auto">
+
+        <!--
+            Row 0 — the video display surface. The WinForms video player control sat at Location
+            (0,0), Size 398 x 229, BackColor = SystemColors.AppWorkspace (#FF808080), BorderColor
+            Transparent. The Border IS the placeholder display area (x:Name="videoSurface");
+            lblUnavailable is an independent centered overlay sibling so the code-behind can toggle
+            it without disturbing the surface. The capture backend is removed, so this stays a
+            static gray panel by design (parity shell only).
+        -->
+        <Grid Grid.Row="0">
+
+            <!-- videoSurface — the gray display panel (SystemColors.AppWorkspace). -->
+            <Border x:Name="videoSurface"
+                    Background="#FF808080" />
+
+            <!--
+                lblUnavailable — graceful "no webcam" message, collapsed by default and revealed by
+                the code-behind when the capture backend is unavailable (the default cross-platform
+                state). Black on #808080 ≈ 5.3:1 contrast (WCAG AA pass). Centered and wrapped.
+            -->
+            <TextBlock x:Name="lblUnavailable"
+                       IsVisible="False"
+                       Text="WebCam is not available on this platform."
+                       Foreground="Black"
+                       FontFamily="Tahoma"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Margin="20" />
+        </Grid>
+
+        <!--
+            Row 1 — the bottom command band. The band's natural height is driven by the 37px tall
+            buttons. deviceComboBox is left-aligned and the Play/Stop buttons are grouped right,
+            exactly reproducing the WinForms absolute layout inside the 398-wide client:
+              deviceComboBox (13,234) 196x27  -> Margin left 13; VerticalAlignment Center centers
+                                                 the 27px combo in the 37px band => 5px top inset
+                                                 (band top y=229 + 5 = 234, the WinForms Y).
+              startButton    (226,229) 75x37  -> right group, first
+              stopButton     (319,229) 75x37  -> right group, second (gap 319-301 = 18 => Spacing)
+                                                 (right inset 398-394 = 4 => Margin right 4)
+        -->
+        <Grid Grid.Row="1">
+
+            <!-- deviceComboBox — WinForms ComboBox, DropDownStyle = DropDownList (a non-editable
+                 selection list, which is Avalonia ComboBox's only mode), Tahoma 12pt => 16 DIP.
+                 Size 196x27. MinHeight="27" deliberately overrides the Fluent theme's default
+                 ComboBox MinHeight (32) so the rendered height matches the WinForms 27px exactly —
+                 source parity takes precedence over the theme default. The code-behind populates
+                 Items and wires SelectedIndexChanged. -->
+            <ComboBox x:Name="deviceComboBox"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Center"
+                      Margin="13,0,0,0"
+                      Width="196"
+                      Height="27"
+                      MinHeight="27"
+                      FontFamily="Tahoma"
+                      FontSize="16"
+                      AutomationProperties.Name="Camera device" />
+
+            <!-- Play / Stop command buttons, grouped at the right edge of the band. -->
+            <StackPanel HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="18"
+                        Margin="0,0,4,0">
+
+                <!-- startButton — WinForms 75x37, BackgroundImage Resources.Play (ImageLayout.Center),
+                     Enabled=false initially. Stretch="None" draws the native 57x37 glyph centered in
+                     the 75x37 button, matching ImageLayout.Center exactly. -->
+                <Button x:Name="startButton"
+                        Classes="imageButton"
+                        Width="75"
+                        Height="37"
+                        IsEnabled="False"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        AutomationProperties.Name="Start camera">
+                    <Image Source="avares://AgOpenGPS/btnImages/Play.png"
+                           Stretch="None"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+                </Button>
+
+                <!-- stopButton — WinForms 75x37, BackgroundImage Resources.Stop (ImageLayout.Center),
+                     Enabled=false initially. -->
+                <Button x:Name="stopButton"
+                        Classes="imageButton"
+                        Width="75"
+                        Height="37"
+                        IsEnabled="False"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        AutomationProperties.Name="Stop camera">
+                    <Image Source="avares://AgOpenGPS/btnImages/Stop.png"
+                           Stretch="None"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,26 +1,44 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.IO.Ports;
+using Avalonia.Threading;          // [XPLAT] DispatcherTimer (cross-platform UI-thread watchdog)
 
 namespace GPS_Out
 {
     public class SerialSend
     {
-        private readonly frmStart mf;
+        // [XPLAT] decoupled from the deleted WinForms host form (the former view back-reference is
+        // gone). SerialSend now depends only on the local clsTools helper and the local
+        // ISerialStatusSink contract — never on the Avalonia Views layer — so the standalone GPS_Out
+        // serial logic stays UI-framework agnostic. The host window injects itself as the
+        // ISerialStatusSink implementation (see TRANSITION_MAP.md for the old -> new wiring).
+        private readonly clsTools tools;
+        private readonly ISerialStatusSink statusSink;
         private bool cWriteTimeOut = false;
         private SerialPort Sport;
-        private System.Windows.Forms.Timer Timer1 = new System.Windows.Forms.Timer();
+        // [XPLAT] the WinForms UI timer is replaced by an Avalonia DispatcherTimer. The original UI
+        // timer fired Tick on the UI thread; DispatcherTimer preserves that exact threading so the
+        // watchdog can open the Avalonia HelpWindow (tools.ShowHelp) and refresh the port indicator
+        // without marshaling. Interval is a TimeSpan; Start()/Stop() replace the Enabled flag. This
+        // 1 Hz watchdog is unrelated to the real-time receive path, so no latency is added.
+        private readonly DispatcherTimer Timer1 = new DispatcherTimer();
         private int WriteErrorCount;
 
-        public SerialSend(frmStart CalledFrom)
+        // [XPLAT] internal (not public): the ISerialStatusSink parameter type is internal, so a public
+        // constructor would raise CS0051 (inconsistent accessibility). Mirrors the same pattern used by
+        // clsTools.LoadFormData/SaveFormData. Only the host window (same assembly) constructs this, as
+        // new SerialSend(tools, statusSink). The class itself remains public.
+        internal SerialSend(clsTools Tools, ISerialStatusSink StatusSink)
         {
-            this.mf = CalledFrom;
+            this.tools = Tools;
+            this.statusSink = StatusSink;
             Sport = new SerialPort(Properties.Settings.Default.Port, Properties.Settings.Default.Baud);
             Sport.WriteTimeout = 500;
             Sport.Parity = Parity.None;
             Sport.DataBits = 8;
             Sport.StopBits = StopBits.One;
-            Timer1.Interval = 1000;
-            Timer1.Tick += new EventHandler(CheckConnection);
+            Timer1.Interval = TimeSpan.FromMilliseconds(1000);
+            Timer1.Tick += CheckConnection;
 
             if (Properties.Settings.Default.AutoConnect && Properties.Settings.Default.SerialSuccessful) Open();
         }
@@ -64,7 +82,7 @@ namespace GPS_Out
             }
             catch (Exception ex)
             {
-                mf.Tls.WriteErrorLog("SerialSend/CloseRCport: " + ex.Message);
+                tools.WriteErrorLog("SerialSend/CloseRCport: " + ex.Message);
             }
         }
 
@@ -93,7 +111,7 @@ namespace GPS_Out
             }
             catch (Exception ex)
             {
-                mf.Tls.WriteErrorLog("SerialSend/OpenRCport: " + ex.Message);
+                tools.WriteErrorLog("SerialSend/OpenRCport: " + ex.Message);
             }
             Properties.Settings.Default.SerialSuccessful = Result;
             return Result;
@@ -111,7 +129,7 @@ namespace GPS_Out
                 catch (Exception ex)
                 {
                     if (ex is TimeoutException) cWriteTimeOut = true;
-                    mf.Tls.WriteErrorLog("SerialSend/SendStringData: " + ex.Message);
+                    tools.WriteErrorLog("SerialSend/SendStringData: " + ex.Message);
                 }
             }
         }
@@ -122,9 +140,11 @@ namespace GPS_Out
             {
                 if (++WriteErrorCount > 2)
                 {
-                    mf.Tls.ShowHelp(Sport.PortName + " is not sending correctly. It will be closed.", "Serial Port", 5000, true, false, true);
+                    tools.ShowHelp(Sport.PortName + " is not sending correctly. It will be closed.", "Serial Port", 5000, true, false, true);
                     Close();
-                    mf.SetPortButtons1();
+                    // [XPLAT] refresh the port indicator via the local ISerialStatusSink contract
+                    // (the host window implements it), replacing the old direct view-callback.
+                    statusSink.OnPortStateChanged();
                 }
             }
             else
@@ -136,7 +156,10 @@ namespace GPS_Out
         private bool SerialPortExists(string Name)
         {
             bool Result = false;
-            foreach (string s in SerialPort.GetPortNames())
+            // [XPLAT] route OS port enumeration through the local SerialPortHelper, which wraps the
+            // cross-platform SerialPort.GetPortNames() (COMx on Windows; /dev/ttyUSB*, /dev/ttyACM* on
+            // Linux; /dev/cu.* on macOS). The s == Name match loop is unchanged.
+            foreach (string s in SerialPortHelper.GetPortNames())
             {
                 if (s == Name)
                 {

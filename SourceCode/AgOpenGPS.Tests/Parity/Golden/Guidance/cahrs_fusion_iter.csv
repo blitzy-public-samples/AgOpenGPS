@@ -1,0 +1,13 @@
+# [XPLAT] QA F5 M3/M6 — iterative IMU/GPS fusion convergence golden (the persistent offset carries across calls).
+# Captured by INVOKING migrated production CAHRS.FuseImuGpsHeading repeatedly with a FIXED input
+# (imuHeadingDeg=100, gpsHeadingRad=1.5707963267948966 [=90°], fusionWeight=0.06, isReverseWithIMU=false,
+# starting offset 0). Byte-identical to net48 860eb9fd by source-diff. The fused heading converges toward the
+# GPS heading (1.5708 rad) as the offset advances — proving the production fusion loop behavior, not a formula.
+# InvariantCulture, period decimals. Consumed by CAHRSFusionTests.Fusion_Iterative_MatchesGolden.
+# The next (non-comment) line is the schema header and is skipped by the loader; data rows follow.
+step,expectedFusedHeadingRad,expectedFinalOffsetRad
+1,1.734857276482364,6.27271333166762
+2,1.7250136195011159,6.262869674686372
+3,1.715760581938742,6.253616637123999
+4,1.7070627266301113,6.244918781815368
+5,1.6988867426399983,6.236742797825255

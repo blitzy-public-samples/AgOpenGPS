@@ -1,0 +1,316 @@
+<!-- [XPLAT] migrated from net48/WinForms FormSerialMonitor.cs + FormSerialMonitor.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormSerialMonitor"
+        x:DataType="vm:FormSerialMonitorViewModel"
+        Title="Serial Monitor - Baud: Teensy - 115200   Arduino - 38400"
+        WindowStartupLocation="CenterOwner"
+        RequestedThemeVariant="Light"
+        Background="White"
+        Width="539"
+        Height="361"
+        MinWidth="440"
+        MinHeight="300"
+        CanResize="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+
+    <!-- [XPLAT] migrated from net48/WinForms FormSerialMonitor.cs + FormSerialMonitor.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms AgIO "Serial Monitor"
+        (Forms/FormSerialMonitor.designer.cs + FormSerialMonitor.cs + FormSerialMonitor.resx) — a
+        standalone serial-port sniffer: pick a port + baud, Open/Close, watch incoming bytes in a
+        large read-only display, and optionally Log (mirror the AgIO NMEA buffer), Save and Clear.
+        Per AAP §0.3.3 this is a visual PARITY reimplementation of the original Windows Forms look —
+        never a redesign. No Figma was supplied (AAP §0.8); the rendered WinForms dialog is the sole
+        visual reference.
+
+        Bound via COMPILED bindings (x:DataType="vm:FormSerialMonitorViewModel") to
+        FormSerialMonitorViewModel (Views/FormSerialMonitorViewModel.cs). All serial/log/file logic
+        lives in the view-model; this view is purely declarative. The view-model's RequestClose and
+        RequestTimedMessage events and its Cleanup() teardown are wired by the code-behind
+        (FormSerialMonitor.axaml.cs) — they are NOT XAML concerns.
+
+        Root-attribute parity mapping (WinForms FormSerialMonitor.designer.cs -> Avalonia):
+          • Form Text "Serial Monitor - Baud:    -> Title (verbatim — the baud hints Teensy=115200 /
+            Teensy - 115200   Arduino - 38400"      Arduino=38400 are part of the original chrome).
+          • ClientSize 539 x 361                 -> Width="539" Height="361" (initial); modest
+                                                   MinWidth/MinHeight keep it usable when resized.
+          • BackColor White                      -> Background="White".
+          • FormBorderStyle SizableToolWindow    -> CanResize="True" (textBoxRcv anchored all sides —
+                                                   the dialog was resizable).
+          • StartPosition CenterParent           -> WindowStartupLocation="CenterOwner".
+          • MaximizeBox/MinimizeBox = false,     -> not separately reproduced: hiding only the
+            ControlBox = false                     title-bar system buttons is not portable across
+                                                   Windows/Linux/macOS and risks trapping the user;
+                                                   SystemDecorations="Full" keeps a standard, usable
+                                                   frame and the operator closes via the OK button
+                                                   (parity of intent). ShowInTaskbar="False" matches a
+                                                   modal tool window opened from FormLoop.
+          • Form Font Tahoma 12 / control fonts  -> base FontFamily="Tahoma" FontSize="14.25"
+                                                   (sibling-view convention); children override below.
+          • RequestedThemeVariant="Light"        -> AgIO is light-only (App.axaml pins Light); restated
+                                                   here for self-documentation/parity.
+
+        ASSETS / BUTTON RENDERING — TEXT affordances, NOT WinForms bitmaps (deliberate, documented):
+          The WinForms buttons used the Properties.Resources bitmaps ScanPorts / USB_Connect /
+          USB_Disconnect / LogNMEA / VehFileSave / Trash / OK64. The migrated AgIO.csproj registers
+          NO btnImages as <AvaloniaResource> (only GPS/AgOpenGPS.csproj does) and excludes
+          Properties/Resources.Designer.cs from compilation (System.Drawing purged), so an
+          avares://AgIO/btnImages/* reference here would NOT resolve and would render a broken image.
+          Consistent with EVERY other migrated AgIO view (FormSource, FormPGN, FormEventViewer,
+          FormProfiles, FormISOBUS, FormYes, …), every affordance is therefore rendered as TEXT with a
+          ToolTip.Tip (conveying the original icon's meaning) and an AutomationProperties.Name. The
+          WinForms btnHelp is omitted: its Click handler was an empty no-op (the Process.Start call was
+          commented out) and the view-model exposes no Help command. See MIGRATION_DOCS/TRANSITION_MAP.md.
+    -->
+
+    <DockPanel LastChildFill="True">
+
+        <!-- =====================================================================================
+             TOP connection toolbar. Reproduces the WinForms top band (y 0..69) left-to-right:
+               btnRescan (ScanPorts) -> "Port" label + cboxPort -> "Baud" label + cboxBaud ->
+               btnOpenSerial (USB_Connect) -> btnCloseSerial (USB_Disconnect).
+             Control widths are kept compact so the whole row fits within the parity window width
+             (539px client; ~500px of content inside the 12px gutters), exactly as the WinForms row
+             fit its 539px form with small icon buttons and 124px combos.
+             The WinForms lblCurrentPort/lblCurrentBaud labels were DUAL-PURPOSE: they read
+             "Port"/"Baud" before connecting and were overwritten with the live sp.PortName /
+             sp.BaudRate on Open. That exact behavior is reproduced here by overlaying two TextBlocks
+             in each header slot — the static label (shown while editable, CanEditConnection) and the
+             live value (CurrentPort / CurrentBaud, shown while open, IsPortOpen) — so no extra
+             horizontal space is consumed and the live readout lands in the original position.
+             ===================================================================================== -->
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Margin="12,12,12,8"
+                    VerticalAlignment="Bottom">
+
+            <!-- WinForms btnRescan (ScanPorts bitmap): repopulate the port list. -> RescanCommand.
+                 Left enabled regardless of connection state, matching the WinForms original. -->
+            <Button x:Name="btnRescan"
+                    Content="Rescan"
+                    Command="{Binding RescanCommand}"
+                    Width="80"
+                    Height="52"
+                    FontSize="14"
+                    VerticalAlignment="Bottom"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Rescan the available serial ports"
+                    AutomationProperties.Name="Rescan serial ports" />
+
+            <!-- Port chooser. The header slot shows "Port" while editable and the live connected
+                 port (CurrentPort) while open — the WinForms lblCurrentPort dual-purpose behavior. -->
+            <StackPanel Orientation="Vertical" Spacing="2">
+                <Panel HorizontalAlignment="Center">
+                    <TextBlock x:Name="lblCurrentPort"
+                               Text="Port"
+                               FontSize="11.25"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding CanEditConnection}" />
+                    <TextBlock Text="{Binding CurrentPort, Mode=OneWay}"
+                               FontSize="11.25"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding IsPortOpen}"
+                               AutomationProperties.Name="Connected port" />
+                </Panel>
+                <!-- WinForms cboxPort (DropDownList): non-editable (Avalonia ComboBox default).
+                     Disabled while the port is open (WinForms disabled the combo on Open). -->
+                <ComboBox x:Name="cboxPort"
+                          ItemsSource="{Binding AvailablePorts}"
+                          SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
+                          IsEnabled="{Binding CanEditConnection}"
+                          Width="120"
+                          MinHeight="44"
+                          FontSize="16"
+                          FontWeight="Bold"
+                          VerticalContentAlignment="Center"
+                          AutomationProperties.Name="Serial port" />
+            </StackPanel>
+
+            <!-- Baud chooser. The header slot shows "Baud" while editable and the live connected
+                 baud (CurrentBaud) while open — the WinForms lblCurrentBaud dual-purpose behavior. -->
+            <StackPanel Orientation="Vertical" Spacing="2">
+                <Panel HorizontalAlignment="Center">
+                    <TextBlock x:Name="lblCurrentBaud"
+                               Text="Baud"
+                               FontSize="11.25"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding CanEditConnection}" />
+                    <TextBlock Text="{Binding CurrentBaud, Mode=OneWay}"
+                               FontSize="11.25"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding IsPortOpen}"
+                               AutomationProperties.Name="Connected baud rate" />
+                </Panel>
+                <!-- WinForms cboxBaud (DropDownList). Items reproduced 1:1 from the designer
+                     (4800..460800) and exposed by the view-model as AvailableBaudRates; SelectedBaud
+                     persists the choice. Disabled while open. -->
+                <ComboBox x:Name="cboxBaud"
+                          ItemsSource="{Binding AvailableBaudRates}"
+                          SelectedItem="{Binding SelectedBaud, Mode=TwoWay}"
+                          IsEnabled="{Binding CanEditConnection}"
+                          Width="120"
+                          MinHeight="44"
+                          FontSize="16"
+                          FontWeight="Bold"
+                          VerticalContentAlignment="Center"
+                          AutomationProperties.Name="Baud rate" />
+            </StackPanel>
+
+            <!-- WinForms btnOpenSerial (USB_Connect bitmap): open the port. -> OpenCommand.
+                 Enabled only while closed (CanEditConnection), mirroring btnOpenSerial_Click. -->
+            <Button x:Name="btnOpenSerial"
+                    Content="Open"
+                    Command="{Binding OpenCommand}"
+                    IsEnabled="{Binding CanEditConnection}"
+                    Width="72"
+                    Height="52"
+                    FontSize="14"
+                    VerticalAlignment="Bottom"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Open the selected serial port"
+                    AutomationProperties.Name="Open serial port" />
+
+            <!-- WinForms btnCloseSerial (USB_Disconnect bitmap, Enabled=false initially): close
+                 the port. -> CloseCommand. Enabled only while open (IsPortOpen) — IsPortOpen is
+                 false at startup, so the button starts disabled exactly like the original. -->
+            <Button x:Name="btnCloseSerial"
+                    Content="Close"
+                    Command="{Binding CloseCommand}"
+                    IsEnabled="{Binding IsPortOpen}"
+                    Width="76"
+                    Height="52"
+                    FontSize="14"
+                    VerticalAlignment="Bottom"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Close the serial port"
+                    AutomationProperties.Name="Close serial port" />
+        </StackPanel>
+
+        <!-- =====================================================================================
+             BOTTOM command toolbar. Reproduces the WinForms bottom band (y=300) by horizontal
+             position: left group = Clear (Trash) + Save (VehFileSave) + Log (LogNMEA); right group
+             = OK (btnSerialCancel / OK64, the accept-and-close action). btnHelp is omitted (no-op
+             original / no Help command).
+             ===================================================================================== -->
+        <Grid DockPanel.Dock="Bottom"
+              ColumnDefinitions="Auto,*,Auto"
+              Margin="12,8,12,12">
+
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        Spacing="12"
+                        VerticalAlignment="Center">
+
+                <!-- WinForms btnClear (Trash bitmap): empty the display. -> ClearCommand. -->
+                <Button x:Name="btnClear"
+                        Content="Clear"
+                        Command="{Binding ClearCommand}"
+                        Width="96"
+                        Height="54"
+                        FontSize="15"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Clear the received-text display"
+                        AutomationProperties.Name="Clear received text" />
+
+                <!-- WinForms btnFileSave (VehFileSave bitmap): write the display to
+                     zAgIO_SerialMon_log.txt. -> SaveFileCommand. -->
+                <Button x:Name="btnFileSave"
+                        Content="Save"
+                        Command="{Binding SaveFileCommand}"
+                        Width="96"
+                        Height="54"
+                        FontSize="15"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Save the received text to a log file"
+                        AutomationProperties.Name="Save received text to file" />
+
+                <!-- WinForms btnLog (LogNMEA bitmap): toggle log mode. -> LogCommand. The WinForms
+                     BackColor switched to LightGreen when logOn and Transparent when off; reproduced
+                     with the conditional class "logActive" bound to IsLogOn, whose Styles paint the
+                     button content presenter LightGreen across the normal / pointer-over / pressed
+                     states (so the highlight persists like the WinForms flat BackColor). When off,
+                     the default Fluent chrome applies — consistent with the sibling text buttons. -->
+                <Button x:Name="btnLog"
+                        Content="Log"
+                        Command="{Binding LogCommand}"
+                        Classes.logActive="{Binding IsLogOn}"
+                        Width="96"
+                        Height="54"
+                        FontSize="15"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        ToolTip.Tip="Toggle logging of the AgIO NMEA monitor stream into the display"
+                        AutomationProperties.Name="Toggle log mode">
+                    <Button.Styles>
+                        <Style Selector="Button.logActive /template/ ContentPresenter#PART_ContentPresenter">
+                            <Setter Property="Background" Value="LightGreen" />
+                        </Style>
+                        <Style Selector="Button.logActive:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                            <Setter Property="Background" Value="LightGreen" />
+                        </Style>
+                        <Style Selector="Button.logActive:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                            <Setter Property="Background" Value="LightGreen" />
+                        </Style>
+                    </Button.Styles>
+                </Button>
+            </StackPanel>
+
+            <!-- WinForms btnSerialCancel (OK64 bitmap, DialogResult.Cancel): accept and close the
+                 dialog. -> AcceptCommand (turns off log mirroring, then raises RequestClose, which
+                 the code-behind turns into Window.Close()). IsCancel maps Escape to it, the
+                 conventional dialog-dismiss key, matching the original DialogResult.Cancel. -->
+            <Button Grid.Column="2"
+                    x:Name="btnSerialCancel"
+                    Content="OK"
+                    Command="{Binding AcceptCommand}"
+                    IsCancel="True"
+                    Width="96"
+                    Height="54"
+                    FontSize="15"
+                    VerticalAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    ToolTip.Tip="Close the Serial Monitor"
+                    AutomationProperties.Name="Close" />
+        </Grid>
+
+        <!-- =====================================================================================
+             CENTER receive display — WinForms textBoxRcv (Multiline, ReadOnly, ScrollBars=Both,
+             anchored all sides). Fills the remaining DockPanel space (LastChildFill), so it grows
+             and shrinks with the window — parity with the all-sides anchor. Read-only multi-line
+             TextBox bound to ReceivedText; the view-model appends serial data and mirrored log
+             lines and clears it. TextWrapping="Wrap" (agent-prompt directive): long lines wrap, so
+             the horizontal scrollbar is disabled and the vertical one shows on demand — the
+             TextBox's built-in ScrollViewer (configured by the attached ScrollViewer.* properties)
+             satisfies the "in a ScrollViewer" requirement without an outer wrapper, matching the
+             sibling FormEventViewer. Monospace font (Phase 3) preserves a readable, fixed-pitch
+             serial dump (Courier New first for Windows/macOS, then common Linux monospaces). -->
+        <TextBox x:Name="textBoxRcv"
+                 Text="{Binding ReceivedText, Mode=OneWay}"
+                 IsReadOnly="True"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 Background="White"
+                 FontFamily="Courier New, DejaVu Sans Mono, Liberation Mono, Consolas, Menlo, monospace"
+                 FontSize="13"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 Margin="12,0,12,0"
+                 AutomationProperties.Name="Received serial data" />
+    </DockPanel>
+</Window>

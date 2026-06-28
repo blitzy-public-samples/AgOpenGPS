@@ -1,0 +1,311 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — AgShare settings dialog (Avalonia view).
+
+    1:1 parity reimplementation of the WinForms `Forms/FormAgShareSettings`
+    (FormAgShareSettings.cs + FormAgShareSettings.Designer.cs). The dialog configures the
+    AgShare server URL + API key, with a live connection test, a clipboard-paste button, three
+    image toggle buttons (upload on/off, auto-upload, auto-load), a hidden developer toggle, a
+    "register here" hyperlink, and Cancel/Save image buttons. Per AAP §0.3.3 this is visual +
+    behavioural FIDELITY to the current Windows Forms look, never a redesign: the same WhiteSmoke
+    600x430 shell and the same absolute control layout, field for field.
+
+    Wiring contract — the partner code-behind FormAgShareSettingsView.axaml.cs
+    (partial class AgOpenGPS.Views.FormAgShareSettingsView : Window, constructed with an injected
+    AgShareClient) owns ALL behaviour:
+      * This is a CODE-BEHIND view, NOT MVVM — intentionally NO x:DataType, NO DataContext and
+        NO {Binding}. Every control is addressed imperatively by x:Name (mirroring the original
+        WinForms partial, which used direct field access). The code-behind attaches the
+        Click / TextChanged handlers and the 500 ms clipboard-poll timer by name, so NO event
+        handlers are wired in this markup (the established sibling convention — see
+        ConfigVehicleControl.axaml, also a code-behind view in this migration).
+      * The three toggle buttons swap their glyph at runtime: the code-behind assigns
+        imgToggleUpload / imgAutoUpload / imgAutoLoad .Source (UploadOn<->UploadOff,
+        AutoUploadOn<->AutoUploadOff, DownloadAndUse<->DownloadAll) to reflect
+        Settings.AgShareEnabled / AgShareUploadActive / AgShareAutoLoad. Each toggle button's
+        Content is therefore a single named Image; the on/off glyph itself conveys state, so the
+        WinForms supplementary button Text is not reproduced as a separate element.
+      * buttonSave starts DISABLED (WinForms buttonSave.Enabled = false); the code-behind enables
+        it on text edits / a successful test connection.
+      * buttonCancel / buttonSave carried DialogResult.Cancel / OK; the code-behind closes the
+        dialog returning the result (Cancel -> Close(false)).
+
+    Window shell mirrors FormAgShareSettings.Designer.cs:
+      Text "AgShare Settings"     -> Title
+      ClientSize 600 x 430        -> Width / Height
+      MinimumSize 580 x 410       -> MinWidth / MinHeight
+      BackColor WhiteSmoke        -> Background="WhiteSmoke"
+      StartPosition CenterParent  -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS)
+      FormBorderStyle Sizable     -> default OS decorations (NOT SystemDecorations="None", unlike the
+      (+ ControlBox = false)         borderless sibling dialogs); resizable, hence the MinWidth/MinHeight.
+      ShowInTaskbar = false       -> ShowInTaskbar="False"
+      Font Tahoma 14.25pt         -> FontFamily="Tahoma" FontSize="19" (14.25pt x 96/72 = 19 DIP)
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs —
+    the same btnImages/ assets the sibling GPS Avalonia views consume (e.g. FormInputDialogView).
+    Casing verified against the files on disk in SourceCode/GPS/btnImages/.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormAgShareSettingsView"
+        Title="AgShare Settings"
+        Width="600"
+        Height="430"
+        MinWidth="580"
+        MinHeight="410"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19">
+
+    <Window.Styles>
+        <!--
+            Flat, chrome-less image buttons reproduce the WinForms FlatStyle.Flat +
+            FlatAppearance.BorderSize = 0 + transparent surface: only the glyph shows, with no
+            button fill in any visual state. The :pointerover / :pressed template overrides
+            suppress the Fluent hover/press background that would otherwise box the glyph
+            (same technique used by the sibling FormDialogView / FormInputDialogView).
+        -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <!--
+            linkRegister: the WinForms LinkLabel (LinkBehavior.AlwaysUnderline) reimplemented as a
+            flat, transparent, accent-coloured hyperlink button. The accent comes from App.axaml's
+            day/night ThemeDictionaries (AogAccentBrush); the underline + accent foreground live on
+            the inner TextBlock (below) so they persist through every Fluent interaction state.
+        -->
+        <Style Selector="Button.linkButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.linkButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        WinForms client area is 600 x 430 with absolute (Location/Size) positioning, so the root is
+        a Canvas and every child is placed by Canvas.Left / Canvas.Top with its exact Designer
+        Width / Height. Labels that were MiddleRight / MiddleCenter are wrapped in a transparent
+        Border sized to the original rect, with the TextBlock aligned inside it.
+    -->
+    <Canvas Width="600" Height="430">
+
+        <!-- label1: WinForms Label @ (12,21) 78x23, Tahoma 14.25 Bold, Black, MiddleRight.
+             "Server:" is the designer placeholder; the code-behind sets gStr.gsAgShareServer + ":". -->
+        <Border Canvas.Left="12" Canvas.Top="21" Width="78" Height="23" Background="Transparent">
+            <TextBlock x:Name="label1"
+                       Text="Server:"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"
+                       TextAlignment="Right" />
+        </Border>
+
+        <!-- textBoxServer: WinForms TextBox @ (158,19) 426x30, white background. The on-screen-keyboard
+             Click handler is wired in the code-behind. -->
+        <TextBox x:Name="textBoxServer"
+                 AutomationProperties.Name="AgShare server URL"
+                 Canvas.Left="158" Canvas.Top="19"
+                 Width="426" Height="30"
+                 Background="White"
+                 VerticalContentAlignment="Center" />
+
+        <!-- labelApiKey: WinForms Label @ (12,59) 92x23, Tahoma 14.25 Bold, Black, MiddleRight.
+             "API Key:" placeholder; the code-behind sets gStr.gsAgShareApiKey + ":". -->
+        <Border Canvas.Left="12" Canvas.Top="59" Width="92" Height="23" Background="Transparent">
+            <TextBlock x:Name="labelApiKey"
+                       Text="API Key:"
+                       FontWeight="Bold"
+                       Foreground="Black"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"
+                       TextAlignment="Right" />
+        </Border>
+
+        <!-- textBoxApiKey: WinForms TextBox @ (158,57) 426x30, white background. -->
+        <TextBox x:Name="textBoxApiKey"
+                 AutomationProperties.Name="AgShare API key"
+                 Canvas.Left="158" Canvas.Top="57"
+                 Width="426" Height="30"
+                 Background="White"
+                 VerticalContentAlignment="Center" />
+
+        <!-- buttonTestConnection: WinForms Button @ (374,93) 210x35. "Test Connection" placeholder;
+             the code-behind sets gStr.gsAgShareTestConnection and the async test-connection handler. -->
+        <Button x:Name="buttonTestConnection"
+                Canvas.Left="374" Canvas.Top="93"
+                Width="210" Height="35"
+                Content="Test Connection" />
+
+        <!-- btnPaste: WinForms Button @ (122,95) 228x34. "Paste from Clipboard" placeholder; the
+             code-behind sets gStr.gsAgSharePaste plus the clipboard-poll timer and paste handler. -->
+        <Button x:Name="btnPaste"
+                Canvas.Left="122" Canvas.Top="95"
+                Width="228" Height="34"
+                Content="Paste from Clipboard" />
+
+        <!-- labelStatus: WinForms Label @ (16,140) 568x24, MiddleCenter, default ForeColor DarkRed.
+             The code-behind recolours it at runtime (Gray connecting / Green ok / Red error / Blue saved)
+             and replaces the text via gStr.gsAgShareEnterDetails. -->
+        <Border Canvas.Left="16" Canvas.Top="140" Width="568" Height="24" Background="Transparent">
+            <TextBlock x:Name="labelStatus"
+                       Text="Enter Details Above and Tick Test Connection"
+                       Foreground="DarkRed"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextAlignment="Center" />
+        </Border>
+
+        <!-- btnToggleUpload: WinForms Button @ (16,172) 128x128, flat. Default glyph UploadOff is a
+             native 128x128 image that fills the button; the code-behind swaps imgToggleUpload.Source
+             UploadOn<->UploadOff to reflect Settings.AgShareEnabled. -->
+        <Button x:Name="btnToggleUpload"
+                Classes="imageButton"
+                AutomationProperties.Name="Toggle AgShare upload on or off"
+                Canvas.Left="16" Canvas.Top="172"
+                Width="128" Height="128">
+            <Image x:Name="imgToggleUpload"
+                   Width="128" Height="128"
+                   Source="avares://AgOpenGPS/btnImages/UploadOff.png"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- btnAutoUpload: WinForms Button @ (158,172) 128x128, flat. Default glyph AutoUploadOn is a
+             native 64x64 image drawn centered (WinForms ImageAlign=MiddleCenter); the code-behind
+             swaps imgAutoUpload.Source AutoUploadOn<->AutoUploadOff for Settings.AgShareUploadActive. -->
+        <Button x:Name="btnAutoUpload"
+                Classes="imageButton"
+                AutomationProperties.Name="Toggle automatic upload on field close"
+                Canvas.Left="158" Canvas.Top="172"
+                Width="128" Height="128">
+            <Image x:Name="imgAutoUpload"
+                   Width="64" Height="64"
+                   Source="avares://AgOpenGPS/btnImages/AutoUploadOn.png"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- btnAutoLoad: WinForms Button @ (300,172) 128x128, flat. Default glyph DownloadAll is a
+             native 64x64 image drawn centered; the code-behind swaps imgAutoLoad.Source
+             DownloadAndUse<->DownloadAll to reflect Settings.AgShareAutoLoad. -->
+        <Button x:Name="btnAutoLoad"
+                Classes="imageButton"
+                AutomationProperties.Name="Toggle automatic download on field open"
+                Canvas.Left="300" Canvas.Top="172"
+                Width="128" Height="128">
+            <Image x:Name="imgAutoLoad"
+                   Width="64" Height="64"
+                   Source="avares://AgOpenGPS/btnImages/DownloadAll.png"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- labelButtonsHint: WinForms Label @ (16,306) 412x44, Tahoma 9 Regular, DimGray, two lines.
+             The code-behind sets gStr.gsAgShareButtonsHint at runtime; the placeholder reproduces the
+             designer's two-line hint (the &#x0A; is the line break the designer stored as \r\n). -->
+        <TextBlock x:Name="labelButtonsHint"
+                   Canvas.Left="16" Canvas.Top="306"
+                   Width="412" Height="44"
+                   FontSize="12"
+                   Foreground="DimGray"
+                   TextWrapping="Wrap"
+                   Text="Auto-Upload: upload field changes on close&#x0A;Cloud Load: always download latest from AgShare on open" />
+
+        <!-- btnDevelop: WinForms Button @ (12,378) 22x22, flat/transparent, no image and no text — a
+             tiny hidden developer toggle whose only job is to re-enable textBoxServer when clicked. -->
+        <Button x:Name="btnDevelop"
+                Classes="imageButton"
+                AutomationProperties.Name="Unlock server field (developer)"
+                Canvas.Left="12" Canvas.Top="378"
+                Width="22" Height="22" />
+
+        <!-- label2: WinForms Label @ (50,358) 256x23. "Register here to use AgShare" placeholder; the
+             code-behind sets gStr.gsAgShareRegisterHere. -->
+        <TextBlock x:Name="label2"
+                   Canvas.Left="50" Canvas.Top="358"
+                   Width="256" Height="23"
+                   VerticalAlignment="Center"
+                   Text="Register here to use AgShare" />
+
+        <!-- linkRegister: WinForms LinkLabel @ (50,380) 280x23 (AlwaysUnderline) -> hyperlink-style
+             button. The accent foreground + underline live on the inner TextBlock so they survive every
+             interaction state; the open-in-browser Click handler is wired in the code-behind. -->
+        <Button x:Name="linkRegister"
+                Classes="linkButton"
+                AutomationProperties.Name="Open AgShare registration page in browser"
+                Canvas.Left="50" Canvas.Top="380"
+                Width="280" Height="23">
+            <TextBlock Text="https://agshare.agopengps.com"
+                       Foreground="{DynamicResource AogAccentBrush}"
+                       TextDecorations="Underline" />
+        </Button>
+
+        <!-- buttonCancel: WinForms Button @ (424,328) 80x90, flat, Cancel64 image (ImageAlign TopCenter)
+             above "Cancel" text (TextAlign BottomCenter). DialogResult.Cancel -> code-behind Close(false).
+             A vertical StackPanel reproduces the stacked image-over-label layout, centred in the button. -->
+        <Button x:Name="buttonCancel"
+                Classes="imageButton"
+                Canvas.Left="424" Canvas.Top="328"
+                Width="80" Height="90">
+            <StackPanel Orientation="Vertical"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                <Image Width="64" Height="64"
+                       Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center" />
+                <TextBlock Text="Cancel"
+                           FontSize="14"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+        <!-- buttonSave: WinForms Button @ (512,328) 80x90, flat, OK64 image (ImageAlign TopCenter) above
+             "Save" text (TextAlign BottomCenter). Starts DISABLED (WinForms Enabled=false); the code-behind
+             enables it on edits / a successful test, then DialogResult.OK -> code-behind saves + closes. -->
+        <Button x:Name="buttonSave"
+                Classes="imageButton"
+                IsEnabled="False"
+                Canvas.Left="512" Canvas.Top="328"
+                Width="80" Height="90">
+            <StackPanel Orientation="Vertical"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="2">
+                <Image Width="64" Height="64"
+                       Source="avares://AgOpenGPS/btnImages/OK64.png"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Center" />
+                <TextBlock Text="Save"
+                           FontSize="14"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+    </Canvas>
+</Window>

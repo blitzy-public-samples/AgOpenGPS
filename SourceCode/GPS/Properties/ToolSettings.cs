@@ -1,3 +1,4 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using AgLibrary.Settings;
 using System.Drawing;
 using System.IO;

@@ -4,6 +4,8 @@
 
 AgOpenGPS receives GPS/IMU data via AgIO, calculates guidance, and outputs steering commands.
 
+> **Cross-platform (migration note).** AgOpenGPS and AgIO now run natively on **Windows (win-x64)**, **macOS (osx-x64, osx-arm64)**, and **Linux (linux-x64)** on **.NET 8/9 with Avalonia UI** — previously .NET Framework 4.8 / Windows Forms (Windows-only). Each target is delivered as a **per-RID self-contained publish** (win-x64 / linux-x64 / osx-x64 / osx-arm64) built from a windows/ubuntu/macos CI matrix. Only the runtime and UI layer were re-platformed; the two-program data flow, UDP loopback fabric, and PGN protocol described below are unchanged. See [`../MIGRATION_DOCS/`](../MIGRATION_DOCS/TRANSITION_MAP.md) for the full transition narrative.
+
 ```
 GPS/IMU Hardware → AgIO → UDP (127.x.x.x) → AgOpenGPS → Steering Output
                                                     ↓
@@ -18,9 +20,9 @@ GPS/IMU Hardware → AgIO → UDP (127.x.x.x) → AgOpenGPS → Steering Output
 
 | Project | Purpose |
 |---------|---------|
-| `GPS/` | Main application - core logic and state management |
-| `AgOpenGPS.Core/` | **Shared library** - Geo models, conversions, helpers, file I/O, ViewModels |
-| `AgIO/` | I/O handler - NTRIP, GPS, IMU, UDP |
+| `GPS/` | Main application (Avalonia UI) - core logic and state management |
+| `AgOpenGPS.Core/` | **Shared library** (now truly portable) - Geo models, conversions, helpers, file I/O, ViewModels (now wired) |
+| `AgIO/` | I/O handler (Avalonia UI) - NTRIP, GPS, IMU, UDP |
 | `GPS_Out/` | NMEA serial output (4s timeout) |
 | `AgDiag/` | Diagnostic tools |
 | `ModSim/` | Module simulator |
@@ -34,16 +36,21 @@ GPS/IMU Hardware → AgIO → UDP (127.x.x.x) → AgOpenGPS → Steering Output
 | `AgOpenGPS.Core/Models/` | **Geo models** (GeoCoord, Wgs84, conversions), Field models, Guidance models |
 | `AgOpenGPS.Core/DrawLib/` | OpenGL drawing utilities |
 | `AgOpenGPS.Core/Streamers/` | File I/O (save/load field data) |
-| `AgOpenGPS.Core/ViewModels/` | MVVM pattern for UI binding |
+| `AgOpenGPS.Core/ViewModels/` | MVVM pattern for UI binding (now active/wired to Avalonia views, not null-wired) |
+| `AgOpenGPS.Core/Platform/` | **`IPlatformServices`** + `PlatformServicesFactory` - cross-platform OS abstraction (config root, brightness, serial enumeration, single-instance) |
+| `AgOpenGPS.Core/Presenters/` + `Interfaces/Presenters/` | MVVM presenters (`IApplicationPresenter`, `IErrorPresenter`, `IPanelPresenter`) - now wired |
+| `GPS/Services/` | Extracted scan-loop / PGN / section / field-I/O / render services (behavior frozen) |
 
 ## Main Application Structure (GPS/)
 
 | Directory | Purpose |
 |-----------|---------|
-| `Classes/` | Core application logic, state, guidance calculations |
-| `Forms/` | UI (organized by feature: Config/, Field/, Guidance/, Sources/, Tram/) |
-| `Properties/` | Settings (Vehicle/Tool/Environment) |
-| `Controls/` | Custom UI controls |
+| `Classes/` | Core application logic, state, guidance calculations (recompiled on .NET 8/9; behavior frozen) |
+| `Views/` | Avalonia UI - `App.axaml`, `MainView.axaml` + ~67 dialog views bound to Core view-models (organized by feature: Settings/, Field/, Pickers/, Guidance/, Config/, Profiles/, Inputs/); replaces the former WinForms `Forms/` |
+| `Services/` | Extracted services from the former `FormGPS` partial classes - `PositionService`, `PgnDispatcher`, `SectionService`, `FieldIoService`, `RenderCoordinator` (behavior frozen) |
+| `Platform/` | Per-OS `IPlatformServices` implementations - `WindowsPlatformServices`, `LinuxPlatformServices`, `MacPlatformServices` |
+| `Properties/` | Settings (Vehicle/Tool/Environment) - cross-platform config paths via `IPlatformServices`; XML schema + `CSettingsMigration` frozen (see [Settings](settings.md)) |
+| `Controls/` | Custom Avalonia controls, including **`AvaloniaGeoViewport`** (`: GeoViewportBase` over `OpenGlControlBase`) which replaces the WinForms `OpenTK.GLControl` host |
 
 ## UDP Communication
 
@@ -52,10 +59,14 @@ GPS/IMU Hardware → AgIO → UDP (127.x.x.x) → AgOpenGPS → Steering Output
 | Parameter | Value |
 |-----------|-------|
 | **AOG Listen Port** | 15555 (loopback) |
-| **AgIO Endpoint** | 127.255.255.255:17777 |
+| **AgIO Endpoint** | 127.0.0.1:17777 (unicast loopback) |
 | **Protocol** | UDP |
 | **Subnet** | 127.x.x.x (loopback) |
 | **Buffer Size** | 1024 bytes |
+
+> **[XPLAT] Loopback addressing.** Frozen ports **15555 / 17777** are unchanged; the destination
+> *address* migrated from the legacy directed-broadcast `127.255.255.255` to the explicit unicast
+> loopback host `127.0.0.1` so delivery works on Linux/macOS as well as Windows (QA F4-C1).
 
 ### PGN Message Format
 
@@ -107,7 +118,7 @@ See [PGN Protocol](pgn-protocol.md) for complete specification.
    ↓
 3. UDP Port 15555 (PGN 0xD6)
    ↓
-4. FormGPS.ReceiveFromAgIO()
+4. PgnDispatcher receives (async UDP) → PositionService
    ↓
 5. AppModel.CurrentLatLon (Wgs84)
    ↓
@@ -215,7 +226,16 @@ steerAngle = atan2(2 * wheelbase * sin(error), lookahead)
 ## Component Relationships
 
 ```
-FormGPS (Main Form)
+Avalonia MainView / Window (Views/MainView.axaml)
+    │  (MVVM data binding)
+    ▼
+ApplicationViewModel (AgOpenGPS.Core MVVM)
+    │  A thin application controller (Facade) stands in for the former
+    │  FormGPS coordination role. The domain subsystems below are reached
+    │  via constructor-injected Services + view-models, not an `mf`
+    │  back-reference. Extracted Services: PositionService, PgnDispatcher,
+    │  SectionService, FieldIoService, RenderCoordinator (behavior frozen).
+    │
     ├── AppModel (Global state)
     ├── pn (Position/Navigation data)
     ├── ahrs (IMU/AHRS data)
@@ -250,7 +270,11 @@ FormGPS (Main Form)
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `FormGPS` | Forms/FormGPS.cs | Main form, coordinator |
+| `MainView` + `ApplicationViewModel` | Views/MainView.axaml(.cs) + AgOpenGPS.Core ViewModels | Avalonia main view bound to the Core view-model; coordination via the application controller (Facade) and extracted Services (replaces the former `FormGPS`) |
+| `PositionService` | Services/PositionService.cs | Scan loop extracted from `Position.designer.cs` (behavior frozen) |
+| `PgnDispatcher` | Services/PgnDispatcher.cs | UDP receive + PGN encode/decode/CRC extracted from `UDPComm.Designer.cs` / `PGN.Designer.cs` (behavior frozen) |
+| `SectionService` | Services/SectionService.cs | Section/zone control extracted from `Sections.Designer.cs` (behavior frozen) |
+| `AvaloniaGeoViewport` | Controls/AvaloniaGeoViewport.cs | OpenGL host adapter (`: GeoViewportBase` over `OpenGlControlBase`) replacing the WinForms `OpenTK.GLControl` |
 | `CGuidance` | Classes/CGuidance.cs | Steering angle calculation |
 | `CTrack` | Classes/CTrack.cs | Current guidance track state |
 | `CABLine` | Classes/CABLine.cs | AB line guidance |
@@ -271,3 +295,4 @@ See [Classes Documentation](classes.md) for detailed class documentation.
 - [PGN Protocol](pgn-protocol.md) - Complete PGN message specification
 - [Settings](settings.md) - Vehicle, Tool, and Environment settings
 - [Classes](classes.md) - Core class documentation
+- [Transition Map](../MIGRATION_DOCS/TRANSITION_MAP.md) - .NET 8/9 + Avalonia cross-platform migration narrative

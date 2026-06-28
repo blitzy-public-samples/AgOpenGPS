@@ -1,0 +1,67 @@
+# sections_machinebyte.csv — PRODUCTION-CAPTURED section-control golden (QA F5: M1-sections, M6-sections, M4).
+#
+# PROVENANCE (resolves M1 + M6 for the section domain):
+#   These expected bytes were CAPTURED by invoking the REAL production method
+#   AgOpenGPS.Services.SectionService.BuildMachineByte() (extracted verbatim from
+#   SourceCode/GPS/Forms/Sections.Designer.cs; byte-identical to the net48 baseline 860eb9fd by source-diff —
+#   only the mf.* -> injected-collaborator and pgn.* -> injected-PGN-instance renames were applied) over a
+#   fixed, fully-specified section pattern, on net8.0/Linux. SectionControlParityTests.cs rebuilds the SAME
+#   input pattern through the SAME production method (via ParityGraphFixture.BuildWithSections) and asserts the
+#   resulting p_254 / p_239 / p_229 PGN bytes EXACTLY (integer compare, no tolerance). This replaces the prior
+#   in-test SectionOnBitmask reproduction (M1) with a genuine production-path regression gate whose goldens are
+#   production-captured (M6).
+#
+# The 0xE5 (229) on-the-wire frame byte layout (header/CRC) is F3 protocol scope and is verified by the PGN
+# parity suite — this golden asserts only the section-state PACKING that BuildMachineByte performs.
+#
+# INPUT PATTERN reproduced by the test (identical to the capture run):
+#   sections-mode (tool.isSectionsNotZones = true):
+#       section[0,2,4,6].isSectionOn = true   -> group-0 byte 0x55 (85)
+#       section[8,9].isSectionOn      = true   -> group-1 byte 0x03 (3)
+#       tool.farLeftSpeed = 5.0 (-> *10 = 50), tool.farRightSpeed = 6.0 (-> *10 = 60)
+#       appModel.avgSpeed = 4.0 (-> *10 = 40), tram.controlByte = 0 (default, internal)
+#   zones-mode (tool.isSectionsNotZones = false):
+#       section[0,1].isSectionOn   = true  -> p_229 byte5 (0x03)
+#       section[16,17,18].isSectionOn = true -> p_229 byte7 (0x07)
+#       same tool speeds / avgSpeed as above
+#   isJobStarted gate (M4) — sections-mode, tool.numOfSections = 8, mc.ss[swMain]=0 (button hardware),
+#       mc.ss[swOnGr0]=0x01 (request section 0 ON), section[0] starts Off:
+#       DoRemoteSwitches() with appModel.isJobStarted=false  -> section[0] stays Off  (encoded 0)
+#       DoRemoteSwitches() with appModel.isJobStarted=true   -> section[0] becomes On (encoded 2)
+#       (btnStates enum: Off=0, Auto=1, On=2)
+#
+# Field meaning (production PGN offset constants on PgnDispatcher's CPGN_FE/CPGN_EF/CPGN_E5):
+#   p254_sc1to8 = p_254.pgn[11]  p254_sc9to16 = p_254.pgn[12]
+#   p239_sc1to8 = p_239.pgn[11]  p239_sc9to16 = p_239.pgn[12]  p239_speed = p_239.pgn[6]  p239_tram = p_239.pgn[8]
+#   p229_sc1to8 = p_229.pgn[5]   p229_sc9to16 = p_229.pgn[6]    p229_b5..b12 = p_229.pgn[5..12]
+#   p229_toolL  = p_229.pgn[13]  p229_toolR  = p_229.pgn[14]
+#
+# Schema header (first non-comment line; skipped by the loader): scenario,field,expectedByte
+scenario,field,expectedByte
+sections,p254_sc1to8,85
+sections,p254_sc9to16,3
+sections,p239_sc1to8,85
+sections,p239_sc9to16,3
+sections,p239_speed,40
+sections,p239_tram,0
+sections,p229_sc1to8,85
+sections,p229_sc9to16,3
+sections,p229_toolL,50
+sections,p229_toolR,60
+zones,p229_b5,3
+zones,p229_b6,0
+zones,p229_b7,7
+zones,p229_b8,0
+zones,p229_b9,0
+zones,p229_b10,0
+zones,p229_b11,0
+zones,p229_b12,0
+zones,p229_toolL,50
+zones,p229_toolR,60
+zones,p239_sc1to8,3
+zones,p239_sc9to16,0
+zones,p254_sc1to8,3
+zones,p254_sc9to16,0
+zones,p239_speed,40
+gate,false_section0,0
+gate,true_section0,2

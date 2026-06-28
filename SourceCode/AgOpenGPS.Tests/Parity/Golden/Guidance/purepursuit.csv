@@ -1,0 +1,34 @@
+# Pure Pursuit steer-angle parity golden — PRODUCTION-CAPTURED.
+# Captured by invoking the REAL production method AgOpenGPS.CABLine.GetCurrentABLine(pivot, steer) over the
+# input rows below, on net8.0/Linux, with Properties.ToolSettings.Default.setVehicle_isStanleyUsed = false
+# (forces the Pure Pursuit branch) and CVehicle.purePursuitIntegralGain = 0 (isolates the goal-point steer
+# math from the integral term). The Pure Pursuit branch of GetCurrentABLine is byte-for-byte identical to
+# the net48 baseline 860eb9fd by source-diff, so these captured outputs ARE the net48 outputs (QA F5/M6
+# accepts capture from the migrated production method as the net48 golden source).
+#
+# NOTE (resolves INFO i3): the PRODUCTION steer-angle expression is
+#   steerAngleAB = glm.toDegrees( Math.Atan( 2 * ((gpE-pE)*cos(localHeading) + (gpN-pN)*sin(localHeading))
+#                                             * Wheelbase / goalPointDistanceSquared ) )
+# i.e. Math.Atan over the goal-point geometry — NOT the simplified documented atan2(2*wb*sin(err),lookahead)
+# form. This golden captures the REAL production expression. InvariantCulture; round-trip ("R") doubles.
+#
+# Columns: the production setup fed to GetCurrentABLine, then the captured production output.
+#   abHeading      -> CABLine.abHeading (rad)
+#   aE,aN          -> CABLine.currentLinePtA easting,northing
+#   bE,bN          -> CABLine.currentLinePtB easting,northing
+#   sameWay        -> CABLine.isHeadingSameWay (0/1)
+#   pE,pN,pHead    -> pivot easting,northing,heading passed to GetCurrentABLine
+#   fixHeadRad     -> ApplicationModel.FixHeading (rad)
+#   avgSpeed       -> ApplicationModel.avgSpeed (feeds UpdateGoalPointDistance lookahead)
+#   modeActualXTE  -> CVehicle.modeActualXTE (feeds UpdateGoalPointDistance)
+#   wheelbase      -> CVehicle.VehicleConfig.Wheelbase (m)
+#   maxSteer       -> CVehicle.maxSteerAngle (clamp; default 30)
+#   isReverse      -> ApplicationModel.isReverse (0/1)
+#   expectedSteerAngleAB -> captured CABLine.steerAngleAB (deg)
+abHeading,aE,aN,bE,bN,sameWay,pE,pN,pHead,fixHeadRad,avgSpeed,modeActualXTE,wheelbase,maxSteer,isReverse,expectedSteerAngleAB
+0,0,0,0,100,1,0,10,0,0,5,0,2.5,30,0,0
+0,0,0,0,100,1,0.2,10,0,0,5,0.2,2.5,30,0,-3.589725879309348
+0,0,0,0,100,1,-0.2,10,0,0,5,0.2,2.5,30,0,3.589725879309313
+0,0,0,0,100,1,1,10,0,0,10,1,2.5,30,0,-12.098636248309038
+0,0,0,0,100,1,0.5,10,0.1,0.1,8,0.5,3.3,30,0,-17.95875757906412
+0,0,0,0,100,0,0.3,10,3.14,3.14,6,0.3,2.5,30,0,5.282322107501507

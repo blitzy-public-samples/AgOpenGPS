@@ -1,0 +1,199 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Create field from existing" dialog (Avalonia view).
+
+    NET-NEW Avalonia MVVM view (discipline A — compiled-binding MVVM); there was no WinForms source
+    form. It is one of the four Select-Field dialogs and implements the "clone an existing field"
+    workflow: pick a source field from the table (its name pre-fills the new-field name), edit the
+    name with the helper buttons, choose which artifacts to copy, then Create.
+
+    Wiring contract (do NOT change here):
+      * The DataContext is assigned EXTERNALLY by AvaloniaSelectFieldPanelPresenter via
+        `new CreateFromExistingFieldView { DataContext = vm }` and shown/closed by the presenter.
+        Therefore this markup sets NO DataContext and NO Design.DataContext — the view-model has
+        only a 4-argument constructor (no parameterless ctor), so a design-time instance cannot be
+        created. `x:DataType` below only declares the type for compile-time binding checking.
+      * `x:CompileBindings="True"` makes every {Binding ...} a compiled binding resolved against
+        CreateFromExistingFieldViewModel at build time, so a misspelled path fails the build
+        (Release treats warnings as errors).
+      * CreateFromExistingFieldViewModel declares `new FieldDescriptionViewModel LocalSelectedField`
+        (it HIDES the base FieldTableViewModel.LocalSelectedField). Because x:DataType is the derived
+        type, {Binding LocalSelectedField} resolves to the derived (new) property — so selecting a
+        row sets NewFieldName, exactly as intended.
+      * Create commits via the inherited SelectFieldCommand (the view-model closes the dialog through
+        the presenter and commits). Cancel is NOT a view-model command: btnCancel carries only an
+        x:Name and is wired to Close() in the code-behind, so this markup declares no event handler.
+
+    Theme (per AAP §0.3.3 — 1:1 visual parity, never a redesign):
+      All colors come from the day/night theme brushes defined in App.axaml's ThemeDictionaries and
+      are referenced via {DynamicResource ...} so the live Light<->Dark switch is observed. No
+      hardcoded colors and no value converters (the visibility/checked bindings are plain bools).
+      Button glyphs are served from the GPS assembly via avares:// URIs.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgOpenGPS.Core.ViewModels;assembly=AgOpenGPS.Core"
+        x:Class="AgOpenGPS.Views.Field.CreateFromExistingFieldView"
+        x:DataType="vm:CreateFromExistingFieldViewModel"
+        x:CompileBindings="True"
+        Title="Create Field From Existing"
+        Width="760" Height="560"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Whole content wrapped in a DockPanel: the action bar docks to the bottom (spanning the full
+        width) while the two-column Grid (the DockPanel's last child) fills the remaining area above.
+    -->
+    <DockPanel Margin="12">
+
+        <!-- ============================= Bottom action bar ============================= -->
+        <!-- Right-aligned Cancel + Create. Cancel closes the dialog via the code-behind
+             (btnCancel.Click -> Close()); Create commits through the inherited SelectFieldCommand. -->
+        <StackPanel DockPanel.Dock="Bottom"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="10"
+                    Margin="0,12,0,0">
+            <Button x:Name="btnCancel"
+                    IsCancel="True"
+                    MinHeight="56"
+                    MinWidth="120"
+                    Foreground="{DynamicResource AogTextBrush}"
+                    AutomationProperties.Name="Cancel">
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                           Width="32" Height="32" />
+                    <TextBlock Text="Cancel" VerticalAlignment="Center" Margin="8,0,0,0" />
+                </StackPanel>
+            </Button>
+            <Button Command="{Binding SelectFieldCommand}"
+                    MinHeight="56"
+                    MinWidth="120"
+                    Foreground="{DynamicResource AogTextBrush}"
+                    AutomationProperties.Name="Create field">
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                           Width="32" Height="32" />
+                    <TextBlock Text="Create" VerticalAlignment="Center" Margin="8,0,0,0" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <!-- ============================ Main content: two columns ============================ -->
+        <Grid ColumnDefinitions="*,Auto">
+
+            <!-- ============================ LEFT: source-field table ============================ -->
+            <DockPanel Grid.Column="0">
+
+                <!-- Sort toggle: cycles ByName -> ByDistance -> ByArea. The single visible chip shows
+                     the active sort mode (each chip's IsVisible binds directly to the matching bool;
+                     no converter needed because the view-model exposes plain bools). -->
+                <Button DockPanel.Dock="Top"
+                        Command="{Binding NextSortModeCommand}"
+                        HorizontalAlignment="Left"
+                        MinHeight="44"
+                        Margin="0,0,0,8"
+                        Foreground="{DynamicResource AogTextBrush}"
+                        AutomationProperties.Name="Change sort order">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="Sort by:" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource AogTextBrush}" />
+                        <Border IsVisible="{Binding ByNameVisible}"
+                                Background="{DynamicResource AogAccentBrush}"
+                                CornerRadius="4" Padding="10,2">
+                            <TextBlock Text="Name" Foreground="{DynamicResource AogTextBrush}" />
+                        </Border>
+                        <Border IsVisible="{Binding ByDistanceVisible}"
+                                Background="{DynamicResource AogAccentBrush}"
+                                CornerRadius="4" Padding="10,2">
+                            <TextBlock Text="Distance" Foreground="{DynamicResource AogTextBrush}" />
+                        </Border>
+                        <Border IsVisible="{Binding ByAreaVisible}"
+                                Background="{DynamicResource AogAccentBrush}"
+                                CornerRadius="4" Padding="10,2">
+                            <TextBlock Text="Area" Foreground="{DynamicResource AogTextBrush}" />
+                        </Border>
+                    </StackPanel>
+                </Button>
+
+                <!-- Static column headers, aligned to the list's *,120,120 column layout. -->
+                <Grid DockPanel.Dock="Top" ColumnDefinitions="*,120,120" Margin="0,0,0,4">
+                    <TextBlock Grid.Column="0" Text="Field" FontWeight="Bold"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="Distance" FontWeight="Bold" TextAlignment="Right"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                    <TextBlock Grid.Column="2" Text="Area" FontWeight="Bold" TextAlignment="Right"
+                               Foreground="{DynamicResource AogTextBrush}" />
+                </Grid>
+
+                <!-- The source-field list. Selecting a row sets LocalSelectedField, whose setter
+                     pre-fills NewFieldName. Identical 3-column row template as the sibling table
+                     views; FallbackValue='' renders an empty cell when a field has no start
+                     coordinate (DistanceViewModel null) or no computed area (AreaViewModel null). -->
+                <ListBox ItemsSource="{Binding FieldDescriptionViewModels}"
+                         SelectedItem="{Binding LocalSelectedField, Mode=TwoWay}"
+                         AutomationProperties.Name="Source fields">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:FieldDescriptionViewModel">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                <TextBlock Grid.Column="0" Text="{Binding FieldName}"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource AogTextBrush}" />
+                                <TextBlock Grid.Column="1" Width="120" TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource AogTextBrush}"
+                                           Text="{Binding DistanceViewModel.DisplayedDistance, StringFormat='{}{0:0.000}', FallbackValue=''}" />
+                                <TextBlock Grid.Column="2" Width="120" TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource AogTextBrush}"
+                                           Text="{Binding AreaViewModel.DisplayedArea, StringFormat='{}{0:0.0}', FallbackValue=''}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <!-- ===================== RIGHT: new-field name + copy options ===================== -->
+            <StackPanel Grid.Column="1" Width="300" Spacing="10" Margin="12,0,0,0">
+
+                <TextBlock Text="New Field Name" Foreground="{DynamicResource AogTextBrush}" />
+
+                <!-- TwoWay so the view-model's helper commands and row-selection updates flow into the
+                     box, and the user's edits flow back to the view-model. -->
+                <TextBox Text="{Binding NewFieldName, Mode=TwoWay}"
+                         MinHeight="44"
+                         FontSize="18"
+                         AutomationProperties.Name="New field name" />
+
+                <!-- Name-helper buttons that append to / trim the new-field name. A WrapPanel lets
+                     them reflow within the 300px column; Avalonia's WrapPanel has no Spacing property,
+                     so inter-button spacing is expressed as per-button margins. -->
+                <WrapPanel>
+                    <Button Content="Vehicle" Command="{Binding AddVehicleCommand}"
+                            MinHeight="44" Margin="0,0,6,6" />
+                    <Button Content="Date" Command="{Binding AddDateCommand}"
+                            MinHeight="44" Margin="0,0,6,6" />
+                    <Button Content="Time" Command="{Binding AddTimeCommand}"
+                            MinHeight="44" Margin="0,0,6,6" />
+                    <Button Content="⌫" Command="{Binding BackSpaceCommand}"
+                            MinHeight="44" Margin="0,0,6,6"
+                            AutomationProperties.Name="Backspace" />
+                </WrapPanel>
+
+                <!-- Copy options: which artifacts to clone from the chosen source field. -->
+                <TextBlock Text="Copy from source field:" Foreground="{DynamicResource AogTextBrush}" />
+                <CheckBox Content="Flags" IsChecked="{Binding MustCopyFlags, Mode=TwoWay}"
+                          Foreground="{DynamicResource AogTextBrush}" />
+                <CheckBox Content="Mapping" IsChecked="{Binding MustCopyMapping, Mode=TwoWay}"
+                          Foreground="{DynamicResource AogTextBrush}" />
+                <CheckBox Content="Headland" IsChecked="{Binding MustCopyHeadland, Mode=TwoWay}"
+                          Foreground="{DynamicResource AogTextBrush}" />
+                <CheckBox Content="Guidance Lines" IsChecked="{Binding MustCopyLines, Mode=TwoWay}"
+                          Foreground="{DynamicResource AogTextBrush}" />
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</Window>

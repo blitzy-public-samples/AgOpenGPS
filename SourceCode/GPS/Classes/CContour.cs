@@ -1,4 +1,6 @@
-﻿using OpenTK.Graphics.OpenGL;
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using AgOpenGPS.Core;
+using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
 
@@ -6,8 +8,33 @@ namespace AgOpenGPS
 {
     public class CContour
     {
-        //copy of the mainform address
-        private readonly FormGPS mf;
+        // [XPLAT] Decoupled from the FormGPS god-object: instead of a single mf back-reference, the
+        // collaborators this contour-follow guidance needs are injected. Guidance/steering output is
+        // FROZEN (GuidanceEquivalenceTests) — only the source of each value changes, never the math.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        //   _appModel - shared AgOpenGPS.Core runtime model: supplies the relocated FormGPS scan-loop
+        //               state (secondsSinceStart, isBtnAutoSteerOn, avgSpeed, isReverse, FixHeading) and
+        //               the canonical autosteer output (guidanceLineDistanceOff/guidanceLineSteerAngle),
+        //               read and written live-by-reference exactly as the originals were.
+        //   vehicle   - CVehicle (was mf.vehicle): steer gains, maxSteerAngle, pure-pursuit integral
+        //               gain, goal-point distance, wheelbase and modeActualXTE.
+        //   tool      - CTool (was mf.tool): width/halfWidth/overlap/offset for the contour geometry.
+        //   pn        - CNMEA (was mf.pn): the current GPS fix used by the Stanley cross-track distance.
+        //   ahrs      - CAHRS (was mf.ahrs): IMU roll for the side-hill steer compensation.
+        //   ABLine    - CABLine (was mf.ABLine): on-screen line/point width for DrawContourLine.
+        private readonly ApplicationModel _appModel;
+        private readonly CVehicle vehicle;
+        private readonly CTool tool;
+        private readonly CNMEA pn;
+        private readonly CAHRS ahrs;
+        private readonly CABLine ABLine;
+
+        // [XPLAT] Late-wired cyclic guidance peers (constructed after CContour, so they cannot be
+        // ctor-injected). Set once via SetGuidanceReferences, mirroring the established CABLine pattern.
+        //   yt  - CYouTurn (was mf.yt): isYouTurnTriggered gate on the pure-pursuit integral term.
+        //   gyd - CGuidance (was mf.gyd): sideHillCompFactor for the IMU-roll steer compensation.
+        private CYouTurn yt;
+        private CGuidance gyd;
 
         public bool isContourOn, isContourBtnOn, isRightPriority = true;
 
@@ -46,23 +73,74 @@ namespace AgOpenGPS
         //list of points for the new contour line
         public List<vec3> ctList = new List<vec3>();
 
-        //constructor
-        public CContour(FormGPS _f)
+        // [XPLAT] contourSaveList relocated here from the deleted FormGPS partial (SaveOpen.Designer.cs:
+        // public List<List<vec3>> contourSaveList) into the contour manager that owns it. It accumulates
+        // finished contour strips for appending to the field's contour file. It stays in the GPS layer
+        // (not the Core ApplicationModel) because vec3 is a GPS type that must not leak into Core; the
+        // cross-platform field-save / field-close logic accesses it via this contour instance
+        // (ct.contourSaveList) exactly as it previously did through the host form. Type and semantics are
+        // unchanged. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public List<List<vec3>> contourSaveList = new List<List<vec3>>();
+
+        // [XPLAT] ctor now injects the domain collaborators + the Core ApplicationModel instead of
+        // FormGPS (was CContour(FormGPS _f)). No FormGPS back-reference remains. The composition root
+        // builds vehicle/tool/pn/ahrs/ABLine before CContour; the cyclic guidance peers (yt/gyd) are
+        // wired afterwards via SetGuidanceReferences.
+        public CContour(ApplicationModel appModel, CVehicle vehicle, CTool tool, CNMEA pn, CAHRS ahrs, CABLine ABLine)
         {
-            mf = _f;
+            //constructor
+            _appModel = appModel;
+            this.vehicle = vehicle;
+            this.tool = tool;
+            this.pn = pn;
+            this.ahrs = ahrs;
+            this.ABLine = ABLine;
             ctList.Capacity = 128;
             ptList.Capacity = 128;
         }
 
+        // [XPLAT] Post-construct wiring for the cyclic guidance peers (CYouTurn/CGuidance) that do not
+        // yet exist when CContour is constructed. Mirrors the established CABLine.SetGuidanceReferences
+        // pattern; introduces no new abstraction.
+        public void SetGuidanceReferences(CYouTurn yt, CGuidance gyd)
+        {
+            this.yt = yt;
+            this.gyd = gyd;
+        }
+
         public bool isLocked = false;
 
+        // [XPLAT] View-model-bindable projection of the contour-lock indicator, replacing the former
+        // direct WinForms write to the host form's btnContourLock.Image. The original
+        // SetContourLockImage(bool isOn) did exactly:
+        //     btnContourLock.Image = isOn ? Resources.ColorLocked : Resources.ColorUnlocked;
+        // The bound Avalonia view-model now reads IsContourLocked and refreshes the lock/unlock icon when
+        // ContourLockChanged is raised. This mirrors the established CISOBUS SectionControlButtonState +
+        // SectionControlButtonChanged view-model projection; no WinForms image/button reference is kept
+        // and no new abstraction is introduced. See MIGRATION_DOCS/TRANSITION_MAP.md.
+        public bool IsContourLocked { get; private set; }
+
+        public event Action ContourLockChanged;
+
         //determine closest point on left side
+
+        // [XPLAT] Replaces the host form's SetContourLockImage(bool). Invoked at the SAME 7 sites with
+        // the SAME boolean as the original, so the contour-lock indicator toggles identically; it updates
+        // the bound IsContourLocked state and raises ContourLockChanged so the view refreshes the lock
+        // icon. The change-guard only avoids redundant per-fix refreshes; it never alters the indicator's
+        // value at any site.
+        private void SetContourLockImage(bool isOn)
+        {
+            if (IsContourLocked == isOn) return;
+            IsContourLocked = isOn;
+            ContourLockChanged?.Invoke();
+        }
 
         //hitting the cycle lines buttons lock to current line
         public bool SetLockToLine()
         {
             if (ctList.Count > 5) isLocked = !isLocked;
-            mf.SetContourLockImage(isLocked);
+            SetContourLockImage(isLocked);
             return isLocked;
         }
 
@@ -73,19 +151,19 @@ namespace AgOpenGPS
         {
             if (ctList.Count == 0)
             {
-                if ((mf.secondsSinceStart - lastSecond) < 0.3) return;
+                if ((_appModel.secondsSinceStart - lastSecond) < 0.3) return;
             }
             else
             {
-                if ((mf.secondsSinceStart - lastSecond) < 2) return;
+                if ((_appModel.secondsSinceStart - lastSecond) < 2) return;
             }
 
-            lastSecond = mf.secondsSinceStart;
+            lastSecond = _appModel.secondsSinceStart;
             int ptCount;
             minDistance = double.MaxValue;
             int start, stop;
 
-            double toolContourDistance = (mf.tool.width * 3 + Math.Abs(mf.tool.offset));
+            double toolContourDistance = (tool.width * 3 + Math.Abs(tool.offset));
 
             //check if no strips yet, return
             int stripCount = stripList.Count;
@@ -104,7 +182,7 @@ namespace AgOpenGPS
             boxB.easting = pivot.easting + sin2HL + sinH;
             boxB.northing = pivot.northing + cos2HL + cosH;
 
-            if (!isLocked && !mf.isBtnAutoSteerOn)
+            if (!isLocked && !_appModel.isBtnAutoSteerOn)
             {
                 stripNum = -1;
                 for (int s = 0; s < stripCount; s++)
@@ -138,7 +216,7 @@ namespace AgOpenGPS
                     //no points in the box, exit
                     ctList.Clear();
                     isLocked = false;
-                    mf.SetContourLockImage(isLocked);
+                    SetContourLockImage(isLocked);
                     return;
                 }
             }
@@ -153,7 +231,7 @@ namespace AgOpenGPS
                 {
                     ctList.Clear();
                     isLocked = false;
-                    mf.SetContourLockImage(isLocked);
+                    SetContourLockImage(isLocked);
                     return;
                 }
 
@@ -181,7 +259,7 @@ namespace AgOpenGPS
                 {
                     ctList.Clear();
                     isLocked = false;
-                    mf.SetContourLockImage(isLocked);
+                    SetContourLockImage(isLocked);
                     return;
                 }
             }
@@ -215,15 +293,15 @@ namespace AgOpenGPS
             else return;
 
             //are we going same direction as stripList was created?
-            bool isSameWay = Math.PI - Math.Abs(Math.Abs(mf.fixHeading - stripList[stripNum][pt].heading) - Math.PI) < 1.57;
+            bool isSameWay = Math.PI - Math.Abs(Math.Abs(_appModel.FixHeading.AngleInRadians - stripList[stripNum][pt].heading) - Math.PI) < 1.57;
 
-            double RefDist = (distanceFromRefLine + (isSameWay ? mf.tool.offset : -mf.tool.offset))
-                                / (mf.tool.width - mf.tool.overlap);
+            double RefDist = (distanceFromRefLine + (isSameWay ? tool.offset : -tool.offset))
+                                / (tool.width - tool.overlap);
 
             double howManyPathsAway;
 
-            if (Math.Abs(distanceFromRefLine) > mf.tool.halfWidth
-                || Math.Abs(mf.tool.offset) > mf.tool.halfWidth)
+            if (Math.Abs(distanceFromRefLine) > tool.halfWidth
+                || Math.Abs(tool.offset) > tool.halfWidth)
             {
                 //beside what is done
                 if (RefDist < 0) howManyPathsAway = -1;
@@ -254,8 +332,8 @@ namespace AgOpenGPS
                     stop = pt + 20; if (stop > ptCount) stop = ptCount;
                 }
 
-                double distAway = (mf.tool.width - mf.tool.overlap) * howManyPathsAway
-                    + (isSameWay ? -mf.tool.offset : mf.tool.offset);
+                double distAway = (tool.width - tool.overlap) * howManyPathsAway
+                    + (isSameWay ? -tool.offset : tool.offset);
                 double distSqAway = (distAway * distAway) * 0.97;
 
                 for (int i = start; i < stop; i++)
@@ -297,7 +375,7 @@ namespace AgOpenGPS
                 {
                     ctList.Clear();
                     isLocked = false;
-                    mf.SetContourLockImage(isLocked);
+                    SetContourLockImage(isLocked);
                     return;
                 }
             }
@@ -305,7 +383,7 @@ namespace AgOpenGPS
             {
                 ctList.Clear();
                 isLocked = false;
-                mf.SetContourLockImage(isLocked);
+                SetContourLockImage(isLocked);
                 return;
             }
         }
@@ -317,7 +395,7 @@ namespace AgOpenGPS
             int ptCount = ctList.Count;
             if (ptCount > 8)
             {
-                if (mf.isStanleyUsed)
+                if (Properties.ToolSettings.Default.setVehicle_isStanleyUsed)
                 {
                     //find the closest 2 points to current fix
                     for (int t = 0; t < ptCount; t++)
@@ -384,22 +462,22 @@ namespace AgOpenGPS
                     if (abFixHeadingDelta > glm.PIBy2) abFixHeadingDelta -= Math.PI;
                     else if (abFixHeadingDelta < -glm.PIBy2) abFixHeadingDelta += Math.PI;
 
-                    if (mf.isReverse) abFixHeadingDelta *= -1;
+                    if (_appModel.isReverse) abFixHeadingDelta *= -1;
 
-                    abFixHeadingDelta *= mf.vehicle.stanleyHeadingErrorGain;
+                    abFixHeadingDelta *= vehicle.stanleyHeadingErrorGain;
                     if (abFixHeadingDelta > 0.74) abFixHeadingDelta = 0.74;
                     if (abFixHeadingDelta < -0.74) abFixHeadingDelta = -0.74;
 
-                    steerAngleCT = Math.Atan((distanceFromCurrentLinePivot * mf.vehicle.stanleyDistanceErrorGain)
-                        / ((Math.Abs(mf.avgSpeed) * 0.277777) + 1));
+                    steerAngleCT = Math.Atan((distanceFromCurrentLinePivot * vehicle.stanleyDistanceErrorGain)
+                        / ((Math.Abs(_appModel.avgSpeed) * 0.277777) + 1));
 
                     if (steerAngleCT > 0.74) steerAngleCT = 0.74;
                     if (steerAngleCT < -0.74) steerAngleCT = -0.74;
 
                     steerAngleCT = glm.toDegrees((steerAngleCT + abFixHeadingDelta) * -1.0);
 
-                    if (steerAngleCT < -mf.vehicle.maxSteerAngle) steerAngleCT = -mf.vehicle.maxSteerAngle;
-                    if (steerAngleCT > mf.vehicle.maxSteerAngle) steerAngleCT = mf.vehicle.maxSteerAngle;
+                    if (steerAngleCT < -vehicle.maxSteerAngle) steerAngleCT = -vehicle.maxSteerAngle;
+                    if (steerAngleCT > vehicle.maxSteerAngle) steerAngleCT = vehicle.maxSteerAngle;
                 }
                 else
                 {
@@ -428,7 +506,7 @@ namespace AgOpenGPS
                     if (isLocked && (A < 2 || B > ptCount - 3))
                     {
                         isLocked = false;
-                        mf.SetContourLockImage(isLocked);
+                        SetContourLockImage(isLocked);
                         lastLockPt = int.MaxValue;
                         return;
                     }
@@ -442,12 +520,12 @@ namespace AgOpenGPS
                     if (Math.Abs(dx) < Double.Epsilon && Math.Abs(dy) < Double.Epsilon) return;
 
                     //how far from current AB Line is fix
-                    distanceFromCurrentLinePivot = ((dy * mf.pn.fix.easting) - (dx * mf.pn.fix.northing) + (ctList[B].easting
+                    distanceFromCurrentLinePivot = ((dy * pn.fix.easting) - (dx * pn.fix.northing) + (ctList[B].easting
                                 * ctList[A].northing) - (ctList[B].northing * ctList[A].easting))
                                     / Math.Sqrt((dy * dy) + (dx * dx));
 
                     //integral slider is set to 0
-                    if (mf.vehicle.purePursuitIntegralGain != 0)
+                    if (vehicle.purePursuitIntegralGain != 0)
                     {
                         pivotDistanceError = distanceFromCurrentLinePivot * 0.2 + pivotDistanceError * 0.8;
 
@@ -459,21 +537,21 @@ namespace AgOpenGPS
                             pivotDerivative *= 2;
                         }
 
-                        if (mf.isBtnAutoSteerOn
+                        if (_appModel.isBtnAutoSteerOn
                             && Math.Abs(pivotDerivative) < (0.1)
-                            && mf.avgSpeed > 2.5
-                            && !mf.yt.isYouTurnTriggered)
+                            && _appModel.avgSpeed > 2.5
+                            && !yt.isYouTurnTriggered)
                         {
                             //if over the line heading wrong way, rapidly decrease integral
                             if ((inty < 0 && distanceFromCurrentLinePivot < 0) || (inty > 0 && distanceFromCurrentLinePivot > 0))
                             {
-                                inty += pivotDistanceError * mf.vehicle.purePursuitIntegralGain * -0.06;
+                                inty += pivotDistanceError * vehicle.purePursuitIntegralGain * -0.06;
                             }
                             else
                             {
                                 if (Math.Abs(distanceFromCurrentLinePivot) > 0.02)
                                 {
-                                    inty += pivotDistanceError * mf.vehicle.purePursuitIntegralGain * -0.02;
+                                    inty += pivotDistanceError * vehicle.purePursuitIntegralGain * -0.02;
                                     if (inty > 0.2) inty = 0.2;
                                     else if (inty < -0.2) inty = -0.2;
                                 }
@@ -483,7 +561,7 @@ namespace AgOpenGPS
                     }
                     else inty = 0;
 
-                    if (mf.isReverse) inty = 0;
+                    if (_appModel.isReverse) inty = 0;
 
                     isHeadingSameWay = Math.PI - Math.Abs(Math.Abs(pivot.heading - ctList[A].heading) - Math.PI) < glm.PIBy2;
 
@@ -498,9 +576,9 @@ namespace AgOpenGPS
                     rNorthCT = ctList[A].northing + (U * dy);
 
                     //update base on autosteer settings and distance from line
-                    double goalPointDistance = mf.vehicle.UpdateGoalPointDistance();
+                    double goalPointDistance = vehicle.UpdateGoalPointDistance();
 
-                    bool ReverseHeading = mf.isReverse ? !isHeadingSameWay : isHeadingSameWay;
+                    bool ReverseHeading = _appModel.isReverse ? !isHeadingSameWay : isHeadingSameWay;
 
                     int count = ReverseHeading ? 1 : -1;
                     vec3 start = new vec3(rEastCT, rNorthCT, 0);
@@ -530,31 +608,31 @@ namespace AgOpenGPS
                     //calculate the the delta x in local coordinates and steering angle degrees based on wheelbase
                     double localHeading;
 
-                    if (isHeadingSameWay) localHeading = glm.twoPI - mf.fixHeading + inty;
-                    else localHeading = glm.twoPI - mf.fixHeading - inty;
+                    if (isHeadingSameWay) localHeading = glm.twoPI - _appModel.FixHeading.AngleInRadians + inty;
+                    else localHeading = glm.twoPI - _appModel.FixHeading.AngleInRadians - inty;
 
                     steerAngleCT = glm.toDegrees(Math.Atan(2 * (((goalPointCT.easting - pivot.easting) * Math.Cos(localHeading))
-                        + ((goalPointCT.northing - pivot.northing) * Math.Sin(localHeading))) * mf.vehicle.VehicleConfig.Wheelbase / goalPointDistanceSquared));
+                        + ((goalPointCT.northing - pivot.northing) * Math.Sin(localHeading))) * vehicle.VehicleConfig.Wheelbase / goalPointDistanceSquared));
 
-                    if (mf.ahrs.imuRoll != 88888)
-                        steerAngleCT += mf.ahrs.imuRoll * -mf.gyd.sideHillCompFactor;
+                    if (ahrs.imuRoll != 88888)
+                        steerAngleCT += ahrs.imuRoll * -gyd.sideHillCompFactor;
 
-                    if (steerAngleCT < -mf.vehicle.maxSteerAngle) steerAngleCT = -mf.vehicle.maxSteerAngle;
-                    if (steerAngleCT > mf.vehicle.maxSteerAngle) steerAngleCT = mf.vehicle.maxSteerAngle;
+                    if (steerAngleCT < -vehicle.maxSteerAngle) steerAngleCT = -vehicle.maxSteerAngle;
+                    if (steerAngleCT > vehicle.maxSteerAngle) steerAngleCT = vehicle.maxSteerAngle;
                 }
 
                 //used for smooth mode
-                mf.vehicle.modeActualXTE = (distanceFromCurrentLinePivot);
+                vehicle.modeActualXTE = (distanceFromCurrentLinePivot);
 
                 //fill in the autosteer variables
-                mf.guidanceLineDistanceOff = (short)Math.Round(distanceFromCurrentLinePivot * 1000.0, MidpointRounding.AwayFromZero);
-                mf.guidanceLineSteerAngle = (short)(steerAngleCT * 100);
+                _appModel.guidanceLineDistanceOff = (short)Math.Round(distanceFromCurrentLinePivot * 1000.0, MidpointRounding.AwayFromZero);
+                _appModel.guidanceLineSteerAngle = (short)(steerAngleCT * 100);
             }
             else
             {
                 //invalid distance so tell AS module
                 distanceFromCurrentLinePivot = 0;
-                mf.guidanceLineDistanceOff = 0;
+                _appModel.guidanceLineDistanceOff = 0;
             }
         }
 
@@ -571,8 +649,8 @@ namespace AgOpenGPS
         //Add current position to stripList
         public void AddPoint(vec3 pivot)
         {
-            ptList.Add(new vec3(pivot.easting + Math.Cos(pivot.heading) * mf.tool.offset,
-                pivot.northing - Math.Sin(pivot.heading) * mf.tool.offset,
+            ptList.Add(new vec3(pivot.easting + Math.Cos(pivot.heading) * tool.offset,
+                pivot.northing - Math.Sin(pivot.heading) * tool.offset,
                 pivot.heading));
         }
 
@@ -583,7 +661,7 @@ namespace AgOpenGPS
             if (ptList.Count > 5)
             {
                 //add the point list to the save list for appending to contour file
-                mf.contourSaveList.Add(ptList);
+                contourSaveList.Add(ptList);
             }
             //delete ptList
             else
@@ -600,13 +678,13 @@ namespace AgOpenGPS
         {
             int ptCount = ctList.Count;
             if (ptCount < 2) return;
-            GL.LineWidth(mf.ABLine.lineWidth);
+            GL.LineWidth(ABLine.lineWidth);
             GL.Color3(0.98f, 0.2f, 0.980f);
             GL.Begin(PrimitiveType.LineStrip);
             for (int h = 0; h < ptCount; h++) GL.Vertex3(ctList[h].easting, ctList[h].northing, 0);
             GL.End();
 
-            GL.PointSize(mf.ABLine.lineWidth);
+            GL.PointSize(ABLine.lineWidth);
             GL.Begin(PrimitiveType.Points);
 
             GL.Color3(0.87f, 08.7f, 0.25f);
@@ -623,7 +701,7 @@ namespace AgOpenGPS
             else
             {
                 GL.Color3(0.3f, 0.982f, 0.0f);
-                GL.LineWidth(mf.ABLine.lineWidth);
+                GL.LineWidth(ABLine.lineWidth);
             }
 
             if (stripNum > -1)
@@ -639,7 +717,7 @@ namespace AgOpenGPS
             GL.Vertex3(stripList[stripNum][pt].easting, stripList[stripNum][pt].northing, 0);
             GL.End();
 
-            if (mf.isPureDisplayOn && distanceFromCurrentLinePivot != 32000 && !mf.isStanleyUsed)
+            if (Properties.Settings.Default.setMenu_isPureOn && distanceFromCurrentLinePivot != 32000 && !Properties.ToolSettings.Default.setVehicle_isStanleyUsed)
             {
                 //Draw lookahead Point
                 GL.PointSize(6.0f);

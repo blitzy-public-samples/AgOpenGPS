@@ -1,4 +1,5 @@
-﻿using System;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
 using System.Collections.Generic;
 
 namespace AgOpenGPS
@@ -39,28 +40,28 @@ namespace AgOpenGPS
         //    double nP = fromPt.northing;
         //    double eAB, nAB;
 
-        //    if (mf.ABLine.isHeadingSameWay)
+        //    if (ABLine.isHeadingSameWay)
         //    {
-        //        eAB = mf.ABLine.currentLinePtB.easting;
-        //        nAB = mf.ABLine.currentLinePtB.northing;
+        //        eAB = ABLine.currentLinePtB.easting;
+        //        nAB = ABLine.currentLinePtB.northing;
         //    }
         //    else
         //    {
-        //        eAB = mf.ABLine.currentLinePtA.easting;
-        //        nAB = mf.ABLine.currentLinePtA.northing;
+        //        eAB = ABLine.currentLinePtA.easting;
+        //        nAB = ABLine.currentLinePtA.northing;
         //    }
 
         //    turnClosestList.Clear();
 
         //    for (int j = 0; j < bndList.Count; j++)
         //    {
-        //        for (int i = 0; i < mf.bnd.bndList[j].turnLine.Count - 1; i++)
+        //        for (int i = 0; i < this.bndList[j].turnLine.Count - 1; i++)
         //        {
-        //            int res = mf.yt.GetLineIntersection(
-        //                mf.bnd.bndList[j].turnLine[i].easting,
-        //                mf.bnd.bndList[j].turnLine[i].northing,
-        //                mf.bnd.bndList[j].turnLine[i + 1].easting,
-        //                mf.bnd.bndList[j].turnLine[i + 1].northing,
+        //            int res = yt.GetLineIntersection(
+        //                this.bndList[j].turnLine[i].easting,
+        //                this.bndList[j].turnLine[i].northing,
+        //                this.bndList[j].turnLine[i + 1].easting,
+        //                this.bndList[j].turnLine[i + 1].northing,
         //                eP, nP, eAB, nAB, ref iE, ref iN
         //                );
 
@@ -69,8 +70,8 @@ namespace AgOpenGPS
         //                closePt.easting = iE;
         //                closePt.northing = iN;
 
-        //                double hed = Math.Atan2(mf.bnd.bndList[j].turnLine[i + 1].easting - mf.bnd.bndList[j].turnLine[i].easting,
-        //                    mf.bnd.bndList[j].turnLine[i + 1].northing - mf.bnd.bndList[j].turnLine[i].northing);
+        //                double hed = Math.Atan2(this.bndList[j].turnLine[i + 1].easting - this.bndList[j].turnLine[i].easting,
+        //                    this.bndList[j].turnLine[i + 1].northing - this.bndList[j].turnLine[i].northing);
         //                if (hed < 0) hed += glm.twoPI;
         //                closePt.heading = hed;
         //                turnClosestList.Add(closePt);
@@ -114,18 +115,18 @@ namespace AgOpenGPS
         {
             if (bndList.Count == 0)
             {
-                //mf.TimedMessageBox(1500, " No Boundaries", "No Turn Lines Made");
+                //errorPresenter.PresentTimedMessage(TimeSpan.FromMilliseconds(1500), " No Boundaries", "No Turn Lines Made");
                 return;
             }
 
             //update the GUI values for boundaries
-            mf.fd.UpdateFieldBoundaryGUIAreas();
+            fd.UpdateFieldBoundaryGUIAreas();
 
             //to fill the list of line points
             vec3 point = new vec3();
 
             //determine how wide a headland space
-            double totalHeadWidth = mf.yt.uturnDistanceFromBoundary;
+            double totalHeadWidth = yt.uturnDistanceFromBoundary;
 
             //inside boundaries
             for (int j = 0; j < bndList.Count; j++)

@@ -1,0 +1,107 @@
+<!-- [XPLAT] migrated from net48/WinForms FormYes.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormYes"
+        x:DataType="vm:FormYesViewModel"
+        Title="AgIO"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Background="#F0C8C8"
+        Topmost="True"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!--
+        [XPLAT] Avalonia 1:1 parity reimplementation of the WinForms `FormYes` confirmation
+        dialog (Forms/FormYes.designer.cs + Forms/FormYes.cs). It replaces the legacy
+        FormYes / MessageBox.Show(...) Yes/OK + Cancel prompts (callers: FormProfiles overwrite
+        confirmation; FormEthernet / FormUDP / FormSerialPass restart confirmations — the former
+        mf.YesMessageBox(...)).
+
+        Parity mapping to FormYes.designer.cs:
+          - Window.Title  "AgIO"                            (agent-prompt directive; WinForms Text was "AgIO Message").
+          - Background     #F0C8C8                          (WinForms BackColor ARGB(240,200,200)).
+          - CanResize=False                                 (WinForms FormBorderStyle.FixedSingle).
+          - Topmost / ShowInTaskbar=False                   (WinForms TopMost=true / ShowInTaskbar=false).
+          - SizeToContent=WidthAndHeight + MinWidth 598     (approximates WinForms ClientSize 598x352;
+                                                             agent-prompt directive over a fixed size).
+          - FontFamily Tahoma / base FontSize 14.25         (WinForms base Font "Tahoma" 14.25F).
+
+        Bound to FormYesViewModel (compiled bindings via x:DataType): the immutable display data
+        MessageText and ShowCancel. The view-model owns NO command/result state — the dialog
+        outcome is returned by the hosting Window itself through Close(true)/Close(false) in the
+        code-behind (FormYes.axaml.cs), surfaced via ShowDialog<bool>, exactly mirroring the
+        WinForms DialogResult.OK / DialogResult.Cancel contract.
+
+        Buttons use text content rather than the WinForms OK64 / Cancel64 bitmaps: the migrated
+        AgIO.csproj registers no btnImages assets as <AvaloniaResource>, and every migrated
+        AgIO view renders button affordances as text (no System.Drawing, no avares imagery) —
+        consistent with the agent-prompt's text fallback.
+    -->
+    <!-- MinWidth 598 + MinHeight 349 reproduce the WinForms ClientSize (598x352) under
+         SizeToContent. The star row gives the message area its height so the centered
+         TextBlock sits in the upper-middle (parity with lblMessage2's MiddleCenter), with
+         the command row pinned to the bottom (Auto row). -->
+    <Grid RowDefinitions="*,Auto"
+          MinWidth="598"
+          MinHeight="349"
+          Margin="0">
+
+        <!-- WinForms lblMessage2: Location(46,23) Size 528x280, Tahoma 18 Bold, MiddleCenter.
+             Width 528 + symmetric 35px insets => ~598 content width (parity with the 598 client).
+             VerticalAlignment=Center within the star row reproduces the label's vertical
+             MiddleCenter; TextAlignment=Center reproduces the horizontal centering. -->
+        <TextBlock Grid.Row="0"
+                   Text="{Binding MessageText}"
+                   FontFamily="Tahoma"
+                   FontSize="18"
+                   FontWeight="Bold"
+                   TextWrapping="Wrap"
+                   TextAlignment="Center"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Width="528"
+                   Margin="35,23,35,8" />
+
+        <!-- Command row. Cancel precedes OK so OK stays right-aligned whether or not Cancel is
+             shown (WinForms btnCancel @x=363 sat to the left of btnSerialOK @x=490). Spacing 22
+             reproduces the WinForms inter-button gap; the 3px right inset matches btnSerialOK's
+             right edge (595) within the 598 client. -->
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Spacing="22"
+                    Margin="0,0,3,8">
+
+            <!-- WinForms btnCancel: 105x90, DialogResult.Cancel, Visible only when showCancel.
+                 IsVisible binds to FormYesViewModel.ShowCancel; OnCancelClick => Close(false). -->
+            <Button x:Name="btnSerialCancel"
+                    Content="Cancel"
+                    IsVisible="{Binding ShowCancel}"
+                    Width="105"
+                    Height="90"
+                    FontFamily="Tahoma"
+                    FontSize="12"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Click="OnCancelClick" />
+
+            <!-- WinForms btnSerialOK (the AcceptButton): 105x90, DialogResult.OK.
+                 IsDefault=True maps Enter to OK (WinForms AcceptButton); OnOkClick => Close(true). -->
+            <Button x:Name="btnSerialOK"
+                    Content="OK"
+                    IsDefault="True"
+                    Width="105"
+                    Height="90"
+                    FontFamily="Tahoma"
+                    FontSize="12"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Click="OnOkClick" />
+        </StackPanel>
+    </Grid>
+</Window>

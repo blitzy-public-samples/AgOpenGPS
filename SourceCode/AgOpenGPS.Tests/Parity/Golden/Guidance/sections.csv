@@ -1,0 +1,23 @@
+# Section on/off bitmask SECONDARY cross-check (EXACT integer math; hex, InvariantCulture).
+#
+# SCOPE / PROVENANCE (QA F5 M1/M6 context):
+#   This file backs SectionState_MatchesGolden_Exact / SectionState_MaskMath_SelfConsistent in
+#   GuidanceEquivalenceTests.cs — a GENERIC `coverage & validMask` invariant over the 1..16 unique-section
+#   and up to-64 same-width section-count edges (16 -> 0xFFFF, 8-section surplus masked, 64 -> ulong.MaxValue,
+#   63 -> top bit masked). It is a capability cross-check, NOT the production certification, and its rows are
+#   derived from the documented mask invariant (not captured from a production binary).
+#
+#   The PRIMARY, production-path section certification (resolving M1-sections + M6-sections) lives in
+#   sections_machinebyte.csv, whose goldens are CAPTURED from the REAL SectionService.BuildMachineByte() and
+#   asserted byte-for-byte by SectionControlParityTests.cs. The `isJobStarted` safety gate (M4) is certified by
+#   SectionControlParityTests.IsJobStarted_Gate_BlocksRemoteSwitchActivation driving the real DoRemoteSwitches.
+sectionCount,coverageBitmaskHex,expectedOnBitmaskHex
+16,FFFF,FFFF
+8,FFFF,FF
+1,1,1
+1,0,0
+0,FFFF,0
+64,FFFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFF
+63,FFFFFFFFFFFFFFFF,7FFFFFFFFFFFFFFF
+4,F3,3
+12,1ABC,ABC

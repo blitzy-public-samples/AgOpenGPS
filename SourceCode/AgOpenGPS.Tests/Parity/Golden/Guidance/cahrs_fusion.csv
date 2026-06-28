@@ -1,0 +1,17 @@
+# [XPLAT] QA F5 M3/M6 — IMU/GPS heading-fusion parity golden (single-shot, fresh offset per row).
+# Captured by INVOKING the migrated production method CAHRS.FuseImuGpsHeading(...) on net8.0/Linux.
+# That method body is the VERBATIM net48 baseline (860eb9fd) "#region IMU Fusion" block from
+# Position.designer.cs (decoupling-only extraction, AAP §0.7.1) — byte-for-byte identical to the
+# baseline by source-diff — so these ARE the net48 outputs. QA M6 explicitly accepts capture from the
+# migrated production method. InvariantCulture, period decimals (a comma-decimal locale must not change them).
+# Consumed by CAHRSFusionTests.Fusion_MatchesGolden_SingleShot, which re-invokes production and compares Within(0.001).
+# The next (non-comment) line is the schema header and is skipped by the loader; data rows follow.
+imuHeadingDeg,gpsHeadingRad,fusionWeight,isReverseWithIMU,initialOffset,expectedFusedHeadingRad,expectedFinalOffsetRad
+0,0,0.06,false,0,0,0
+90,1.5707963267948966,0.06,false,0,1.5707963267948966,0
+95,1.5707963267948966,0.06,false,0,1.6528268016386303,6.277949319423604
+85,1.5707963267948966,0.06,false,0,1.488765851951163,0.005235987755982982
+95,1.5707963267948966,0.06,true,0,1.6563174601426187,6.281439977927592
+350,0.17453292519943295,0.06,false,0,6.129596333004085,0.020943951023931928
+10,6.1086523819801535,0.06,false,0,0.15358897417550121,6.262241356155655
+180,2.9670597283903604,0.1,false,0.3,3.3941393610698496,0.2525467074800567

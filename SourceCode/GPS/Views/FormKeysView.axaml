@@ -1,0 +1,259 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Shortcut-key (hotkey) assignment editor (Avalonia view).
+
+    1:1 PARITY reimplementation of the WinForms `Forms/Form_Keys` (Form_Keys.cs +
+    Form_Keys.Designer.cs — NOTE the underscore in the source file name). Per AAP §0.3.3 this
+    is visual/behavioral parity to the currently rendered Windows Forms UI, never a redesign:
+    no new colors, no relayout, no new controls.
+
+    WIRING CONTRACT (the partner code-behind FormKeysView.axaml.cs owns behaviour, NOT this markup):
+      * This view is CODE-BEHIND DRIVEN / imperative — there is intentionally NO compiled-binding
+        data type, NO DataContext and NO {Binding}. The x:Name'd controls below are the ENTIRE
+        integration surface (the established sibling convention — see FormDialogView.axaml). The
+        code-behind subscribes to each control's events programmatically by name; deliberately NO
+        Click= / TextChanged= attributes are declared here, so this markup compiles independently
+        of the handler names the code-behind chooses.
+      * Original WinForms behaviour reproduced by the code-behind via these names: every hotkey
+        Button raised btnEditShortcut_Click; tboxKey raised tboxKey_TextChanged; btnOK raised
+        btnOK_Click; btnReset raised btnReset_Click; lblAutosteer is the prompt/status label whose
+        Text the code-behind rewrites ("Press New Shortcut Key" / "Press Button to Edit Shortcut").
+      * The 19 hotkey buttons' Content starts at the WinForms designer defaults
+        ("ACFGMNPTYVW12345678"); at load the code-behind overwrites each from mf.hotkeys[n].
+
+    WINDOW SHELL — mirrors Form_Keys.Designer.cs:
+      ClientSize 895 x 686             -> Width / Height (the absolute Canvas below is sized to match)
+      (no BackColor set => Control)    -> Background "#FFF0F0F0" (SystemColors.Control; this dialog
+                                          is NEVER day/night themed, so the chrome is a fixed light
+                                          grey rather than an App.axaml Aog* theme brush)
+      ControlBox = false / CanResize   -> CanResize="False"
+      ShowInTaskbar = false            -> ShowInTaskbar="False"
+      StartPosition.CenterParent       -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS)
+      Font Tahoma                      -> FontFamily="Tahoma" (inherited; each child sets explicit size)
+
+    UNITS: WinForms Font sizes are in POINTS; Avalonia FontSize is in device-independent pixels.
+    Conversion pt x 96/72: 14.25->19, 15.75->21, 20.25->27, 24->32. WinForms Location/Size are
+    96-DPI logical pixels and map 1:1 to Avalonia DIPs, so the Canvas coordinates are the exact
+    designer values.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormKeysView"
+        Title="AgOpenGPS - Shortcut Keys"
+        Width="895"
+        Height="686"
+        Background="{DynamicResource AogLegacyControlBrush}"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma">
+
+    <Window.Styles>
+        <!--
+            Hotkey-assignment buttons. WinForms: BackColor LightCyan, FlatStyle.Flat,
+            FlatAppearance.BorderSize=2, Tahoma 20.25pt Bold, Size 80 x 41. Factored into a
+            style class so all 19 buttons stay identical and pixel-accurate.
+        -->
+        <Style Selector="Button.hotkey">
+            <Setter Property="Width" Value="80" />
+            <Setter Property="Height" Value="41" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="27" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Background" Value="#FFE0FFFF" />
+            <Setter Property="Foreground" Value="#FF000000" />
+            <Setter Property="BorderBrush" Value="#FF5A5A5A" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <!-- Keep the LightCyan flat face on hover/press (the Fluent template otherwise repaints
+             it). Targets the template content presenter, as the sibling Keypad/FormYes views do. -->
+        <Style Selector="Button.hotkey:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFE0FFFF" />
+            <Setter Property="BorderBrush" Value="#FF5A5A5A" />
+            <Setter Property="Foreground" Value="#FF000000" />
+        </Style>
+        <Style Selector="Button.hotkey:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFCDEFEF" />
+            <Setter Property="BorderBrush" Value="#FF5A5A5A" />
+            <Setter Property="Foreground" Value="#FF000000" />
+        </Style>
+
+        <!-- Action / section / heading captions. WinForms Labels: Tahoma 15.75pt Bold, black. -->
+        <Style Selector="TextBlock.lbl">
+            <Setter Property="FontSize" Value="21" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#FF000000" />
+        </Style>
+
+        <!-- Simulator help text. WinForms Labels: Tahoma 14.25pt Regular, black. LineHeight pinned
+             to 23 DIP to match the WinForms line pitch (designer Size 230 / 10 lines = 23 px per
+             line); Avalonia's default (font-metric) line height is taller and would let the two
+             stacked help blocks at Top=42 and Top=286 overlap. -->
+        <Style Selector="TextBlock.sim">
+            <Setter Property="FontSize" Value="19" />
+            <Setter Property="Foreground" Value="#FF000000" />
+            <Setter Property="LineHeight" Value="23" />
+        </Style>
+
+        <!-- Image-only command buttons (OK / Reset): flat, transparent, border-less in every
+             interaction state so only the glyph reads, matching FlatStyle.Flat + BorderSize=0. -->
+        <Style Selector="Button.iconbtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.iconbtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#22000000" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.iconbtn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#33000000" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Absolute layout. Form_Keys is a classic WinForms designer form positioned by Location/Size,
+        so a Canvas with Canvas.Left/Canvas.Top + explicit Width/Height reproduces it pixel-for-pixel.
+        Sized to the WinForms ClientSize (895 x 686).
+    -->
+    <Canvas Width="895" Height="686">
+
+        <!-- ============================ LEFT COLUMN — action shortcuts ============================ -->
+        <TextBlock Classes="lbl" Canvas.Left="3"  Canvas.Top="41"  Text="Auto Steer Toggle" />
+        <Button   x:Name="btnAutosteer"      Classes="hotkey" Canvas.Left="210" Canvas.Top="33"  Content="A" AutomationProperties.Name="Auto Steer Toggle shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="74" Canvas.Top="99"  Text="Cycle Lines" />
+        <Button   x:Name="btnCycleLines"     Classes="hotkey" Canvas.Left="210" Canvas.Top="91"  Content="C" AutomationProperties.Name="Cycle Lines shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="78" Canvas.Top="157" Text="Close Field" />
+        <Button   x:Name="btnFieldMenu"      Classes="hotkey" Canvas.Left="210" Canvas.Top="149" Content="F" AutomationProperties.Name="Close Field shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="92" Canvas.Top="215" Text="New Flag" />
+        <Button   x:Name="btnNewFlag"        Classes="hotkey" Canvas.Left="210" Canvas.Top="207" Content="G" AutomationProperties.Name="New Flag shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="29" Canvas.Top="273" Text="Manual Section" />
+        <Button   x:Name="btnManualSection"  Classes="hotkey" Canvas.Left="210" Canvas.Top="265" Content="M" AutomationProperties.Name="Manual Section shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="57" Canvas.Top="331" Text="Auto Section" />
+        <Button   x:Name="btnAutoSection"    Classes="hotkey" Canvas.Left="210" Canvas.Top="323" Content="N" AutomationProperties.Name="Auto Section shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="49" Canvas.Top="389" Text="Snap to Pivot" />
+        <Button   x:Name="btnSnapToPivot"    Classes="hotkey" Canvas.Left="210" Canvas.Top="381" Content="P" AutomationProperties.Name="Snap to Pivot shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="37" Canvas.Top="447" Text="Move Line Left" />
+        <Button   x:Name="btnMoveLineLeft"   Classes="hotkey" Canvas.Left="210" Canvas.Top="439" Content="T" AutomationProperties.Name="Move Line Left shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="22" Canvas.Top="505" Text="Move Line Right" />
+        <Button   x:Name="btnMoveLineRight"  Classes="hotkey" Canvas.Left="210" Canvas.Top="497" Content="Y" AutomationProperties.Name="Move Line Right shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="23" Canvas.Top="561" Text="Vehicle Settings" />
+        <Button   x:Name="btnVehicleSettings" Classes="hotkey" Canvas.Left="210" Canvas.Top="556" Content="V" AutomationProperties.Name="Vehicle Settings shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="54" Canvas.Top="621" Text="Steer Wizard" />
+        <Button   x:Name="btnSteerWizard"    Classes="hotkey" Canvas.Left="210" Canvas.Top="611" Content="W" AutomationProperties.Name="Steer Wizard shortcut key" />
+
+        <!-- ======================= MIDDLE COLUMN — Section / Zone (1..8) ======================= -->
+        <TextBlock Classes="lbl" Canvas.Left="384" Canvas.Top="9"   Text="Section or Zone" />
+
+        <TextBlock Classes="lbl" Canvas.Left="410" Canvas.Top="51"  Text="1" />
+        <Button   x:Name="btnSection1" Classes="hotkey" Canvas.Left="451" Canvas.Top="43"  Content="1" AutomationProperties.Name="Section or Zone 1 shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="410" Canvas.Top="111" Text="2" />
+        <Button   x:Name="btnSection2" Classes="hotkey" Canvas.Left="451" Canvas.Top="103" Content="2" AutomationProperties.Name="Section or Zone 2 shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="410" Canvas.Top="171" Text="3" />
+        <Button   x:Name="btnSection3" Classes="hotkey" Canvas.Left="451" Canvas.Top="163" Content="3" AutomationProperties.Name="Section or Zone 3 shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="410" Canvas.Top="231" Text="4" />
+        <Button   x:Name="btnSection4" Classes="hotkey" Canvas.Left="451" Canvas.Top="223" Content="4" AutomationProperties.Name="Section or Zone 4 shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="410" Canvas.Top="291" Text="5" />
+        <Button   x:Name="btnSection5" Classes="hotkey" Canvas.Left="451" Canvas.Top="283" Content="5" AutomationProperties.Name="Section or Zone 5 shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="410" Canvas.Top="351" Text="6" />
+        <Button   x:Name="btnSection6" Classes="hotkey" Canvas.Left="451" Canvas.Top="343" Content="6" AutomationProperties.Name="Section or Zone 6 shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="410" Canvas.Top="411" Text="7" />
+        <Button   x:Name="btnSection7" Classes="hotkey" Canvas.Left="451" Canvas.Top="403" Content="7" AutomationProperties.Name="Section or Zone 7 shortcut key" />
+
+        <TextBlock Classes="lbl" Canvas.Left="410" Canvas.Top="471" Text="8" />
+        <Button   x:Name="btnSection8" Classes="hotkey" Canvas.Left="451" Canvas.Top="463" Content="8" AutomationProperties.Name="Section or Zone 8 shortcut key" />
+
+        <!-- ======================= RIGHT COLUMN — Simulator help text ======================= -->
+        <TextBlock Classes="lbl" Canvas.Left="663" Canvas.Top="9" Text="Simulator" />
+
+        <TextBlock Classes="sim" Canvas.Left="648" Canvas.Top="42">R - Reset sim<LineBreak />U - U-Turn (180 degrees)<LineBreak /><LineBreak />Up Arrow - Faster<LineBreak />Dn Arrow - Slower<LineBreak />Left Arrow - Left<LineBreak />Right Arrow - Right<LineBreak /><LineBreak />( . ) Period - Stop<LineBreak />( / ) Slash - Go Straight</TextBlock>
+
+        <TextBlock Classes="sim" Canvas.Left="648" Canvas.Top="286">F11 -  Full Screen<LineBreak /><LineBreak />NumPad1 - Manual Section<LineBreak />NumPad0 - Auto Section</TextBlock>
+
+        <!-- ===================== BOTTOM-MIDDLE — new-key capture area ===================== -->
+        <!-- lblAutosteer: the prompt/status label (WinForms Tahoma 15.75pt Bold, MiddleCenter,
+             Size 264 x 86). The code-behind rewrites its Text while editing a shortcut. Hosted in
+             a fixed-size container so the text stays middle-centred like the WinForms TextAlign. -->
+        <Border Canvas.Left="449" Canvas.Top="543" Width="264" Height="86" Background="Transparent">
+            <TextBlock x:Name="lblAutosteer"
+                       FontSize="21"
+                       FontWeight="Bold"
+                       Foreground="#FF000000"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center">Touch Button to Reset<LineBreak />Then Push New Key</TextBlock>
+        </Border>
+
+        <TextBlock Classes="lbl" Canvas.Left="338" Canvas.Top="613" Text="New Key" />
+
+        <!-- tboxKey: single-char capture field. WinForms TextBox: BorderStyle None, BackColor
+             Control, ForeColor OrangeRed, Tahoma 24pt Bold, centered, Size 87 x 39. Length limiting
+             stays in the code-behind (it rejects length > 1), so no MaxLength is set here. -->
+        <TextBox x:Name="tboxKey"
+                 Canvas.Left="344" Canvas.Top="568"
+                 Width="87" Height="39"
+                 Padding="0"
+                 FontSize="32"
+                 FontWeight="Bold"
+                 Foreground="#FFFF4500"
+                 Background="#FFF0F0F0"
+                 BorderThickness="0"
+                 TextAlignment="Center"
+                 VerticalContentAlignment="Center"
+                 AutomationProperties.Name="New shortcut key" />
+
+        <!-- ===================== RIGHT — Reset-to-Default and OK ===================== -->
+        <TextBlock Classes="lbl" Canvas.Left="754" Canvas.Top="433" Width="117" TextAlignment="Center">Reset<LineBreak />to Default</TextBlock>
+
+        <!-- btnReset: WinForms image-only button (Resources.back_button == btnImages/back-button.png),
+             FlatStyle.Flat + BorderSize=0, Size 87 x 69 @ (770,484). Resets all hotkeys to default. -->
+        <Button x:Name="btnReset"
+                Classes="iconbtn"
+                Canvas.Left="770" Canvas.Top="484"
+                Width="87" Height="69"
+                ToolTip.Tip="Reset to Default"
+                AutomationProperties.Name="Reset shortcuts to default">
+            <Image Source="avares://AgOpenGPS/btnImages/back-button.png"
+                   Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!-- btnOK: WinForms image-only button (Resources.OK64 == btnImages/OK64.png, native 64 x 64),
+             FlatStyle.Flat + BorderSize=0, Anchor Bottom|Right, Size 110 x 70 @ (769,603). Closes the
+             dialog (code-behind blocks close while any key is still unset "..."). -->
+        <Button x:Name="btnOK"
+                Classes="iconbtn"
+                Canvas.Left="769" Canvas.Top="603"
+                Width="110" Height="70"
+                IsDefault="True"
+                ToolTip.Tip="OK"
+                AutomationProperties.Name="OK">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

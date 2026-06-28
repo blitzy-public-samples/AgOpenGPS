@@ -1,0 +1,49 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    GPS_Out Avalonia Application definition.
+
+    Establishes the app-wide theme (Avalonia Fluent), the Inter font (registered in
+    Program.BuildAvaloniaApp().WithInterFont()), and the day/night background palette
+    that reproduces the original WinForms look where frmStart and frmHelp set
+    this.BackColor = Properties.Settings.Default.DayColour (default RGB 210, 220, 230).
+
+    This is a 1:1 parity reimplementation (AAP §0.3.3): theme, fonts and palette only —
+    no new screens, no relayout, no UX changes. All view-specific markup lives in
+    Views/*.axaml, never here.
+
+    x:Class must match the App class in App.axaml.cs (namespace GPS_Out).
+-->
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GPS_Out.App"
+             RequestedThemeVariant="Light">
+
+    <!--
+        Day/night background palette — parity with the WinForms DayColour BackColor.
+
+        These are STATIC FALLBACK DEFAULTS only. At startup App.axaml.cs parses the
+        cross-platform "210,220,230" string from Properties.Settings.Default.DayColour
+        into an Avalonia.Media.Color and OVERWRITES DayColor/DayBrush so user-customized
+        colors persist. Views bind their background to DayBrush (or NightBrush) rather
+        than hard-coding a color.
+
+        Avalonia colour syntax is #AARRGGBB — no WinForms/GDI colour types are referenced.
+    -->
+    <Application.Resources>
+        <!-- Documented default == RGB 210, 220, 230  (210=0xD2, 220=0xDC, 230=0xE6). -->
+        <Color x:Key="DayColor">#FFD2DCE6</Color>
+        <SolidColorBrush x:Key="DayBrush" Color="{StaticResource DayColor}" />
+
+        <!-- Sensible dark counterpart of the light grey-blue, used only when a night
+             mode is toggled. Parity-first: declaring the resource introduces no new UX. -->
+        <Color x:Key="NightColor">#FF1E2832</Color>
+        <SolidColorBrush x:Key="NightBrush" Color="{StaticResource NightColor}" />
+    </Application.Resources>
+
+    <!-- App-wide Fluent theme (Avalonia.Themes.Fluent). The light/dark variant is
+         driven by RequestedThemeVariant above and toggled from code-behind. -->
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+</Application>

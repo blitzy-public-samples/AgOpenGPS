@@ -1,6 +1,8 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Xml;
 using AgLibrary.Logging;
 using AgLibrary.Settings;
@@ -526,5 +528,91 @@ namespace AgOpenGPS
                 MarkAsConverted(fileName);
             }
         }
+
+        // [XPLAT] One-time, Windows-only migration of the legacy Windows Registry settings — the per-user
+        // AgOpenGPS key, the pre-net8 backing described in docs/settings.md L26-28 — into the cross-platform,
+        // file-based settings introduced by the migration. Before net8 the six top-level configuration
+        // strings — WorkingDirectory, VehicleProfileName, ToolProfileName, EnvironmentFileName,
+        // VehicleFileName and Language — lived in the Windows Registry; on net8 they live in
+        // RegistrySettings.xml under IPlatformServices.AppDataRoot. This hook folds those old Registry
+        // values forward on the first launch after upgrading, so an existing Windows user keeps their
+        // working directory, selected profiles and language without reconfiguring.
+        //
+        // Call this once during startup BEFORE RegistrySettings.Load(): per the design note in
+        // Properties/RegistrySettings.cs, that class has no Registry knowledge and relies on this seed to
+        // have written its config file first.
+        //
+        // Cross-platform contract:
+        //   * The actual Registry API is delegated entirely to WindowsPlatformServices — this file never
+        //     references the Windows Registry API directly — and that type is compiled only for the
+        //     net8.0-windows target, so the body lives under #if WINDOWS.
+        //   * The RuntimeInformation.IsOSPlatform(OSPlatform.Windows) guard makes the method a no-op on
+        //     Linux and macOS, where there is no legacy Registry to read.
+        //   * It is idempotent: once the cross-platform config file exists the migration has already run
+        //     (or the user is a fresh file-based install), so it never re-reads the Registry and never
+        //     clobbers values the user has changed in the file-based store since.
+        public static void MigrateLegacyRegistrySettings()
+        {
+            // No-op on every non-Windows OS: there is no Windows Registry to migrate from. This runtime
+            // guard pairs with the #if WINDOWS compile-time guard below (WindowsPlatformServices, which owns
+            // the Registry API, is compiled only for the net8.0-windows target).
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return;
+
+#if WINDOWS
+            try
+            {
+                // The Windows platform layer owns every Registry call; that Windows API stays confined there.
+                AgOpenGPS.Platform.WindowsPlatformServices platform = new AgOpenGPS.Platform.WindowsPlatformServices();
+
+                // Idempotency guard: the cross-platform config file is written exactly once — by this seed on
+                // the first post-upgrade run, or by RegistrySettings itself on a fresh install. If it already
+                // exists the migration is complete, so re-seeding from the (now stale) Registry would
+                // overwrite changes the user has since made. RegistrySettings keeps this same file, at this
+                // same fixed location, directly under AppDataRoot.
+                string configFilePath = Path.Combine(platform.AppDataRoot, "RegistrySettings.xml");
+                if (File.Exists(configFilePath))
+                    return;
+
+                // Nothing to migrate when the legacy key was never created (e.g. a brand-new Windows install
+                // that never ran a net48 build).
+                if (!platform.LegacyRegistryExists())
+                    return;
+
+                // Fold each legacy value forward into the file-based store via the public
+                // RegistrySettings.Save read-modify-write. Absent Registry values come back null and are
+                // skipped, leaving RegistrySettings.Load() to repair them to their original defaults — the
+                // same outcome the old code produced when a Registry key was missing.
+                SeedLegacyRegistryValue(platform, RegKeys.workingDirectory);
+                SeedLegacyRegistryValue(platform, RegKeys.vehicleProfileName);
+                SeedLegacyRegistryValue(platform, RegKeys.toolProfileName);
+                SeedLegacyRegistryValue(platform, RegKeys.environmentFileName);
+                SeedLegacyRegistryValue(platform, RegKeys.vehicleFileName);
+                SeedLegacyRegistryValue(platform, RegKeys.language);
+
+                Log.EventWriter("Registry -> One-time legacy Registry settings migrated to RegistrySettings.xml");
+            }
+            catch (Exception ex)
+            {
+                // A failed seed must never block startup: RegistrySettings.Load() simply falls back to its
+                // defaults, exactly as it does for a missing Registry key. Log the failure and continue.
+                Log.EventWriter("Registry -> Legacy Registry settings migration failed: " + ex.ToString());
+            }
+#endif
+        }
+
+#if WINDOWS
+        // [XPLAT] Reads a single legacy Registry value through the Windows platform layer and, when present,
+        // persists it into the cross-platform config file via the existing RegistrySettings.Save dispatch.
+        // A null result means the value was absent from the Registry; it is left for RegistrySettings.Load()
+        // to default, matching the original behavior where a missing Registry key read back as null. Gated by
+        // #if WINDOWS so it is never an unused member on the net8.0 (Linux/macOS) build.
+        private static void SeedLegacyRegistryValue(AgOpenGPS.Platform.WindowsPlatformServices platform, string valueName)
+        {
+            string registryValue = platform.ReadLegacyRegistryValue(valueName);
+            if (registryValue != null)
+                RegistrySettings.Save(valueName, registryValue);
+        }
+#endif
     }
 }

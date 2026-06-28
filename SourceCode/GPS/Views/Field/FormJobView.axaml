@@ -1,0 +1,309 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Field / Job launcher MENU dialog (Avalonia view).
+
+    1:1 PARITY reimplementation of the WinForms `Forms/Field/FormJob`
+    (source: FormJob.cs + FormJob.Designer.cs). FormJob is the kiosk-style launcher the operator
+    uses to start / resume / open / import a field, plus the AgShare cloud actions, Easy Drive and
+    Close. Per AAP §0.3.3 this is visual + behavioural fidelity to the currently rendered Windows
+    Forms UI, never a redesign: the control set, layout grid and per-button look below are taken
+    verbatim from FormJob.Designer.cs.
+
+    WIRING CONTRACT — this view is IMPERATIVE (code-behind), NOT MVVM:
+      * There is intentionally NO x:DataType, no DataContext and no {Binding} (a ported code-behind
+        dialog, exactly like the sibling FormYesView / FormDrivePickerView / FormFieldDirView). The
+        partner code-behind (partial class AgOpenGPS.Views.FormJobView : Window) owns ALL behaviour
+        and addresses the named controls below directly by their x:Name.
+      * The WinForms designer wired every button Click PROGRAMMATICALLY
+        (this.btnJobNew.Click += new System.EventHandler(this.btnJobNew_Click); …). This markup
+        reproduces that by declaring NO Click attributes — the code-behind subscribes to each
+        button's Click event by name (the same decoupled approach the sibling FormDrivePickerView
+        documents). The x:Name values ARE the contract; they MUST stay exactly as below.
+      * Button captions: the WinForms ctor set seven texts from gStr
+        (btnJobOpen=gsOpen, btnJobNew=gsNew, btnJobResume=gsResume, btnInField=gsDriveIn,
+         btnFromKML=gsFromKml, btnFromExisting=gsFromExisting, btnJobClose=gsClose) and Title=gsStartNewField,
+        and lblAgShareCloudLoad = "☁ " + gsAgShareAutoLoadActive. Because each button shows an icon
+        AND a caption (WinForms ImageBeforeText), the caption lives in a NAMED inner TextBlock
+        (<button>Text) — the code-behind assigns its .Text at runtime (the established sibling pattern,
+        cf. FormDrivePickerView `btnOpenText`). The literal texts below are design-time placeholders.
+
+    AGSHARE COLLAPSE (reproduces the WinForms -75px shrink):
+      FormJob_Load hid btnJobAgShare + btnAgShareBulkUpload and shrank the form by 75px when
+      Settings.AgShareEnabled was false, and toggled lblAgShareCloudLoad on
+      (AgShareEnabled && AgShareAutoLoad). The two AgShare buttons are therefore grouped in the
+      NAMED container row `panelAgShare`; the code-behind sets `panelAgShare.IsVisible` (and
+      `lblAgShareCloudLoad.IsVisible`). Because the window uses SizeToContent="WidthAndHeight",
+      collapsing that row makes the window recompute its height — the cross-platform equivalent of
+      the imperative ClientSize reduction.
+
+    WINDOW SHELL — mirrors FormJob.Designer.cs:
+      Text gsStartNewField (runtime)   -> Title (design-time placeholder; code-behind assigns gStr)
+      ClientSize 638 x 645             -> driven by SizeToContent="WidthAndHeight" (matrix 605 wide)
+      BackColor Gainsboro              -> Background="{DynamicResource AogFrameBrush}" (themed chrome,
+                                          per this file's spec — not a hard-coded WinForms colour)
+      MaximizeBox/MinimizeBox = false  -> CanResize="False"
+      ShowInTaskbar = false            -> ShowInTaskbar="False"
+      StartPosition CenterParent       -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS)
+      Font Tahoma 14.25pt              -> FontFamily="Tahoma" (children set explicit DIP sizes; WinForms
+                                          points -> DIP via pt x 96/72: 16->20/21, 15.75->21, 10->13)
+
+    Colours: the themed chrome + readable label text come from App.axaml's day/night ThemeDictionaries
+    via {DynamicResource ...} (live Light<->Dark switch observed). The per-button palette
+    (AliceBlue face / CornflowerBlue border / amber Easy-Drive) is reproduced with literal parity
+    colours — the same convention the sibling code-behind views use for control-specific styling.
+    Button glyphs are served from the GPS assembly ("AgOpenGPS") via avares:// URIs. Pure Avalonia:
+    no WinForms / GMap / System.Drawing / OpenTK types are referenced.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormJobView"
+        Title="Start New Field"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Per-button styling. The WinForms buttons were FlatStyle.Flat with a fixed AliceBlue face
+        (ARGB 240,248,255), a CornflowerBlue border (ARGB 100,149,237), black text and a
+        MouseOver fill (ARGB 227,242,253). The Fluent Button template otherwise paints its own
+        rounded hover/pressed surface, so the rest-state colours are set on the Button (they flow to
+        the template's ContentPresenter via TemplateBinding) and the hover/pressed colours are
+        overridden directly on PART_ContentPresenter — the technique every sibling GPS view uses.
+        CornerRadius 0 reproduces the square WinForms flat button.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.jobButton">
+            <Setter Property="Background" Value="#FFF0F8FF" />
+            <Setter Property="BorderBrush" Value="#FF6495ED" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="Padding" Value="15,0,0,0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.jobButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFE3F2FD" />
+            <Setter Property="BorderBrush" Value="#FF6495ED" />
+        </Style>
+        <Style Selector="Button.jobButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFE3F2FD" />
+            <Setter Property="BorderBrush" Value="#FF6495ED" />
+        </Style>
+        <!-- Disabled buttons (e.g. btnJobClose when no field is open, all buttons in Easy-Drive mode)
+             are dimmed as a whole, reproducing the greyed WinForms disabled look. -->
+        <Style Selector="Button.jobButton:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+
+        <!-- Easy Drive carries a distinct amber palette (WinForms ARGB 255,248,225 face /
+             255,183,77 border / 255,236,179 hover). Applied alongside .jobButton; these colour-only
+             setters are declared AFTER .jobButton so they win for the shared properties. -->
+        <Style Selector="Button.easyDrive">
+            <Setter Property="Background" Value="#FFFFF8E1" />
+            <Setter Property="BorderBrush" Value="#FFFFB74D" />
+        </Style>
+        <Style Selector="Button.easyDrive:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFFFECB3" />
+            <Setter Property="BorderBrush" Value="#FFFFB74D" />
+        </Style>
+        <Style Selector="Button.easyDrive:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFFFECB3" />
+            <Setter Property="BorderBrush" Value="#FFFFB74D" />
+        </Style>
+
+        <!-- btnDeleteAB (Cancel): WinForms FlatStyle.Flat + BorderSize 0 + BackColor Transparent,
+             image-only. Keep the face transparent in every interaction state so only the glyph shows. -->
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Two bands: the launcher button matrix (Auto) above the bottom status bar (Auto). Margin
+        9,7,… reproduces the WinForms tableLayoutPanel1 Location (9,7) within the form padding.
+    -->
+    <Grid Margin="9,7,9,9" RowDefinitions="Auto,Auto">
+
+        <!--
+            Launcher matrix — the WinForms tableLayoutPanel1: 3 columns (50% / 23px spacer / 50%) x
+            6 rows. Reproduced as a fixed-width (605, matching the designer panel width) vertical
+            StackPanel of six 3-column row-Grids, so the two star columns stay 50/50 and every row
+            keeps the same width even when a cell is empty. The 23px middle column holds the WinForms
+            spacer labels (label1..label5 — empty Gainsboro gap fillers in the original).
+        -->
+        <StackPanel Grid.Row="0" Width="605" Spacing="10">
+
+            <!-- Row 0: ISO-XML (left) | label1 | Close (right) -->
+            <Grid ColumnDefinitions="*,23,*">
+                <Button x:Name="btnFromISOXML" Grid.Column="0" Classes="jobButton" Height="83"
+                        AutomationProperties.Name="Create field from ISO-XML">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/ISOXML.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnFromISOXMLText" Text="ISO-XML" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+                <TextBlock x:Name="label1" Grid.Column="1" />
+                <Button x:Name="btnJobClose" Grid.Column="2" Classes="jobButton" Height="83"
+                        AutomationProperties.Name="Close field">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/FileClose.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnJobCloseText" Text="Close" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <!-- Row 1: From KML (left) | label2 | Drive In (right) -->
+            <Grid ColumnDefinitions="*,23,*">
+                <Button x:Name="btnFromKML" Grid.Column="0" Classes="jobButton" Height="83"
+                        AutomationProperties.Name="Create field from KML">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/BoundaryLoadFromGE.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnFromKMLText" Text="From KML" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+                <TextBlock x:Name="label2" Grid.Column="1" />
+                <Button x:Name="btnInField" Grid.Column="2" Classes="jobButton" Height="83"
+                        AutomationProperties.Name="Use the field you are driving in">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/AutoManualIsAuto.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnInFieldText" Text="Drive In" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <!-- Row 2: Existing (left) | label3 | Open (right) -->
+            <Grid ColumnDefinitions="*,23,*">
+                <Button x:Name="btnFromExisting" Grid.Column="0" Classes="jobButton" Height="83"
+                        AutomationProperties.Name="Create field from an existing field">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/FileExisting.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnFromExistingText" Text="Existing" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+                <TextBlock x:Name="label3" Grid.Column="1" />
+                <Button x:Name="btnJobOpen" Grid.Column="2" Classes="jobButton" Height="83"
+                        AutomationProperties.Name="Open existing field">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/FileOpen.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnJobOpenText" Text="Open" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <!-- Row 3: New Field (left) | label4 | Resume (right) -->
+            <Grid ColumnDefinitions="*,23,*">
+                <Button x:Name="btnJobNew" Grid.Column="0" Classes="jobButton" Height="83"
+                        AutomationProperties.Name="Create new field">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/FileNew.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnJobNewText" Text="New Field" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+                <TextBlock x:Name="label4" Grid.Column="1" />
+                <Button x:Name="btnJobResume" Grid.Column="2" Classes="jobButton" Height="83"
+                        AutomationProperties.Name="Resume last field">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/FilePrevious.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnJobResumeText" Text="Resume" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <!--
+                Row 4: the AgShare action pair, grouped in the NAMED container `panelAgShare`. The
+                code-behind sets panelAgShare.IsVisible = Settings.AgShareEnabled; with
+                SizeToContent the window shrinks when it is hidden (parity with the WinForms -75px
+                ClientSize reduction). No middle spacer label here (the WinForms row 4 had none).
+            -->
+            <Grid x:Name="panelAgShare" ColumnDefinitions="*,23,*">
+                <Button x:Name="btnJobAgShare" Grid.Column="0" Classes="jobButton" Height="87"
+                        AutomationProperties.Name="Open field from AgShare">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/AgShare.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnJobAgShareText" Text="AgShare Download" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnAgShareBulkUpload" Grid.Column="2" Classes="jobButton" Height="87"
+                        AutomationProperties.Name="Bulk upload fields to AgShare">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/AgShare.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnAgShareBulkUploadText" Text="AgShare Upload" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <!-- Row 5: Easy Drive (left, amber) | label5 | (empty right cell) -->
+            <Grid ColumnDefinitions="*,23,*">
+                <Button x:Name="btnEasyDrive" Grid.Column="0" Classes="jobButton easyDrive" Height="83"
+                        AutomationProperties.Name="Easy drive">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="avares://AgOpenGPS/btnImages/AutoManualIsAuto.png" Width="48" Height="48" Stretch="Uniform" />
+                        <TextBlock x:Name="btnEasyDriveText" Text="Easy Drive" Margin="10,0,6,0" FontSize="20" FontWeight="Bold" Foreground="Black" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+                <TextBlock x:Name="label5" Grid.Column="1" />
+                <!-- WinForms row 5, column 2 is intentionally empty. -->
+            </Grid>
+
+        </StackPanel>
+
+        <!--
+            Bottom status bar (WinForms lblAgShareCloudLoad + lblResumeField on the left, btnDeleteAB
+            Cancel on the right). lblAgShareCloudLoad sits above lblResumeField; the code-behind sets
+            both labels' text and toggles lblAgShareCloudLoad.IsVisible.
+        -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+            <StackPanel Grid.Column="0" VerticalAlignment="Bottom" Spacing="2">
+                <!-- lblAgShareCloudLoad: Tahoma 10pt Italic SteelBlue (ARGB SteelBlue), starts hidden
+                     (WinForms Visible=false); runtime text "☁ " + gStr.gsAgShareAutoLoadActive. -->
+                <TextBlock x:Name="lblAgShareCloudLoad"
+                           IsVisible="False"
+                           FontSize="13"
+                           FontStyle="Italic"
+                           Foreground="SteelBlue"
+                           HorizontalAlignment="Left"
+                           TextTrimming="CharacterEllipsis" />
+                <!-- lblResumeField: Tahoma 15.75pt, right-aligned (WinForms TextAlign MiddleRight).
+                     Foreground themed so it stays readable in both day and night chrome. The
+                     code-behind assigns the resume/open field text; "Previous Field" is the
+                     design-time placeholder. -->
+                <TextBlock x:Name="lblResumeField"
+                           Text="Previous Field"
+                           FontSize="21"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           HorizontalAlignment="Right"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <!-- btnDeleteAB — Cancel (WinForms name is historical; it closes the menu / cancels).
+                 Image-only Cancel64 glyph, flat transparent. AutomationProperties.Name gives the
+                 image-only button an accessible label. -->
+            <Button x:Name="btnDeleteAB"
+                    Grid.Column="1"
+                    Classes="flatImage"
+                    Width="80"
+                    Height="64"
+                    Margin="12,0,0,0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="Cancel">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Width="48" Height="48" Stretch="Uniform" />
+            </Button>
+        </Grid>
+
+    </Grid>
+</Window>

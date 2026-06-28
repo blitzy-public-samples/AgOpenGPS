@@ -1,0 +1,306 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Roll Correction Chart dialog (Avalonia view).
+
+    1:1 visual parity reimplementation of the WinForms `Forms/Settings/FormCorrection`
+    (source: FormCorrection.cs + FormCorrection.Designer.cs) — the live antenna pole-sway /
+    roll diagnostics screen. It plots three rolling traces (roll correction distance, corrected
+    easting, uncorrected easting) over a black chart and shows their live numeric readouts along
+    the bottom. Per AAP §0.3.3 this is a faithful re-platform of the current Windows Forms look,
+    never a redesign: every size, font and colour below is taken verbatim from
+    FormCorrection.Designer.cs.
+
+    KEY MIGRATION CHANGE (DataVisualization chart replaced by custom Avalonia drawing):
+      The WinForms `rollChart` was a Windows-only DataVisualization charting control that was dropped
+      from AgOpenGPS.csproj during the migration. It is reimplemented here as a lightweight custom
+      Avalonia control (`local:RollChart`) that buffers the last 50 samples per series and paints
+      step-line polylines in its Render(DrawingContext) — no new NuGet dependency, and no legacy
+      Windows-only UI or GL-host types are referenced (Avalonia markup only).
+
+    WINDOW SHELL — mirrors FormCorrection.Designer.cs:
+      Form.Text "Roll Correction Chart" -> Title
+      ClientSize 809 x 424              -> Width / Height (SystemDecorations="None" => client == window)
+      FormBorderStyle.None (implied)    -> SystemDecorations="None"
+      (fixed size, not resizable)       -> CanResize="False"
+      ShowInTaskbar = false             -> ShowInTaskbar="False"
+      StartPosition.CenterParent        -> WindowStartupLocation="CenterOwner" (shown over FormGPS)
+      Window chrome                      -> Background="{DynamicResource AogFrameBrush}" (per AAP file
+                                            spec; uses the App.axaml day/night frame brush so the thin
+                                            top strip and the bottom readout band pick up the live theme,
+                                            while the dominant chart surface stays black for parity).
+
+    THEME / COLOUR NOTE:
+      The chart surface and the per-series / readout colours are hard-coded (Black background;
+      Red / Lime / Cyan traces; Chartreuse / LightSalmon labels) straight from the WinForms source
+      because this is a fixed instrumentation palette, not themed chrome — identical to how the
+      original FormCorrection ignored the day/night skin for its plot. Only the Window background
+      uses the {DynamicResource AogFrameBrush} theme brush, per this file's AAP spec.
+
+    LAYOUT MODEL:
+      The WinForms designer positioned every control absolutely (Location/Size) with the chart
+      behind and the labels / buttons painted on top. That overlapping, fixed pixel layout is
+      reproduced faithfully with a root Canvas using Canvas.Left / Canvas.Top equal to the original
+      designer coordinates; declaration order reproduces the original z-order (chart first/behind,
+      then the buttons and labels on top). The window is fixed-size (CanResize="False"), so absolute
+      positioning is exact and needs no reflow.
+
+    FONT SIZES:
+      WinForms Font sizes are in points; Avalonia FontSize is in device-independent pixels, so each
+      value is converted px = pt * 96 / 72: readouts Tahoma 18pt -> 24; descriptive labels Tahoma
+      14.25pt -> 19; buttons Microsoft Sans Serif 12pt -> 16.
+
+    WIRING CONTRACT — this view is IMPERATIVE (code-behind), NOT MVVM:
+      There is intentionally NO x:DataType, NO DataContext and NO {Binding}; the partner code-behind
+      FormCorrectionView.axaml.cs drives everything by addressing the named controls directly, exactly
+      like the sibling FormYesView / FormInputDialogView. The x:Name values below are the contract and
+      MUST NOT change. The partner code-behind (partial class
+      AgOpenGPS.Views.Settings.FormCorrectionView : Window) is expected to:
+        * Declare a constructor that calls InitializeComponent().
+        * Own these named controls: rollChart, lblCorrectionDistance, lblEast, lblOst, lblRollDegrees,
+          lblEastOnGraph, btnScroll, btnPoleOrMoving.
+        * On a timer (interval = 1000 / gpsHz, as in FormCorrection.cs) recompute the readouts and,
+          while scrolling is enabled, push one sample (roll, easting, uncorrected easting; each x20,
+          matching DrawChart) into rollChart, which keeps the most recent 50 per series.
+        * Provide the two Click handlers referenced below:
+            btnScroll_Click_1(object sender, RoutedEventArgs e)  -> toggles freeze/scroll (FormCorrection
+              isScroll = !isScroll); the original WinForms handler name is preserved.
+            btnPoleOrMoving_Click(object sender, RoutedEventArgs e) -> toggles pole/moving (isPole) and
+              flips btnPoleOrMoving.Content between "Pole" and "Moving". (WinForms used Button.Text;
+              the Avalonia equivalent is Button.Content, which is why btnPoleOrMoving below carries a
+              plain string Content the handler can reassign.)
+
+    CUSTOM CHART CONTROL CONTRACT — `local:RollChart`:
+      `local` is this view's own namespace (AgOpenGPS.Views.Settings). RollChart is a custom plotting
+      control implemented in the C# layer as:
+            public class RollChart : Avalonia.Controls.Control   // parameterless ctor
+      and is expected to:
+        * Hold three rolling sample buffers, each capped at the most recent 50 points, named to match
+          the WinForms series: "Ro" (roll / correction distance), "Ze" (corrected easting) and
+          "Oe" (uncorrected easting).
+        * Use the exact per-series colours copied from FormCorrection.Designer.cs:
+          "Ro" = Red (border width 2), "Ze" = Lime, "Oe" = Cyan.
+        * Override Render(DrawingContext) to auto-scale the buffered samples to the control bounds and
+          stroke each series as a StepLine polyline (matching SeriesChartType.StepLine), over the black
+          background supplied by its host Border below; call InvalidateVisual() when samples change.
+      The control needs no XAML-set properties here (Avalonia's Control base has no Background of its
+      own — the surrounding Border provides the black backdrop), so only x:Name is set on it.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:gStr="clr-namespace:AgOpenGPS.Core.Translations;assembly=AgOpenGPS.Core"
+        xmlns:local="clr-namespace:AgOpenGPS.Views.Settings"
+        x:Class="AgOpenGPS.Views.Settings.FormCorrectionView"
+        Title="Roll Correction Chart"
+        Width="809"
+        Height="424"
+        Background="{DynamicResource AogFrameBrush}"
+        SystemDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma">
+
+    <!--
+        btnScroll / btnPoleOrMoving styling. WinForms: FlatStyle.Flat with FlatAppearance.BorderColor
+        = Silver, BackColor = Transparent, ForeColor = Lime, Microsoft Sans Serif 12pt Bold. Reproduced
+        as a `flat` Button class: a transparent, silver-outlined, lime-text button. The :pointerover and
+        :pressed setters target the Fluent template's content presenter so the theme's hover / pressed
+        fill never paints over the flat transparent face (same technique as Keypad / FormYesView),
+        keeping the silver border and lime text in every interaction state.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flat">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Silver" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="Lime" />
+            <Setter Property="FontFamily" Value="Microsoft Sans Serif" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Silver" />
+            <Setter Property="Foreground" Value="Lime" />
+        </Style>
+        <Style Selector="Button.flat:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Silver" />
+            <Setter Property="Foreground" Value="Lime" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root Canvas reproduces the WinForms absolute layout (client 809 x 424). Children are declared
+        bottom-to-top to match the original control z-order: the chart paints first (behind), then the
+        command buttons and the readout / descriptive labels paint on top.
+    -->
+    <Canvas>
+
+        <!-- rollChart host. WinForms Chart: Location (-30,9) Size 830 x 372, BackColor Black. The
+             negative left / 830 width only pushed the auto-generated axis labels off the left edge so
+             the plot filled the form width; the custom RollChart manages its own rendering, so the
+             surface is normalised to the visible region (Left 0, Width 809, Top 9, Height 372). The
+             Border supplies the black backdrop and clips the traces to the plot rectangle; RollChart
+             fills it. AutomationProperties.Name gives the non-textual plot an accessible label. -->
+        <Border Canvas.Left="0"
+                Canvas.Top="9"
+                Width="809"
+                Height="372"
+                Background="Black"
+                ClipToBounds="True"
+                AutomationProperties.Name="Roll correction chart">
+            <local:RollChart x:Name="rollChart" />
+        </Border>
+
+        <!-- btnScroll — WinForms Location (12,12) Size 92 x 60, Text "Scroll On Off". Freezes / resumes
+             the trace (FormCorrection isScroll). The label wraps across lines inside the narrow button,
+             as it did in WinForms. Click -> code-behind btnScroll_Click_1. -->
+        <Button x:Name="btnScroll" AutomationProperties.Name="Scroll On Off"
+                Classes="flat"
+                Canvas.Left="12"
+                Canvas.Top="12"
+                Width="92"
+                Height="60"
+                Click="btnScroll_Click_1">
+            <TextBlock Text="Scroll On Off"
+                       TextWrapping="Wrap"
+                       TextAlignment="Center" />
+        </Button>
+
+        <!-- btnPoleOrMoving — WinForms Location (14,301) Size 92 x 60, Text "Pole". Toggles pole vs
+             moving correction (FormCorrection isPole); the code-behind reassigns Content to "Moving" /
+             "Pole". Content is a plain string (not a TextBlock) so that reassignment stays as simple as
+             the original Button.Text swap. Click -> code-behind btnPoleOrMoving_Click. -->
+        <Button x:Name="btnPoleOrMoving"
+                Classes="flat"
+                Canvas.Left="14"
+                Canvas.Top="301"
+                Width="92"
+                Height="60"
+                Content="Pole"
+                Click="btnPoleOrMoving_Click" />
+
+        <!-- lblEastOnGraph — WinForms Location (705,4) Size 105 x 29, Lime 18pt Bold, MiddleRight,
+             BackColor black. Live integer easting overlay at the top-right of the plot. -->
+        <Border Canvas.Left="705"
+                Canvas.Top="4"
+                Width="105"
+                Height="29"
+                Background="Black">
+            <TextBlock x:Name="lblEastOnGraph"
+                       Text="0"
+                       Foreground="Lime"
+                       FontFamily="Tahoma"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       TextAlignment="Right"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- ===================== Bottom readout band (left -> right) ===================== -->
+        <!-- Each pairing is a black chip (Border, reproducing the WinForms label BackColor) carrying a
+             vertically-centred coloured TextBlock. Descriptive captions are right-aligned and wrap to
+             two lines (matching the WinForms multi-line labels); the live readouts are left-aligned. -->
+
+        <!-- label3 "Antenna" — WinForms (22,387) 84 x 29, Cyan 14.25pt, MiddleRight. -->
+        <Border Canvas.Left="22" Canvas.Top="387" Width="84" Height="29" Background="Black">
+            <TextBlock Text="Antenna"
+                       Foreground="Cyan"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       TextAlignment="Right"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- lblOst — WinForms (102,387) 85 x 29, Cyan 18pt Bold, MiddleLeft. Uncorrected easting. -->
+        <Border Canvas.Left="102" Canvas.Top="387" Width="85" Height="29" Background="Black">
+            <TextBlock x:Name="lblOst"
+                       Text="0.00"
+                       Foreground="Cyan"
+                       FontFamily="Tahoma"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       Padding="3,0,0,0"
+                       TextAlignment="Left"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- label5 "Corrected Easting" — WinForms (214,372) 98 x 55, Chartreuse 14.25pt, MiddleRight. -->
+        <Border Canvas.Left="214" Canvas.Top="372" Width="98" Height="55" Background="Black">
+            <TextBlock Text="Corrected Easting"
+                       Foreground="Chartreuse"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       TextAlignment="Right"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- lblEast — WinForms (309,386) 85 x 29, Lime 18pt Bold, MiddleLeft. Corrected easting. -->
+        <Border Canvas.Left="309" Canvas.Top="386" Width="85" Height="29" Background="Black">
+            <TextBlock x:Name="lblEast"
+                       Text="0.00"
+                       Foreground="Lime"
+                       FontFamily="Tahoma"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       Padding="3,0,0,0"
+                       TextAlignment="Left"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- label1 "Correction Distance" — WinForms (438,375) 97 x 46, Red 14.25pt, MiddleRight. -->
+        <Border Canvas.Left="438" Canvas.Top="375" Width="97" Height="46" Background="Black">
+            <TextBlock Text="Correction Distance"
+                       Foreground="Red"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       TextAlignment="Right"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- lblCorrectionDistance — WinForms (533,386) 85 x 29, Red 18pt Bold, MiddleLeft. -->
+        <Border Canvas.Left="533" Canvas.Top="386" Width="85" Height="29" Background="Black">
+            <TextBlock x:Name="lblCorrectionDistance"
+                       Text="0.00"
+                       Foreground="Red"
+                       FontFamily="Tahoma"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       Padding="3,0,0,0"
+                       TextAlignment="Left"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- label6 "Roll Degrees" — WinForms (642,376) 85 x 47, LightSalmon 14.25pt, MiddleRight. -->
+        <Border Canvas.Left="642" Canvas.Top="376" Width="85" Height="47" Background="Black">
+            <TextBlock Text="Roll Degrees"
+                       Foreground="LightSalmon"
+                       FontFamily="Tahoma"
+                       FontSize="19"
+                       TextAlignment="Right"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- lblRollDegrees — WinForms (725,384) 85 x 29, LightSalmon 18pt Bold, MiddleLeft. -->
+        <Border Canvas.Left="725" Canvas.Top="384" Width="85" Height="29" Background="Black">
+            <TextBlock x:Name="lblRollDegrees"
+                       Text="0.0"
+                       Foreground="LightSalmon"
+                       FontFamily="Tahoma"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       Padding="3,0,0,0"
+                       TextAlignment="Left"
+                       VerticalAlignment="Center" />
+        </Border>
+
+    </Canvas>
+</Window>

@@ -1,0 +1,280 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Create New Field From ISO-XML" dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Field/FormFieldIsoXml`
+    (source: FormFieldISOXML.cs + FormFieldISOXML.Designer.cs + FormFieldISOXML.resx). Per AAP
+    §0.3.3 this is a faithful re-platform of the currently rendered Windows Forms surface — never
+    a redesign: every size, position and font below is taken verbatim from
+    FormFieldISOXML.Designer.cs.
+
+    The dialog lets the operator pick a field (and one of its guidance lines) from an imported
+    ISO-XML "Taskdata.xml", name it, optionally append the current date / time, then build a new
+    AgOpenGPS field from it. The dominant control is a tree of fields, each field a top-level node
+    with child guidance-line nodes (AB / A+ / Curve / Pivot / Spiral).
+
+    CODE-BEHIND CONTRACT — FormFieldISOXMLView.axaml.cs
+    (partial class AgOpenGPS.Views.FormFieldISOXMLView : Window):
+      * This view is IMPERATIVE, not MVVM: there is intentionally NO x:DataType, no DataContext and
+        no {Binding}. All control state (text, enable/disable, tree population) is driven from the
+        code-behind through the x:Name'd controls below — exactly mirroring the WinForms ctor +
+        FormFieldIsoXml_Load. The x:Name values are therefore the integration contract and MUST
+        stay byte-identical to the WinForms originals:
+            labelFieldname  labelField  label2  label3
+            tree  tboxFieldName
+            btnAddDate  btnAddTime  btnBuildFields  btnSerialCancel
+      * Caption text is assigned at runtime from gStr (FormFieldIsoXml_Load):
+            this.Title          = gStr.gsCreateNewFromIsoXML
+            labelFieldname.Text = gStr.gsEditFieldName
+            labelField.Text     = gStr.gsBasedOnField + ":"   (then updated with the selected field)
+        The strings shown below are the Designer placeholders the code-behind overrides.
+      * The four Button Click handlers keep the ORIGINAL WinForms method names
+        (btnAddDate_Click / btnAddTime_Click / btnBuildFields_Click / btnSerialCancel_Click) and
+        are wired here in markup. In WinForms the event WIRING lived in the Designer (which this
+        .axaml replaces), while the handler bodies live in FormFieldISOXML.cs (which the .axaml.cs
+        replaces) — so wiring the clicks here is the faithful division of responsibility (identical
+        convention to the sibling FormSaveOrNotView).
+      * tree and tboxFieldName declare NO events here on purpose: their WinForms events have no 1:1
+        Avalonia equivalent signature — TreeView.AfterSelect(TreeViewEventArgs) maps to
+        SelectionChanged(SelectionChangedEventArgs), and tboxFieldName carries both a TextChanged
+        (glm.fileRegex sanitisation) and a tap -> on-screen keyboard (FormGPS.isKeyboardOn) flow.
+        The code-behind attaches all three by x:Name with the correct Avalonia delegate types
+        (same approach the sibling FormFieldDirView uses for its textbox).
+      * Initial enabled state (WinForms FormFieldIsoXml_Load / Designer): tboxFieldName, btnAddDate,
+        btnAddTime and btnBuildFields all start DISABLED; the code-behind enables them once a field
+        node is selected (tree_AfterSelect). btnSerialCancel and the tree itself stay enabled.
+
+    WINDOW SHELL — mirrors FormFieldISOXML.Designer.cs:
+      ClientSize 614 x 524        -> Width / Height (fixed; the root is an absolute-positioned
+                                     Canvas, which cannot drive SizeToContent, so a fixed size that
+                                     matches the WinForms client px gives true 1:1 parity).
+      ControlBox = false          -> no system buttons; the window is a fixed modal dialog.
+      (fixed, MinimumSize 630x540) -> CanResize="False".
+      ShowInTaskbar = false       -> ShowInTaskbar="False".
+      StartPosition CenterParent  -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS;
+                                     this replaces the WinForms ScreenHelper.IsOnScreen reposition,
+                                     which per the migration convention is intentionally NOT ported).
+      BackColor Gainsboro         -> Background="{DynamicResource AogFrameBrush}" — the neutral chrome
+                                     tracks the App.axaml day/night palette rather than a hard-coded
+                                     WinForms colour.
+      Padding(2)                  -> Padding="0": WinForms absolutely-positioned children ignore the
+                                     form Padding, so applying it would shift every coordinate and
+                                     break pixel parity (same reasoning as the sibling FormSaveOrNotView).
+      Text "Create New Field …"   -> Title (design-time; the code-behind assigns gStr.gsCreateNewFromIsoXML).
+      Font Tahoma 14.25pt         -> FontFamily="Tahoma" + FontSize="19". WinForms points are converted
+                                     to Avalonia device-independent pixels (pt x 96/72): 14.25 -> 19,
+                                     15.75 -> 21, 18 -> 24 (same convention as every sibling view).
+
+    THEME / COLOURS come from App.axaml's day/night ThemeDictionaries via {DynamicResource ...}
+    (so the live Light<->Dark switch is observed) — no WinForms / System.Drawing colours, no GDI
+    namespaces. Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via
+    avares:// URIs, mapped from the Designer's Image assignments (centred 64 x 64 PNGs):
+      btnAddDate.Image     = Resources.JobNameCalendar -> btnImages/JobNameCalendar.png
+      btnAddTime.Image     = Resources.JobNameTime     -> btnImages/JobNameTime.png
+      btnBuildFields.Image = Resources.FileSave        -> btnImages/FileSave.png
+      btnSerialCancel.Image= Resources.Cancel64        -> btnImages/Cancel64.png
+
+    Pure Avalonia 11.3 markup only — no WinForms, OpenTK, GMap or System.Drawing references; the
+    tree is an Avalonia TreeView (NOT a WinForms TreeView), populated programmatically in code-behind.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormFieldISOXMLView"
+        Title="Create New Field From ISO-XML"
+        Width="614"
+        Height="524"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Padding="0"
+        FontFamily="Tahoma"
+        FontSize="19"
+        Background="{DynamicResource AogFrameBrush}"
+        Foreground="{DynamicResource AogTextBrush}">
+
+    <!--
+        Flat, chrome-less image buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor = Transparent carried by every button in
+        FormFieldISOXML.Designer.cs: just the centred 64 x 64 glyph, with no button surface in any
+        visual state. The :pointerover / :pressed template overrides suppress the Fluent hover/press
+        background that would otherwise box the glyph. The :disabled rule dims the glyph (Opacity 0.5)
+        — an Avalonia <Image> is unaffected by the Fluent disabled foreground, so the dim is applied
+        explicitly here, reproducing the greyed look WinForms gives a disabled Button.Image (the
+        initially-disabled btnAddDate / btnAddTime / btnBuildFields). This is the identical style
+        contract used by the sibling FormFieldDirView.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Root Canvas == the WinForms client area (614 x 524). Each direct child is placed at its exact
+        WinForms client coordinate via Canvas.Left / Canvas.Top. Absolute positioning is appropriate
+        because this is a fixed, non-resizable dialog (CanResize="False"), giving true pixel parity
+        with the original Designer layout.
+    -->
+    <Canvas>
+
+        <!-- tboxFieldName: WinForms TextBox @ (5,15) 602 x 33, Tahoma 15.75 Bold (-> 21). Starts
+             DISABLED (Designer Enabled=false); the code-behind enables it when a field node is
+             selected. Its TextChanged (glm.fileRegex sanitisation) and tap -> on-screen keyboard flow
+             are attached in the code-behind by name, so no events are declared here. The Fluent theme
+             supplies the day/night-aware input background (no hard-coded WinForms colour). -->
+        <TextBox x:Name="tboxFieldName"
+                 Canvas.Left="5"
+                 Canvas.Top="15"
+                 Width="602"
+                 Height="33"
+                 FontSize="21"
+                 FontWeight="Bold"
+                 VerticalContentAlignment="Center"
+                 IsEnabled="False"
+                 AutomationProperties.Name="Field name" />
+
+        <!-- labelFieldname: WinForms Label @ (6,54), Tahoma 14.25 (-> 19). Runtime text =
+             gStr.gsEditFieldName ("Field Name" is the design-time placeholder). -->
+        <TextBlock x:Name="labelFieldname"
+                   Canvas.Left="6"
+                   Canvas.Top="54"
+                   FontSize="19"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="Field Name" />
+
+        <!-- label2: WinForms Label @ (336,76), "+", Tahoma 14.25 (-> 19). The "+" precedes the
+             append-date button (btnAddDate), exactly like the sibling FormFieldDirView. -->
+        <TextBlock x:Name="label2"
+                   Canvas.Left="336"
+                   Canvas.Top="76"
+                   FontSize="19"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="+" />
+
+        <!-- btnAddDate: WinForms Button @ (358,54) 83 x 66, Image=Resources.JobNameCalendar, starts
+             DISABLED. Appends " yyyy-MM-dd" (InvariantCulture) to tboxFieldName (btnAddDate_Click). -->
+        <Button x:Name="btnAddDate"
+                Classes="flatImage"
+                Canvas.Left="358"
+                Canvas.Top="54"
+                Width="83"
+                Height="66"
+                IsEnabled="False"
+                AutomationProperties.Name="Add date"
+                Click="btnAddDate_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/JobNameCalendar.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- label3: WinForms Label @ (506,76), "+", Tahoma 14.25 (-> 19). Precedes the append-time
+             button (btnAddTime). -->
+        <TextBlock x:Name="label3"
+                   Canvas.Left="506"
+                   Canvas.Top="76"
+                   FontSize="19"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="+" />
+
+        <!-- btnAddTime: WinForms Button @ (524,54) 83 x 66, Image=Resources.JobNameTime, starts
+             DISABLED. Appends " HH-mm" (InvariantCulture) to tboxFieldName (btnAddTime_Click). -->
+        <Button x:Name="btnAddTime"
+                Classes="flatImage"
+                Canvas.Left="524"
+                Canvas.Top="54"
+                Width="83"
+                Height="66"
+                IsEnabled="False"
+                AutomationProperties.Name="Add time"
+                Click="btnAddTime_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/JobNameTime.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- labelField: WinForms Label @ (5,140), Tahoma 15.75 Bold (-> 21), AutoSize. Runtime text =
+             gStr.gsBasedOnField + ":" and is then rewritten with the selected field index + name in
+             tree_AfterSelect ("Fieldname" is the design-time placeholder). Left un-widthed so it
+             auto-sizes as the WinForms AutoSize label did. -->
+        <TextBlock x:Name="labelField"
+                   Canvas.Left="5"
+                   Canvas.Top="140"
+                   FontSize="21"
+                   FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="Fieldname" />
+
+        <!-- tree: WinForms TreeView @ (7,166) 499 x 328, Tahoma 18 Bold (-> 24). The dominant control.
+             Avalonia TreeView (NOT WinForms): no static items and no ItemTemplate — the code-behind
+             builds the hierarchy programmatically as TreeViewItems (one top-level node per PFD field,
+             child nodes for each AB / A+ / Curve / Pivot / Spiral guidance line) and assigns them to
+             tree.Items. Its SelectionChanged is attached in code-behind (see the contract above).
+             ScrollViewer.*ScrollBarVisibility="Auto" gives the scrollbar(s) on overflow; the Fluent
+             theme supplies the day/night-aware background. -->
+        <TreeView x:Name="tree"
+                  Canvas.Left="7"
+                  Canvas.Top="166"
+                  Width="499"
+                  Height="328"
+                  FontSize="24"
+                  FontWeight="Bold"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                  AutomationProperties.Name="ISO-XML fields" />
+
+        <!-- btnSerialCancel: WinForms Button @ (524,303) 83 x 79, Image=Resources.Cancel64,
+             DialogResult.Cancel. Closes the dialog without building a field (btnSerialCancel_Click).
+             Stays enabled at all times. -->
+        <Button x:Name="btnSerialCancel"
+                Classes="flatImage"
+                Canvas.Left="524"
+                Canvas.Top="303"
+                Width="83"
+                Height="79"
+                AutomationProperties.Name="Cancel"
+                Click="btnSerialCancel_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+        <!-- btnBuildFields: WinForms Button @ (524,414) 83 x 79, Image=Resources.FileSave, starts
+             DISABLED. The primary action — builds the new field from the selected ISO-XML field
+             (btnBuildFields_Click). Enabled by the code-behind once a field node is selected. -->
+        <Button x:Name="btnBuildFields"
+                Classes="flatImage"
+                Canvas.Left="524"
+                Canvas.Top="414"
+                Width="83"
+                Height="79"
+                IsEnabled="False"
+                AutomationProperties.Name="Build field"
+                Click="btnBuildFields_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/FileSave.png"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

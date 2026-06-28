@@ -1,0 +1,155 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    ConfigSummaryControl — Avalonia UserControl, 1:1 parity port of the WinForms embedded
+    configuration-summary panel (Forms/Config/ConfigSummaryControl.cs + .Designer.cs).
+
+    Display-only: two summary group boxes (Vehicle / Tool), a Units readout, and a
+    profile-menu hint. Hosted inside ConfigView (mirrors the WinForms configSummaryControl
+    in FormConfig's tabSummary). Pure code-behind (ConfigSummaryControl.axaml.cs:
+    UpdateSummary / SetSummaryWidth) — NO MVVM bindings, DataContext, or x:DataType.
+
+    Every label keeps its original WinForms field name as x:Name so the ported code-behind
+    binds against the generated typed fields. The 859x584 Canvas reproduces the WinForms
+    client area; caption + value text is assigned in code-behind (from gStr / settings) for
+    localization + parity, so the only literal strings in this markup are the GroupBox
+    titles "Vehicle" / "Tool" (which were literals in the WinForms designer, not gStr keys).
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AgOpenGPS.Views.Config.ConfigSummaryControl"
+             FontFamily="Tahoma"
+             FontSize="13"
+             Background="{DynamicResource AogLegacyGainsboroBrush}">
+
+    <!-- 859 x 584 reproduces the WinForms UserControl client area (Designer.cs: this.Size). -->
+    <Canvas Width="859" Height="584">
+
+        <!-- ===================== Vehicle group box (WinForms panelVehicle @ 6,6 420x340) ===================== -->
+        <Border x:Name="panelVehicle"
+                Canvas.Left="6" Canvas.Top="6" Width="420" Height="340"
+                Background="Transparent" BorderBrush="#FF808080" BorderThickness="1" CornerRadius="2">
+            <Grid Margin="8" RowDefinitions="Auto,*">
+
+                <!-- GroupBox caption — literal "Vehicle" (matches WinForms GroupBox.Text). -->
+                <TextBlock Grid.Row="0" Text="Vehicle" FontSize="13" Foreground="Black" Margin="2,0,0,2" />
+
+                <!-- Caption -> value rows. Header (profile name) spans both columns on top. -->
+                <Grid Grid.Row="1" VerticalAlignment="Top"
+                      ColumnDefinitions="Auto,*" ColumnSpacing="12"
+                      RowDefinitions="40,36,36,36,36,36">
+
+                    <TextBlock x:Name="lblSummaryVehicleName" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                               FontSize="19" FontWeight="Bold" Foreground="Black"
+                               TextAlignment="Center" VerticalAlignment="Center" />
+
+                    <!-- Type -->
+                    <TextBlock x:Name="labelVehicleType" Grid.Row="1" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblSumVehicleType" Grid.Row="1" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Wheelbase -->
+                    <TextBlock x:Name="labelWheelBase" Grid.Row="2" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblSumWheelbase" Grid.Row="2" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Antenna Pivot -->
+                    <TextBlock x:Name="labelAntPivot" Grid.Row="3" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblAntPivot" Grid.Row="3" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Antenna Offset -->
+                    <TextBlock x:Name="labelAntOffset" Grid.Row="4" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblAntOffset" Grid.Row="4" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Hitch -->
+                    <TextBlock x:Name="labelHitch" Grid.Row="5" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblHitch" Grid.Row="5" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ===================== Tool group box (WinForms panelTool @ 432,6 421x340) ===================== -->
+        <Border x:Name="panelTool"
+                Canvas.Left="432" Canvas.Top="6" Width="421" Height="340"
+                Background="Transparent" BorderBrush="#FF808080" BorderThickness="1" CornerRadius="2">
+            <Grid Margin="8" RowDefinitions="Auto,*">
+
+                <!-- GroupBox caption — literal "Tool" (matches WinForms GroupBox.Text). -->
+                <TextBlock Grid.Row="0" Text="Tool" FontSize="13" Foreground="Black" Margin="2,0,0,2" />
+
+                <Grid Grid.Row="1" VerticalAlignment="Top"
+                      ColumnDefinitions="Auto,*" ColumnSpacing="12"
+                      RowDefinitions="40,36,36,36,36,36,36,36">
+
+                    <TextBlock x:Name="lblSummaryToolName" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                               FontSize="19" FontWeight="Bold" Foreground="Black"
+                               TextAlignment="Center" VerticalAlignment="Center" />
+
+                    <!-- Width (value assigned via SetSummaryWidth) -->
+                    <TextBlock x:Name="labelWidth" Grid.Row="1" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblSummaryWidth" Grid.Row="1" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Sections -->
+                    <TextBlock x:Name="labelSections" Grid.Row="2" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblSumNumSections" Grid.Row="2" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Offset -->
+                    <TextBlock x:Name="labelOffset" Grid.Row="3" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblToolOffset" Grid.Row="3" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Overlap -->
+                    <TextBlock x:Name="labelOverlap" Grid.Row="4" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblOverlap" Grid.Row="4" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Lookahead -->
+                    <TextBlock x:Name="labelLookAhead" Grid.Row="5" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblLookahead" Grid.Row="5" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Line Shift (Nudge) -->
+                    <TextBlock x:Name="labelNudge" Grid.Row="6" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblNudgeDistance" Grid.Row="6" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+                    <!-- Tram Width -->
+                    <TextBlock x:Name="labelTramW" Grid.Row="7" Grid.Column="0"
+                               FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblTramWidth" Grid.Row="7" Grid.Column="1"
+                               FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ===================== Units readout (outside the panels) ===================== -->
+        <TextBlock x:Name="labelUnits" Canvas.Left="304" Canvas.Top="358" Width="120" Height="28"
+                   FontSize="16" Foreground="DimGray" TextAlignment="Right" VerticalAlignment="Center" />
+        <TextBlock x:Name="lblUnits" Canvas.Left="430" Canvas.Top="358" Width="120" Height="28"
+                   FontSize="19" FontWeight="Bold" Foreground="Black" TextAlignment="Left" VerticalAlignment="Center" />
+
+        <!-- ===================== Profile-menu hint (CornflowerBlue panel, single-line border) ===================== -->
+        <Border Canvas.Left="184" Canvas.Top="398" Width="497" Height="84"
+                Background="CornflowerBlue" BorderBrush="#FF404040" BorderThickness="1">
+            <TextBlock x:Name="labelProfileMenuHint"
+                       FontSize="19" Foreground="WhiteSmoke"
+                       TextWrapping="Wrap" TextAlignment="Center"
+                       HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="6" />
+        </Border>
+    </Canvas>
+</UserControl>

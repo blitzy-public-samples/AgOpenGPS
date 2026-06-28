@@ -1,7 +1,6 @@
 ﻿using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Streamers;
 using System.Collections.ObjectModel;
-using System.Windows;
 using System.Windows.Input;
 
 namespace AgOpenGPS.Core.ViewModels
@@ -30,9 +29,11 @@ namespace AgOpenGPS.Core.ViewModels
             SortMode = FieldSortMode.ByName;
         }
 
-        public Visibility ByNameVisibility => (SortMode == FieldSortMode.ByName) ? Visibility.Visible : Visibility.Collapsed;
-        public Visibility ByDistanceVisibility => (SortMode == FieldSortMode.ByDistance) ? Visibility.Visible : Visibility.Collapsed;
-        public Visibility ByAreaVisibility => (SortMode == FieldSortMode.ByArea) ? Visibility.Visible : Visibility.Collapsed;
+        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+        // WPF System.Windows.Visibility replaced with portable bool; Avalonia binds IsVisible to bool (Visible=>true, Collapsed=>false).
+        public bool ByNameVisible => SortMode == FieldSortMode.ByName;
+        public bool ByDistanceVisible => SortMode == FieldSortMode.ByDistance;
+        public bool ByAreaVisible => SortMode == FieldSortMode.ByArea;
 
         public ICommand SelectFieldCommand { get; }
         public ICommand NextSortModeCommand { get; }

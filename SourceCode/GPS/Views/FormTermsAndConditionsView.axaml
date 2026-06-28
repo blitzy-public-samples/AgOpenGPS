@@ -1,0 +1,442 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Terms & Conditions / EULA startup gate (Avalonia view).
+
+    1:1 visual-PARITY reimplementation of the WinForms `Forms/FormTermsAndConditions`
+    (FormTermsAndConditions.cs + FormTermsAndConditions.Designer.cs). This is the modal gate the
+    operator must Agree to before the program proceeds. Per AAP §0.3.3 this is faithful visual +
+    behavioural parity to the currently rendered Windows Forms UI — never a redesign: no new
+    colours, no relayout, no UX changes.
+
+    Window shell — mirrors FormTermsAndConditions.Designer.cs exactly:
+      ClientSize 1000 x 640        -> Width / Height (SystemDecorations="None" => client == window)
+      BackColor Lavender           -> Background="Lavender"  (WinForms Color.Lavender == #FFE6E6FA)
+      FormBorderStyle.None         -> SystemDecorations="None"
+      TopMost = true               -> Topmost="True"
+      (fixed, no control box)      -> CanResize="False"
+      StartPosition.CenterScreen   -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS)
+      Font Tahoma                  -> FontFamily="Tahoma" (children override FontSize/Weight; the
+                                      license box overrides FontFamily to Consolas)
+
+    The CornflowerBlue 10px frame the form painted in OnPaintBackground
+    (new Pen(Brushes.CornflowerBlue, 10)) is reproduced declaratively as the root Border's 10px
+    BorderBrush="CornflowerBlue" edge. The literal Lavender / CornflowerBlue / Black colours come
+    straight from the WinForms source and intentionally take precedence over App.axaml's day/night
+    theme brushes for this dialog (1:1 parity, and theme-light text would be illegible on the fixed
+    light background) — exactly as the sibling FormDialogView / FormInputDialogView do. App.axaml's
+    FluentTheme still supplies the default Button / TextBox / ScrollBar control templates.
+
+    Wiring contract — the partner code-behind (FormTermsAndConditionsView.axaml.cs) owns behaviour:
+      * No DataContext / no x:DataType / no {Binding}: a code-behind dialog like the sibling
+        FormYesView / FormInputDialogView. The x:Name'd controls below are the entire integration
+        surface and MUST keep these names to match the generated fields the code-behind references:
+        pictureBoxWarning, labelTermsAndConditions, labelVersion, labelVersionActual, labelTerms,
+        textBoxLicense, buttonGitHub, buttonDiscourse, buttonYouTube, labelDisagree, labelAgree.
+      * Form_About_Load parity: the code-behind assigns the translated captions at runtime
+        (labelTermsAndConditions=gStr.gsTermsConditions, labelVersion=gStr.gsVersion+":",
+        labelTerms=gStr.gsTerms, labelAgree=gStr.gsAgree, labelDisagree=gStr.gsDisagree,
+        buttonGitHub=gStr.gsCheckForUpdates, buttonDiscourse=gStr.gsDiscourseForum,
+        buttonYouTube=gStr.gsYouTubeTutorials) and labelVersionActual=Program.SemVer. The Text
+        values set below are the original English design-time strings; the textBoxLicense Apache 2.0
+        text is the resx default and is NOT reassigned at runtime, so it is carried here verbatim.
+      * labelAgree carried DialogResult.OK and labelDisagree DialogResult.Cancel; the code-behind
+        routes their Click to close with the corresponding result (the operator must Agree to
+        proceed). The three link buttons' Click open GitHub / Discourse / YouTube via the OS browser
+        (Process.Start), reproducing buttonGitHub/Discourse/YouTube_Click.
+
+    Layout: the WinForms form used absolute Location/Size for all 11 controls, so a Canvas inside the
+    10px frame is the faithful 1:1 analog. Every Canvas.Left/Canvas.Top below is the WinForms
+    Location minus the 10px frame inset (so each control keeps its original on-screen position); the
+    inner content area is therefore 980 x 620. Fonts use the WinForms point size x 96/72 = device
+    independent pixels (e.g. 18pt -> 24, 14pt -> 18.667, 12pt -> 16, 11pt -> 14.667).
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs —
+    the same btnImages/ assets the sibling GPS Avalonia views consume (all confirmed 64 x 64).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormTermsAndConditionsView"
+        Title="AgOpenGPS"
+        Width="1000"
+        Height="640"
+        Background="{DynamicResource AogLegacyLavenderBrush}"
+        SystemDecorations="None"
+        CanResize="False"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma">
+
+    <!--
+        Flat image-over-text buttons reproduce the WinForms FlatStyle.Flat +
+        FlatAppearance.BorderSize = 0 + BackColor = Transparent. All five buttons (the three link
+        buttons and Agree / Disagree) set FlatAppearance.MouseOverBackColor = CornflowerBlue, so the
+        :pointerover / :pressed template overrides fill the content presenter CornflowerBlue on hover
+        / press; the rest state is fully transparent over the Lavender body.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.linkButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.linkButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="CornflowerBlue" />
+            <Setter Property="BorderBrush" Value="CornflowerBlue" />
+        </Style>
+        <Style Selector="Button.linkButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="CornflowerBlue" />
+            <Setter Property="BorderBrush" Value="CornflowerBlue" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        RootBorder == the 10px CornflowerBlue frame painted in OnPaintBackground; its Lavender
+        Background fills the interior (WinForms BackColor). The Canvas reproduces the absolute
+        WinForms layout; its origin is the inner top-left (window 10,10), so every child coordinate
+        is the WinForms Location minus 10. Inner content area = 980 x 620.
+    -->
+    <Border BorderThickness="10"
+            BorderBrush="CornflowerBlue"
+            Background="Lavender">
+
+        <Canvas Width="980" Height="620">
+
+            <!-- pictureBoxWarning: WinForms PictureBox (300,20) 64x64, Image Resources.Warning. -->
+            <Image x:Name="pictureBoxWarning"
+                   Canvas.Left="290"
+                   Canvas.Top="10"
+                   Width="64"
+                   Height="64"
+                   Stretch="Uniform"
+                   Source="avares://AgOpenGPS/btnImages/Warning.png" />
+
+            <!-- labelTermsAndConditions: WinForms Label (380,30) 580x45, Tahoma 18 Bold, MiddleLeft.
+                 The transparent Border supplies the fixed box + vertical centring (TextBlock has no
+                 vertical text alignment); runtime text = gStr.gsTermsConditions. -->
+            <Border Canvas.Left="370" Canvas.Top="20" Width="580" Height="45" Background="Transparent">
+                <TextBlock x:Name="labelTermsAndConditions"
+                           Text="Terms and Conditions"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           TextAlignment="Left" />
+            </Border>
+
+            <!-- labelVersion: WinForms Label (380,75) 120x25, Tahoma 11, MiddleRight. -->
+            <Border Canvas.Left="370" Canvas.Top="65" Width="120" Height="25" Background="Transparent">
+                <TextBlock x:Name="labelVersion"
+                           Text="Version:"
+                           FontSize="14.667"
+                           Foreground="Black"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                           TextAlignment="Right" />
+            </Border>
+
+            <!-- labelVersionActual: WinForms Label (505,75) 350x25, Tahoma 11, MiddleLeft. Runtime
+                 text = Program.SemVer; "x.y.z" is the designer placeholder. -->
+            <Border Canvas.Left="495" Canvas.Top="65" Width="350" Height="25" Background="Transparent">
+                <TextBlock x:Name="labelVersionActual"
+                           Text="x.y.z"
+                           FontSize="14.667"
+                           Foreground="Black"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           TextAlignment="Left" />
+            </Border>
+
+            <!-- labelTerms: WinForms Label (180,135) 780x230, Tahoma 14 Bold, MiddleCenter. Runtime
+                 text = gStr.gsTerms; the English design-time disclaimer is carried below verbatim. -->
+            <Border Canvas.Left="170" Canvas.Top="125" Width="780" Height="230" Background="Transparent">
+                <TextBlock x:Name="labelTerms"
+                           FontSize="18.667"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           TextAlignment="Center"
+                           TextWrapping="Wrap"
+                           xml:space="preserve"><TextBlock.Text>AgOpenGPS is strictly educational software to learn about guidance systems, GPS sentences, and theoretical application of machine control.
+
+It is in no way to be used on real equipment in any circumstance. A simulator is provided to allow the student to safely experience machine guidance.
+
+There are no safety systems in the software and none are implied.
+
+USE AT OWN RISK.
+</TextBlock.Text></TextBlock>
+            </Border>
+
+            <!-- textBoxLicense: WinForms TextBox (180,385) 780x135, Consolas 12, Multiline, ReadOnly,
+                 ScrollBars=Vertical (WordWrap on), BackColor White, BorderStyle FixedSingle. The
+                 Apache 2.0 text is the resx default and is NOT reassigned at runtime, so it is
+                 carried here verbatim. -->
+            <TextBox x:Name="textBoxLicense"
+                     AutomationProperties.Name="License text"
+                     Canvas.Left="170"
+                     Canvas.Top="375"
+                     Width="780"
+                     Height="135"
+                     FontFamily="Consolas"
+                     FontSize="16"
+                     AcceptsReturn="True"
+                     IsReadOnly="True"
+                     TextWrapping="Wrap"
+                     Background="White"
+                     Foreground="Black"
+                     BorderBrush="Gray"
+                     BorderThickness="1"
+                     ScrollViewer.VerticalScrollBarVisibility="Visible"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     xml:space="preserve"><TextBox.Text>                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the
+      purposes of this License, Derivative Works shall not include works
+      that remain separable from, or merely link (or bind by name) to the
+      interfaces of, the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf
+      of the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control
+      systems, and issue tracking systems that are managed by, or on behalf
+      of, the Licensor for the purpose of discussing and improving the Work,
+      but excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part
+          of the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   Copyright [2014-2024] [AgOpenGPS Contributors]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.</TextBox.Text></TextBox>
+
+            <!-- buttonGitHub: WinForms Button (30,140) 120x120, image Resources.GitHub TopCenter,
+                 text BottomCenter, Tahoma 11 Bold. Click opens GitHub (code-behind). -->
+            <Button x:Name="buttonGitHub" Classes="linkButton" Canvas.Left="20" Canvas.Top="130" Width="120" Height="120">
+                <Grid RowDefinitions="Auto,*">
+                    <Image Grid.Row="0" Width="64" Height="64" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,8,0,0"
+                           Source="avares://AgOpenGPS/btnImages/GitHub.png" />
+                    <TextBlock Grid.Row="1" Text="Check for Updates" FontSize="14.667" FontWeight="Bold" Foreground="Black"
+                               HorizontalAlignment="Center" VerticalAlignment="Bottom" TextAlignment="Center" TextWrapping="Wrap" Margin="2,0,2,6" />
+                </Grid>
+            </Button>
+
+            <!-- buttonDiscourse: WinForms Button (30,280) 120x120, image Resources.Discourse. -->
+            <Button x:Name="buttonDiscourse" Classes="linkButton" Canvas.Left="20" Canvas.Top="270" Width="120" Height="120">
+                <Grid RowDefinitions="Auto,*">
+                    <Image Grid.Row="0" Width="64" Height="64" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,8,0,0"
+                           Source="avares://AgOpenGPS/btnImages/Discourse.png" />
+                    <TextBlock Grid.Row="1" Text="Discourse Forum" FontSize="14.667" FontWeight="Bold" Foreground="Black"
+                               HorizontalAlignment="Center" VerticalAlignment="Bottom" TextAlignment="Center" TextWrapping="Wrap" Margin="2,0,2,6" />
+                </Grid>
+            </Button>
+
+            <!-- buttonYouTube: WinForms Button (30,412) 120x110, image Resources.YouTube. -->
+            <Button x:Name="buttonYouTube" Classes="linkButton" Canvas.Left="20" Canvas.Top="402" Width="120" Height="110">
+                <Grid RowDefinitions="Auto,*">
+                    <Image Grid.Row="0" Width="64" Height="64" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,8,0,0"
+                           Source="avares://AgOpenGPS/btnImages/YouTube.png" />
+                    <TextBlock Grid.Row="1" Text="YouTube Tutorials" FontSize="14.667" FontWeight="Bold" Foreground="Black"
+                               HorizontalAlignment="Center" VerticalAlignment="Bottom" TextAlignment="Center" TextWrapping="Wrap" Margin="2,0,2,6" />
+                </Grid>
+            </Button>
+
+            <!-- labelDisagree: WinForms Button (685,535) 135x90, image Resources.Cancel64 TopCenter,
+                 text BottomCenter, Tahoma 12 Bold, DialogResult.Cancel. -->
+            <Button x:Name="labelDisagree" Classes="linkButton" Canvas.Left="675" Canvas.Top="525" Width="135" Height="90">
+                <Grid RowDefinitions="Auto,*">
+                    <Image Grid.Row="0" Width="64" Height="64" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,2,0,0"
+                           Source="avares://AgOpenGPS/btnImages/Cancel64.png" />
+                    <TextBlock Grid.Row="1" Text="Disagree" FontSize="16" FontWeight="Bold" Foreground="Black"
+                               HorizontalAlignment="Center" VerticalAlignment="Bottom" TextAlignment="Center" Margin="0,0,0,4" />
+                </Grid>
+            </Button>
+
+            <!-- labelAgree: WinForms Button (825,535) 135x90, image Resources.OK64 TopCenter,
+                 text BottomCenter, Tahoma 12 Bold, DialogResult.OK. -->
+            <Button x:Name="labelAgree" Classes="linkButton" Canvas.Left="815" Canvas.Top="525" Width="135" Height="90">
+                <Grid RowDefinitions="Auto,*">
+                    <Image Grid.Row="0" Width="64" Height="64" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,2,0,0"
+                           Source="avares://AgOpenGPS/btnImages/OK64.png" />
+                    <TextBlock Grid.Row="1" Text="Agree" FontSize="16" FontWeight="Bold" Foreground="Black"
+                               HorizontalAlignment="Center" VerticalAlignment="Bottom" TextAlignment="Center" Margin="0,0,0,4" />
+                </Grid>
+            </Button>
+
+        </Canvas>
+    </Border>
+</Window>

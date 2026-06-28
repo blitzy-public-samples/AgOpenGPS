@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using AgOpenGPS.Core.Models;
 using OpenTK.Graphics.OpenGL;
 
@@ -6,7 +6,12 @@ namespace AgOpenGPS.Core.DrawLib
 {
     public class GeoTexture2D : Texture2D
     {
-        public GeoTexture2D(Bitmap bitmap) : base(bitmap)
+        // [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+        // The base Texture2D now takes a portable, tightly-packed RGBA byte buffer
+        // (4 bytes/pixel, row-major) instead of a Windows-only GDI+ image source,
+        // so this geo-aware subclass forwards the same RGBA contract. rgbaPixels MAY be null
+        // to defer the GL texture upload until first Bind() (matches the base behavior).
+        public GeoTexture2D(byte[] rgbaPixels, int width, int height) : base(rgbaPixels, width, height)
         {
         }
 

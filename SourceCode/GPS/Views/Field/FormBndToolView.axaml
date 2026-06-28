@@ -1,0 +1,493 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Create Boundary From Mapping" boundary tool (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Field/FormBndTool`
+    (FormBndTool.cs + FormBndTool.Designer.cs) — the LARGEST Field dialog. The operator
+    builds a field boundary from recorded section/coverage points: choose a point spacing
+    and smoothing, reduce / add points, run the build, slice, then save the result. The
+    dialog hosts a live OpenGL viewport on the LEFT and a touch-friendly command panel on
+    the RIGHT, with a "Please Wait" progress overlay shown while the build runs. Per AAP
+    §0.3.3 this is a faithful parity reimplementation of the current Windows Forms look,
+    never a redesign: no new colours, no relayout, no UX changes.
+
+    WINDOW SHELL — mirrors FormBndTool.Designer.cs:
+      Text "Create Boundary From Mapping" → Title (design-time placeholder; the code-behind
+                                             assigns the localised gStr text at runtime).
+      ClientSize 1006 x 726 / MinimumSize 1022 x 742 → initial Width/Height + MinWidth/MinHeight.
+                                             The code-behind applies the persisted
+                                             Settings.setWindow_MapBndSize on load and saves it
+                                             on close, so the window is resizable.
+      Resizable WinForms form              → CanResize="True" (honour the persisted size).
+      ShowInTaskbar = false                → ShowInTaskbar="False".
+      StartPosition CenterParent           → WindowStartupLocation="CenterOwner".
+      BackColor (LightGray)                → Background="{DynamicResource AogFrameBrush}". Per the
+                                             file spec the neutral chrome is themed to App.axaml's
+                                             day/night palette rather than hard-coding a WinForms
+                                             colour (reference with DynamicResource so the live
+                                             Light↔Dark switch is observed).
+      Font Tahoma                          → FontFamily="Tahoma"; children carry their own point
+                                             sizes converted to Avalonia DIP (pt × 96 / 72):
+                                             27.75 → 37, 15.75 → 21, 14.25 → 19, 12 → 16, 36 → 48.
+
+    GL HOSTING (markup side only) — CRITICAL:
+      The WinForms `oglSelf` (OpenTK.GLControl) surface is REPLACED by an empty Border named
+      `oglHost`. There is NO OpenTK.GLControl in Avalonia and this markup must NOT instantiate
+      `AvaloniaGeoViewport` nor reference the `AgOpenGPS.Controls` namespace. The partner
+      code-behind (FormBndToolView.axaml.cs) constructs the AvaloniaGeoViewport with the field
+      bounding box and inserts its exposed Control as `oglHost.Child`; it also wires pointer /
+      wheel forwarding — so NO input bindings are declared here.
+
+    WIRING CONTRACT — the partner code-behind owns ALL behaviour:
+      * Code-behind dialog: NO DataContext, NO x:DataType, NO MVVM bindings (exactly like the
+        sibling FormPanView / FormShiftPosView). Every control is addressed imperatively by its
+        x:Name, which keeps the ORIGINAL WinForms name so the migrated code-behind references it
+        exactly as FormBndTool.cs / .Designer.cs did.
+      * NO Click= / event attributes are declared here on purpose: the handler method names are
+        owned by the code-behind, which subscribes by name (e.g. btnExit.Click += ...) using the
+        named fields below. This keeps the view compiling independently of the code-behind.
+      * Design-time defaults reproduced from the designer: cboxPointDistance / cboxSmooth carry
+        their static item lists (code-behind sets SelectedIndex from Settings.bndToolSpacing /
+        bndToolSmooth); btnStartStop / btnAddPoints start IsEnabled="False"; labelSpacing starts
+        IsEnabled="False"; panel1 (the progress overlay) starts IsVisible="False" — all toggled
+        by the code-behind. Every button glyph is STATIC (the WinForms code-behind never swaps a
+        Button.Image), so each Source is set here.
+      * Label captions ("Spacing (m)", "Smooth", "Reset", "Add Points", "Please Wait",
+        "Points to Process: ", "Points:") are design-time placeholders; the code-behind localises
+        them via gStr on load.
+
+    Button glyphs are served from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs,
+    the convention used by every sibling GPS view; note btnImages/Config/ConS_SourceFix.png lives
+    in a sub-folder and back-button.png uses a hyphen (verified against Properties/Resources.resx).
+    No WinForms, no OpenTK, no GMap, no System.Drawing types are referenced. Avalonia 11.3.x.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormBndToolView"
+        Title="Create Boundary From Mapping"
+        Width="1022"
+        Height="742"
+        MinWidth="1022"
+        MinHeight="742"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Tool-button style (Classes="tool"): the command-panel buttons keep the STANDARD (themed)
+        Fluent button face, reproducing the WinForms light tiles (FlatStyle.Flat with White /
+        WhiteSmoke BackColor) while remaining day/night aware. Padding is tightened and the button
+        stretches to fill its grid cell so the centred glyph dominates, matching the WinForms
+        buttons that filled their TableLayoutPanel cells. The :disabled rule dims the glyph (an
+        Avalonia <Image> is not affected by the Fluent disabled foreground), reproducing the greyed
+        look of the initially-disabled btnStartStop / btnAddPoints.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.tool">
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.tool:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Two-column shell (replaces the WinForms absolute layout of oglSelf + tlp1 + panel1):
+          Column 0 (star)  → the GL viewport host, filling the main render area.
+          Column 1 (fixed) → the command panel (the WinForms tlp1 was ~299 px wide).
+        The "Please Wait" overlay (panel1) shares Column 0 and is drawn AFTER oglHost so it sits
+        on top of the viewport, exactly as the WinForms panel1 floated over oglSelf.
+    -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="340" />
+        </Grid.ColumnDefinitions>
+
+        <!-- GL viewport host. REPLACES the WinForms oglSelf (OpenTK.GLControl, BackColor Black).
+             Intentionally EMPTY: the code-behind sets oglHost.Child = _viewport.View. The Black
+             background shows until the renderer paints its first frame. -->
+        <Border x:Name="oglHost"
+                Grid.Column="0"
+                Background="Black" />
+
+        <!-- panel1: the "Please Wait" progress overlay. WinForms BackColor MistyRose (#FFFFE4E1),
+             starts hidden (FormBndTool_Load) and is shown by the code-behind while the build runs.
+             Centred over the GL area; the fixed light alert colour keeps black text legible, so the
+             inner labels hard-code Foreground="Black" (parity — this panel is not themed). -->
+        <Border x:Name="panel1"
+                Grid.Column="0"
+                IsVisible="False"
+                Background="#FFFFE4E1"
+                Width="445"
+                Height="305"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+            <StackPanel Orientation="Vertical"
+                        Spacing="14"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                <!-- labelPleaseWait: "Please Wait" (runtime: gStr.gsPleaseWait + "..."). 15.75pt → 21. -->
+                <TextBlock x:Name="labelPleaseWait"
+                           Text="Please Wait"
+                           FontSize="21"
+                           FontWeight="Bold"
+                           Foreground="Black"
+                           HorizontalAlignment="Center" />
+                <!-- "Points to Process: " caption + live count (lblPointToProcess). -->
+                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                    <TextBlock x:Name="labelPointsToProcess"
+                               Text="Points to Process: "
+                               FontSize="21"
+                               Foreground="Black"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblPointToProcess"
+                               Text="100,000"
+                               FontSize="21"
+                               FontWeight="Bold"
+                               Foreground="Black"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+                <!-- "Points:" caption + live count (lblI). -->
+                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                    <TextBlock x:Name="labelPoints"
+                               Text="Points:"
+                               FontSize="21"
+                               Foreground="Black"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="lblI"
+                               Text="Points"
+                               FontSize="21"
+                               FontWeight="Bold"
+                               Foreground="Black"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!--
+            Command panel — replaces the WinForms tlp1 TableLayoutPanel (6 columns × 10 rows).
+            The column / row proportions are reproduced exactly as fractional star weights (the
+            WinForms ColumnStyle / RowStyle percentages); rows 5 and 9 were Absolute (21 px, 79 px).
+            Columns 1 and 4 are the thin spacer columns. This panel is intentionally UNNAMED (the
+            migrated code-behind relies on Avalonia auto-layout, not the WinForms tlp1 field).
+        -->
+        <Grid Grid.Column="1" Margin="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="25.83893*" />
+                <ColumnDefinition Width="2.684564*" />
+                <ColumnDefinition Width="23.15436*" />
+                <ColumnDefinition Width="23.15436*" />
+                <ColumnDefinition Width="2.684564*" />
+                <ColumnDefinition Width="22.48323*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="12.00456*" />
+                <RowDefinition Height="5.506683*" />
+                <RowDefinition Height="15.71025*" />
+                <RowDefinition Height="4.003683*" />
+                <RowDefinition Height="13.8699*" />
+                <RowDefinition Height="21" />
+                <RowDefinition Height="20.21404*" />
+                <RowDefinition Height="14.8345*" />
+                <RowDefinition Height="13.8564*" />
+                <RowDefinition Height="79" />
+            </Grid.RowDefinitions>
+
+            <!-- ============================ ROW 0 — spacing / smooth selectors ============================ -->
+
+            <!-- cboxPointDistance: point-spacing selector (left group, cols 0-2). Items 1..10 + "?";
+                 code-behind sets SelectedIndex = Settings.bndToolSpacing. 27.75pt → 37 DIP Bold. -->
+            <ComboBox x:Name="cboxPointDistance"
+                      Grid.Column="0" Grid.Row="0" Grid.ColumnSpan="3"
+                      Margin="3"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Bottom"
+                      FontSize="37"
+                      FontWeight="Bold"
+                      AutomationProperties.Name="Point spacing">
+                <ComboBoxItem>1</ComboBoxItem>
+                <ComboBoxItem>2</ComboBoxItem>
+                <ComboBoxItem>3</ComboBoxItem>
+                <ComboBoxItem>4</ComboBoxItem>
+                <ComboBoxItem>5</ComboBoxItem>
+                <ComboBoxItem>6</ComboBoxItem>
+                <ComboBoxItem>7</ComboBoxItem>
+                <ComboBoxItem>8</ComboBoxItem>
+                <ComboBoxItem>9</ComboBoxItem>
+                <ComboBoxItem>10</ComboBoxItem>
+                <ComboBoxItem>?</ComboBoxItem>
+            </ComboBox>
+
+            <!-- cboxSmooth: smoothing-passes selector (right group, cols 3-5). Items 0/4/8/16/32/64 + "?";
+                 code-behind sets SelectedIndex = Settings.bndToolSmooth. 27.75pt → 37 DIP Bold. -->
+            <ComboBox x:Name="cboxSmooth"
+                      Grid.Column="3" Grid.Row="0" Grid.ColumnSpan="3"
+                      Margin="3"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Bottom"
+                      FontSize="37"
+                      FontWeight="Bold"
+                      AutomationProperties.Name="Smoothing">
+                <ComboBoxItem>0</ComboBoxItem>
+                <ComboBoxItem>4</ComboBoxItem>
+                <ComboBoxItem>8</ComboBoxItem>
+                <ComboBoxItem>16</ComboBoxItem>
+                <ComboBoxItem>32</ComboBoxItem>
+                <ComboBoxItem>64</ComboBoxItem>
+                <ComboBoxItem>?</ComboBoxItem>
+            </ComboBox>
+
+            <!-- ============================ ROW 1 — selector captions ============================ -->
+
+            <!-- labelSpacing: "Spacing (m)" (runtime: "{gsSpacing} ({gsCm})"). Designer Enabled=false. 12pt → 16. -->
+            <TextBlock x:Name="labelSpacing"
+                       Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="3"
+                       Text="Spacing (m)"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       IsEnabled="False"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextAlignment="Center" />
+
+            <!-- labelSmooth: "Smooth" (runtime gStr.gsSmooth). 12pt → 16. -->
+            <TextBlock x:Name="labelSmooth"
+                       Grid.Column="3" Grid.Row="1" Grid.ColumnSpan="3"
+                       Text="Smooth"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextAlignment="Center" />
+
+            <!-- ============================ ROW 2 — reset / add points ============================ -->
+
+            <!-- btnResetReduce: reset / step-back the reduction (glyph back-button.png). -->
+            <Button x:Name="btnResetReduce"
+                    Classes="tool"
+                    Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="3"
+                    AutomationProperties.Name="Reset / reduce">
+                <Image Source="avares://AgOpenGPS/btnImages/back-button.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <!-- btnAddPoints: add interpolated points (glyph PointAdd.png). Designer Enabled=false. -->
+            <Button x:Name="btnAddPoints"
+                    Classes="tool"
+                    Grid.Column="3" Grid.Row="2" Grid.ColumnSpan="3"
+                    IsEnabled="False"
+                    AutomationProperties.Name="Add points">
+                <Image Source="avares://AgOpenGPS/btnImages/PointAdd.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <!-- ============================ ROW 3 — action captions ============================ -->
+
+            <!-- labelReset: "Reset". 12pt → 16. -->
+            <TextBlock x:Name="labelReset"
+                       Grid.Column="0" Grid.Row="3" Grid.ColumnSpan="3"
+                       Text="Reset"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextAlignment="Center" />
+
+            <!-- labelCreate: "Add Points" (runtime gStr.gsCreate). 12pt → 16. -->
+            <TextBlock x:Name="labelCreate"
+                       Grid.Column="3" Grid.Row="3" Grid.ColumnSpan="3"
+                       Text="Add Points"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextAlignment="Center" />
+
+            <!-- ============================ ROW 4 — start/stop build / add boundary ============================ -->
+
+            <!-- btnStartStop: start / stop the reduce build (glyph BoundaryReduce.png). Designer Enabled=false. -->
+            <Button x:Name="btnStartStop"
+                    Classes="tool"
+                    Grid.Column="0" Grid.Row="4" Grid.ColumnSpan="3"
+                    IsEnabled="False"
+                    AutomationProperties.Name="Start / stop build">
+                <Image Source="avares://AgOpenGPS/btnImages/BoundaryReduce.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <!-- btnAddBoundary: add the outer boundary (glyph BoundaryOuter.png). -->
+            <Button x:Name="btnAddBoundary"
+                    Classes="tool"
+                    Grid.Column="3" Grid.Row="4" Grid.ColumnSpan="3"
+                    AutomationProperties.Name="Add boundary">
+                <Image Source="avares://AgOpenGPS/btnImages/BoundaryOuter.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <!-- ============================ ROW 5 — group captions (Build / Save) ============================ -->
+            <!-- WinForms label3 / label2: static section captions, NOT referenced by the code-behind,
+                 so left UNNAMED to avoid duplicating a code-behind field. 12pt → 16. -->
+            <TextBlock Grid.Column="0" Grid.Row="5" Grid.ColumnSpan="3"
+                       Text="Build"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextAlignment="Center" />
+
+            <TextBlock Grid.Column="3" Grid.Row="5" Grid.ColumnSpan="3"
+                       Text="Save"
+                       FontSize="16"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextAlignment="Center" />
+
+            <!-- ============================ ROW 6 — cancel touch / slice ============================ -->
+
+            <!-- btnCancelTouch: cancel / delete touched points (glyph HeadlandDeletePoints.png). -->
+            <Button x:Name="btnCancelTouch"
+                    Classes="tool"
+                    Grid.Column="0" Grid.Row="6" Grid.ColumnSpan="3"
+                    AutomationProperties.Name="Cancel / delete points">
+                <Image Source="avares://AgOpenGPS/btnImages/HeadlandDeletePoints.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <!-- btnSlice: slice / make line (glyph BoundaryMakeLine.png). Code-behind toggles visibility. -->
+            <Button x:Name="btnSlice"
+                    Classes="tool"
+                    Grid.Column="3" Grid.Row="6" Grid.ColumnSpan="3"
+                    AutomationProperties.Name="Slice / make line">
+                <Image Source="avares://AgOpenGPS/btnImages/BoundaryMakeLine.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <!-- ============================ ROW 7 — center view / zoom toggle ============================ -->
+
+            <!-- btnCenterOGL: recenter the viewport (glyph Config/ConS_SourceFix.png — sub-folder asset). -->
+            <Button x:Name="btnCenterOGL"
+                    Classes="tool"
+                    Grid.Column="0" Grid.Row="7" Grid.ColumnSpan="3"
+                    AutomationProperties.Name="Center view">
+                <Image Source="avares://AgOpenGPS/btnImages/Config/ConS_SourceFix.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <!-- cboxIsZoom: a CheckBox styled as a toggle button (WinForms Appearance=Button). Retemplated
+                 as a Border + centred ContentPresenter holding the ZoomOGL glyph; the :checked state swaps
+                 the fill to the WinForms FlatAppearance.CheckedBackColor #FFB4FFA0 (FromArgb(180,255,160)).
+                 The border uses the themed text brush so it reads in day and night. -->
+            <CheckBox x:Name="cboxIsZoom"
+                      Grid.Column="3" Grid.Row="7" Grid.ColumnSpan="3"
+                      Margin="3"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      HorizontalContentAlignment="Center"
+                      VerticalContentAlignment="Center"
+                      AutomationProperties.Name="Zoom to extent">
+                <CheckBox.Template>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="zoomBorder"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource AogTextBrush}"
+                                BorderThickness="1">
+                            <ContentPresenter Content="{TemplateBinding Content}"
+                                              HorizontalContentAlignment="Center"
+                                              VerticalContentAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </CheckBox.Template>
+                <CheckBox.Styles>
+                    <Style Selector="CheckBox:checked /template/ Border#zoomBorder">
+                        <Setter Property="Background" Value="#FFB4FFA0" />
+                    </Style>
+                </CheckBox.Styles>
+                <Image Source="avares://AgOpenGPS/btnImages/ZoomOGL.png"
+                       Stretch="Uniform" Margin="6" />
+            </CheckBox>
+
+            <!-- ============================ ROW 8 — pan move buttons ============================ -->
+            <!-- WinForms places the four move buttons across one row at cols 0 / 2 / 3 / 5
+                 (cols 1 and 4 are the thin spacers): Down, Up, Left, Right. -->
+
+            <Button x:Name="btnMoveDn"
+                    Classes="tool"
+                    Grid.Column="0" Grid.Row="8"
+                    AutomationProperties.Name="Move down">
+                <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <Button x:Name="btnMoveUp"
+                    Classes="tool"
+                    Grid.Column="2" Grid.Row="8"
+                    AutomationProperties.Name="Move up">
+                <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <Button x:Name="btnMoveLeft"
+                    Classes="tool"
+                    Grid.Column="3" Grid.Row="8"
+                    AutomationProperties.Name="Move left">
+                <Image Source="avares://AgOpenGPS/btnImages/ArrowLeft.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <Button x:Name="btnMoveRight"
+                    Classes="tool"
+                    Grid.Column="5" Grid.Row="8"
+                    AutomationProperties.Name="Move right">
+                <Image Source="avares://AgOpenGPS/btnImages/ArrowRight.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+            <!-- ============================ ROW 9 — zoom out / zoom in / exit ============================ -->
+
+            <!-- btnZoomOut: "-" zoom out. 36pt → 48 DIP Bold. Spans cols 0-1. -->
+            <Button x:Name="btnZoomOut"
+                    Classes="tool"
+                    Grid.Column="0" Grid.Row="9" Grid.ColumnSpan="2"
+                    Content="-"
+                    FontSize="48"
+                    FontWeight="Bold"
+                    AutomationProperties.Name="Zoom out" />
+
+            <!-- btnZoomIn: "+" zoom in. 27.75pt → 37 DIP Bold. Spans cols 2-3. -->
+            <Button x:Name="btnZoomIn"
+                    Classes="tool"
+                    Grid.Column="2" Grid.Row="9" Grid.ColumnSpan="2"
+                    Content="+"
+                    FontSize="37"
+                    FontWeight="Bold"
+                    AutomationProperties.Name="Zoom in" />
+
+            <!-- btnExit: accept / close (glyph OK64.png; WinForms DialogResult.Cancel). Spans cols 4-5.
+                 IsDefault routes Enter to this button for keyboard operability. -->
+            <Button x:Name="btnExit"
+                    Classes="tool"
+                    Grid.Column="4" Grid.Row="9" Grid.ColumnSpan="2"
+                    IsDefault="True"
+                    AutomationProperties.Name="Exit">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                       Stretch="Uniform" Margin="4" />
+            </Button>
+
+        </Grid>
+    </Grid>
+</Window>

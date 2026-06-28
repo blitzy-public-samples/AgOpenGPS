@@ -1,12 +1,18 @@
-﻿using OpenTK.Graphics.OpenGL;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 
 namespace AgOpenGPS
 {
-
+    // [XPLAT] The all-lowercase type name 'glm' (the GLM-style math helper, referenced pervasively as
+    // glm.* across the suite) is intentional and frozen for parity — renaming it would ripple through
+    // dozens of call sites and break the behaviour-frozen contract. On net8.0 the Roslyn analyzer flags
+    // such purely-lowercase names with CS8981 (a name that "may become reserved for the language"),
+    // which the Release TreatWarningsAsErrors setting would otherwise turn into a build break. Suppress
+    // that single style diagnostic here (no behavioural effect) so the migrated module compiles cleanly
+    // in Release while keeping the original API surface byte-for-byte.
+#pragma warning disable CS8981
     public static class glm
     {
         private const double DefaultZeroTolerance = 1e-6;
@@ -336,34 +342,16 @@ namespace AgOpenGPS
                 + Math.Pow(first.northing - second.northing, 2));
         }
 
-        public static Bitmap MakeGrayscale3(Bitmap original)
-        {
-            //create a blank bitmap the same size as original
-            Bitmap newBitmap = new Bitmap(original.Width, original.Height);
-            //get a graphics object from the new image
-            Graphics g = Graphics.FromImage(newBitmap);
-            //create the grayscale ColorMatrix
-            ColorMatrix colorMatrix = new ColorMatrix(
-               new float[][]
-              {
-                 new float[] {.3f, .3f, .3f, 0, 0},
-                 new float[] {.59f, .59f, .59f, 0, 0},
-                 new float[] {.11f, .11f, .11f, 0, 0},
-                 new float[] {0, 0, 0, 1, 0},
-                 new float[] {0, 0, 0, 0, 1}
-              });
-            //create some image attributes
-            ImageAttributes attributes = new ImageAttributes();
-            //set the color matrix attribute
-            attributes.SetColorMatrix(colorMatrix);
-            //draw the original image on the new image
-            //using the grayscale color matrix
-            g.DrawImage(original, new Rectangle(0, 0, original.Width, original.Height),
-               0, 0, original.Width, original.Height, GraphicsUnit.Pixel, attributes);
-            //dispose the Graphics object
-            g.Dispose();
-            return newBitmap;
-        }
+        // [XPLAT] Removed the System.Drawing/System.Drawing.Imaging helper MakeGrayscale3(Bitmap).
+        // Rationale: it was image-processing (not geometry) and does not belong in this math hub, and
+        // its sole solution-wide caller — the Windows-only GMap background-imagery dialog
+        // GPS/Forms/Field/FormMap.cs — has been reimplemented as the Avalonia GPS/Views/Field/FormMapView.
+        // A System.Drawing.Bitmap signature is also type-incompatible with the Avalonia/Skia bitmap the
+        // new view holds, so no System.Drawing shim is retained here.
+        // CROSS-FOLDER COORDINATION: the grayscale-at-night tile effect MUST be re-implemented inside the
+        // Avalonia FormMap view using an Avalonia/Skia color-matrix with the SAME luminance weights
+        // (R=0.3, G=0.59, B=0.11) so map night-mode parity is preserved. See MIGRATION_DOCS/TRANSITION_MAP.md.
+
         // Optional: absolute angle difference (range 0–π)
         public static double AngleDiff(double angle1, double angle2)
         {
@@ -425,4 +413,5 @@ namespace AgOpenGPS
             return false;
         }
     }
+#pragma warning restore CS8981
 }

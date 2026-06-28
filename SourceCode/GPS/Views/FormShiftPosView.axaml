@@ -1,0 +1,276 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Shift GPS Position editor (Avalonia view).
+
+    1:1 PARITY reimplementation of the WinForms `Forms/FormShiftPos` (FormShiftPos.cs +
+    FormShiftPos.Designer.cs). A drift-compensation / position-offset editor: the operator
+    nudges a North/South and an East/West offset (in centimetres) that is added to the GPS
+    Lat/Lon and saved in the field's FIELD.KML when the field closes. Per AAP §0.3.3 this is
+    visual + behavioural FIDELITY to the currently rendered Windows Forms UI, never a redesign:
+    no new colours, no relayout, no UX changes.
+
+    WINDOW SHELL — mirrors FormShiftPos.Designer.cs exactly:
+      Text "Shift GPS Position (cm)"    : Title (the code-behind sets the localised runtime text
+                                          $"{gStr.gsShiftGPSPosition} ({gStr.gsCm})"; the literal
+                                          here is the designer's design-time caption).
+      ClientSize 658 x 674              : the root Canvas Width/Height. SizeToContent makes the
+                                          window's CLIENT area exactly 658 x 674 regardless of the
+                                          OS decorations drawn around it (so nothing is clipped).
+      FormBorderStyle (default Sizable) : standard system decorations are KEPT. Unlike the
+                                          FormYes / FormDialog message boxes (FormBorderStyle.None),
+                                          this form was never borderless, so the "Shift GPS
+                                          Position (cm)" caption shows in the title bar.
+      ControlBox / Max / Min = false    : CanResize="False" (a fixed, non-resizable dialog).
+      ShowInTaskbar = false             : ShowInTaskbar="False".
+      StartPosition = CenterParent      : WindowStartupLocation="CenterOwner".
+      (no TopMost in the source)        : Topmost is intentionally NOT set (parity).
+      No BackColor in the source        : the window background is left to App.axaml's FluentTheme
+                                          default — this dialog was not part of the day/night
+                                          SwapDayNightMode chrome, so it is not bound to AogFrameBrush.
+      Font Tahoma                       : FontFamily="Tahoma"; children carry their point sizes,
+                                          converted to Avalonia DIP as (pt * 96 / 72):
+                                          36pt -> 48, 20.25pt -> 27, 15.75pt -> 21.
+
+    WIRING CONTRACT — the partner code-behind (FormShiftPosView.axaml.cs) owns ALL behaviour:
+      * This view is IMPERATIVE, not MVVM: intentionally NO x:DataType, NO DataContext, NO
+        {Binding}. The x:Name'd controls below are the entire integration surface and keep their
+        ORIGINAL WinForms names so the migrated code-behind addresses them exactly as
+        FormShiftPos.cs did. No event handlers are wired in this markup — the code-behind attaches
+        them by name (reproducing the WinForms handlers) — so the view compiles independently of
+        whatever handler names the code-behind chooses:
+          - nudNorth / nudEast  : NumericUpDown. Code-behind loads 100 * DriftCompensation
+                                  Northing/EastingDelta on Load and writes them back (SetFixDelta);
+                                  a click shows the on-screen NumKeypad (NudlessNumericUpDown.ShowKeypad).
+          - btnNorth / btnSouth : RepeatButton (hold-to-repeat) — nudge nudNorth up / down.
+          - btnWest  / btnEast  : RepeatButton — nudge nudEast down (West -) / up (East +).
+          - chkOffsetsOn        : CheckBox (keep-offsets toggle). Code-behind mirrors
+                                  isKeepOffsetsOn and flips the caption "On" / "Off".
+          - btnZero             : zeroes both offsets ("> 0 <").
+          - bntOK               : applies isKeepOffsetsOn + SetFixDelta and closes.
+          - label27/label2/label3/label4 : direction captions; code-behind localises them via gStr
+                                  (gsNorth / gsWest / gsEast / gsSouth) on Load.
+
+    NudlessNumericUpDown -> Avalonia NumericUpDown: the WinForms control kept its own up/down
+    spinner VISIBLE but DISABLED (nud.Controls[0].Enabled = false) and drove the value from the
+    external arrow buttons + keypad. Reproduced as ShowButtonSpinner="True" + AllowSpin="False"
+    (a visible, non-functional spinner), Minimum -9999, Maximum 9999, Increment 1, centred Tahoma
+    48 DIP Bold, "N0" thousands grouping (WinForms ThousandsSeparator = true).
+
+    Button glyphs are served from the GPS assembly via avares:// URIs
+    (avares://AgOpenGPS/btnImages/{UpArrow64,DnArrow64,ArrowLeft,ArrowRight,OK64}.png — each a
+    native 64 x 64 asset), the same convention as the sibling GPS views. The arrow / OK / Zero
+    buttons keep the STANDARD (raised) Fluent button face because the WinForms originals used
+    UseVisualStyleBackColor = true (NOT FlatStyle.Flat) — so, unlike the message-box OK buttons,
+    they are intentionally NOT flattened to transparent.
+
+    No WinForms, no OpenTK, no GMap, no ColorPicker types are referenced. Avalonia 11.3.x.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormShiftPosView"
+        Title="Shift GPS Position (cm)"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma">
+
+    <!-- ClientSize 658 x 674 reproduced as an absolutely-positioned Canvas, matching the WinForms
+         designer's absolute Location/Size for pixel-accurate 1:1 parity on this fixed-size dialog
+         (the same Canvas approach used by the migrated Keypad/NumKeypad.axaml). Every
+         Canvas.Left/Top/Width/Height below is the exact designer value. -->
+    <Canvas Width="658" Height="674">
+
+        <!-- label6: header description. Designer (70,9) 518x114, Tahoma 20.25pt Bold -> 27 DIP. Wraps. -->
+        <TextBlock x:Name="label6"
+                   Canvas.Left="70" Canvas.Top="9"
+                   Width="518" Height="114"
+                   FontSize="27" FontWeight="Bold"
+                   TextWrapping="Wrap"
+                   Text="This offset distance is added to Lat and Lon and saved in FIELD.KML file when closing the field." />
+
+        <!-- =================== NORTH / SOUTH column (left): nudNorth =================== -->
+
+        <!-- label27: "North (+)". Designer (92,148), Tahoma 15.75pt Bold -> 21 DIP. Code-behind localises to gStr.gsNorth. -->
+        <TextBlock x:Name="label27"
+                   Canvas.Left="92" Canvas.Top="148"
+                   FontSize="21" FontWeight="Bold"
+                   Text="North (+)" />
+
+        <!-- btnNorth: nudge nudNorth UP. Designer (103,174) 72x72, glyph UpArrow64 (64x64). Hold-to-repeat. -->
+        <RepeatButton x:Name="btnNorth"
+                      Canvas.Left="103" Canvas.Top="174"
+                      Width="72" Height="72"
+                      Padding="0"
+                      HorizontalContentAlignment="Center"
+                      VerticalContentAlignment="Center"
+                      AutomationProperties.Name="North">
+            <Image Source="avares://AgOpenGPS/btnImages/UpArrow64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </RepeatButton>
+
+        <!-- nudNorth: North(+)/South(-) offset in cm. Designer (61,256) 185x65, Tahoma 36pt Bold -> 48 DIP, centred.
+             Spinner shown-but-disabled (Nudless) + external arrows; clamps to -9999..9999; "N0" grouping. -->
+        <NumericUpDown x:Name="nudNorth"
+                       Canvas.Left="61" Canvas.Top="256"
+                       Width="185" Height="65"
+                       Minimum="-9999" Maximum="9999" Increment="1" Value="0"
+                       FormatString="N0"
+                       ClipValueToMinMax="True"
+                       ShowButtonSpinner="True" AllowSpin="False"
+                       TextAlignment="Center"
+                       HorizontalContentAlignment="Center"
+                       FontSize="48" FontWeight="Bold" />
+
+        <!-- label1: "CM" unit, right of nudNorth. Designer (249,279), Tahoma 20.25pt Bold -> 27 DIP. -->
+        <TextBlock x:Name="label1"
+                   Canvas.Left="249" Canvas.Top="279"
+                   FontSize="27" FontWeight="Bold"
+                   Text="CM" />
+
+        <!-- btnSouth: nudge nudNorth DOWN. Designer (103,335) 72x72, glyph DnArrow64. Hold-to-repeat. -->
+        <RepeatButton x:Name="btnSouth"
+                      Canvas.Left="103" Canvas.Top="335"
+                      Width="72" Height="72"
+                      Padding="0"
+                      HorizontalContentAlignment="Center"
+                      VerticalContentAlignment="Center"
+                      AutomationProperties.Name="South">
+            <Image Source="avares://AgOpenGPS/btnImages/DnArrow64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </RepeatButton>
+
+        <!-- label4: "South (-)". Designer (91,410), 21 DIP. Code-behind localises to gStr.gsSouth. -->
+        <TextBlock x:Name="label4"
+                   Canvas.Left="91" Canvas.Top="410"
+                   FontSize="21" FontWeight="Bold"
+                   Text="South (-)" />
+
+        <!-- =================== WEST / EAST column (right): nudEast =================== -->
+
+        <!-- label2: "West (-)". Designer (429,148), 21 DIP. Code-behind localises to gStr.gsWest. -->
+        <TextBlock x:Name="label2"
+                   Canvas.Left="429" Canvas.Top="148"
+                   FontSize="21" FontWeight="Bold"
+                   Text="West (-)" />
+
+        <!-- btnWest: nudge nudEast DOWN (West -). Designer (438,174) 72x72, glyph ArrowLeft. Hold-to-repeat. -->
+        <RepeatButton x:Name="btnWest"
+                      Canvas.Left="438" Canvas.Top="174"
+                      Width="72" Height="72"
+                      Padding="0"
+                      HorizontalContentAlignment="Center"
+                      VerticalContentAlignment="Center"
+                      AutomationProperties.Name="West">
+            <Image Source="avares://AgOpenGPS/btnImages/ArrowLeft.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </RepeatButton>
+
+        <!-- nudEast: East(+)/West(-) offset in cm. Designer (387,256) 185x65, Tahoma 36pt Bold -> 48 DIP, centred. -->
+        <NumericUpDown x:Name="nudEast"
+                       Canvas.Left="387" Canvas.Top="256"
+                       Width="185" Height="65"
+                       Minimum="-9999" Maximum="9999" Increment="1" Value="0"
+                       FormatString="N0"
+                       ClipValueToMinMax="True"
+                       ShowButtonSpinner="True" AllowSpin="False"
+                       TextAlignment="Center"
+                       HorizontalContentAlignment="Center"
+                       FontSize="48" FontWeight="Bold" />
+
+        <!-- label5: "CM" unit, right of nudEast. Designer (574,279), 27 DIP. -->
+        <TextBlock x:Name="label5"
+                   Canvas.Left="574" Canvas.Top="279"
+                   FontSize="27" FontWeight="Bold"
+                   Text="CM" />
+
+        <!-- btnEast: nudge nudEast UP (East +). Designer (438,335) 72x72, glyph ArrowRight. Hold-to-repeat. -->
+        <RepeatButton x:Name="btnEast"
+                      Canvas.Left="438" Canvas.Top="335"
+                      Width="72" Height="72"
+                      Padding="0"
+                      HorizontalContentAlignment="Center"
+                      VerticalContentAlignment="Center"
+                      AutomationProperties.Name="East">
+            <Image Source="avares://AgOpenGPS/btnImages/ArrowRight.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </RepeatButton>
+
+        <!-- label3: "East (+)". Designer (431,410), 21 DIP. Code-behind localises to gStr.gsEast. -->
+        <TextBlock x:Name="label3"
+                   Canvas.Left="431" Canvas.Top="410"
+                   FontSize="21" FontWeight="Bold"
+                   Text="East (+)" />
+
+        <!-- =================== keep-offsets toggle =================== -->
+
+        <!-- chkOffsetsOn: WinForms CheckBox with Appearance=Button (a filled toggle button): BackColor
+             AliceBlue, FlatStyle.Flat + black border, CheckedBackColor MediumAquamarine, Tahoma 20.25pt
+             Bold -> 27 DIP, centred caption "Off"/"On". Designer (93,468) 109x78. Reproduced by
+             retemplating the CheckBox as a Border + centred ContentPresenter; the :checked style swaps
+             the fill to MediumAquamarine. The palette is FIXED (theme-independent) for parity and
+             legibility, exactly as the WinForms control hard-coded it (black text on a light fill). -->
+        <CheckBox x:Name="chkOffsetsOn"
+                  Canvas.Left="93" Canvas.Top="468"
+                  Width="109" Height="78"
+                  FontSize="27" FontWeight="Bold"
+                  Foreground="Black"
+                  Content="Off">
+            <CheckBox.Template>
+                <ControlTemplate TargetType="CheckBox">
+                    <Border x:Name="border"
+                            Background="AliceBlue"
+                            BorderBrush="Black"
+                            BorderThickness="1">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          HorizontalContentAlignment="Center"
+                                          VerticalContentAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </CheckBox.Template>
+            <CheckBox.Styles>
+                <!-- CheckedBackColor MediumAquamarine (FlatAppearance.CheckedBackColor). -->
+                <Style Selector="CheckBox:checked /template/ Border#border">
+                    <Setter Property="Background" Value="MediumAquamarine" />
+                </Style>
+            </CheckBox.Styles>
+        </CheckBox>
+
+        <!-- label7: keep-offset prompt. Designer (208,475) 338x71, 27 DIP. Wraps. -->
+        <TextBlock x:Name="label7"
+                   Canvas.Left="208" Canvas.Top="475"
+                   Width="338" Height="71"
+                   FontSize="27" FontWeight="Bold"
+                   TextWrapping="Wrap"
+                   Text="Keep offset even after field is closed?" />
+
+        <!-- =================== command buttons =================== -->
+
+        <!-- btnZero: zero both offsets. Designer (25,596) 93x66, caption "> 0 <", Tahoma 15.75pt Bold -> 21 DIP.
+             Standard (raised) Fluent button face (WinForms UseVisualStyleBackColor = true). -->
+        <Button x:Name="btnZero"
+                Canvas.Left="25" Canvas.Top="596"
+                Width="93" Height="66"
+                FontSize="21" FontWeight="Bold"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Content="&gt; 0 &lt;" />
+
+        <!-- bntOK: apply isKeepOffsetsOn + SetFixDelta and close. Designer (502,596) 144x66, glyph OK64
+             (64x64). Standard button face; IsDefault routes Enter to OK for keyboard operability. -->
+        <Button x:Name="bntOK"
+                Canvas.Left="502" Canvas.Top="596"
+                Width="144" Height="66"
+                Padding="0"
+                IsDefault="True"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                AutomationProperties.Name="OK">
+            <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                   Width="64" Height="64" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

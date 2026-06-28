@@ -1,4 +1,5 @@
-﻿using OpenTK.Graphics.OpenGL;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
 
@@ -56,7 +57,12 @@ namespace AgOpenGPS
 
         public void DrawFenceLines()
         {
-            if (!mf.mc.isOutOfBounds)
+            // [XPLAT] Decoupled from the WinForms host shell: mf.mc -> injected mc (CModuleComm);
+            // mf.ABLine -> injected ABLine (CABLine); mf.section/mf.tool -> injected section[]/tool;
+            // mf.pivotAxlePos -> appModel.PivotAxlePos + appModel.FixHeading; mf.bnd -> this. All
+            // collaborators are held by the CBoundary root (CBoundary.cs); drawing/geometry is
+            // unchanged. See MIGRATION_DOCS/TRANSITION_MAP.md.
+            if (!mc.isOutOfBounds)
             {
                 GL.Color4(0, 0, 0, 0.8);
                 GL.LineWidth(6);
@@ -76,7 +82,7 @@ namespace AgOpenGPS
             }
             else
             {
-                GL.LineWidth(mf.ABLine.lineWidth * 3);
+                GL.LineWidth(ABLine.lineWidth * 3);
                 GL.Color3(0.95f, 0.25f, 0.250f);
 
                 for (int i = 0; i < bndList.Count; i++)
@@ -89,14 +95,18 @@ namespace AgOpenGPS
             //GL.Color3(0.70f, 0.95f, 0.95f);
             //GL.PointSize(6.0f);
             //GL.Begin(PrimitiveType.Points);
-            //GL.Vertex3(mf.bnd.closestTurnPt.easting, mf.bnd.closestTurnPt.northing, 0);
+            //GL.Vertex3(this.closestTurnPt.easting, this.closestTurnPt.northing, 0);
             //GL.End();
 
             if (bndBeingMadePts.Count > 0)
             {
                 //the boundary so far
-                vec3 pivot = mf.pivotAxlePos;
-                GL.LineWidth(mf.ABLine.lineWidth);
+                // [XPLAT] mf.pivotAxlePos -> recomposed from appModel.PivotAxlePos (easting/northing) +
+                // appModel.FixHeading (heading). The original set pivotAxlePos.heading = fixHeading, and
+                // GeoDir's [0, 2pi) normalization is rotation-neutral for the Sin/Cos uses below, so the
+                // drawn pivot line is value-identical to the WinForms original.
+                vec3 pivot = new vec3(appModel.PivotAxlePos.Easting, appModel.PivotAxlePos.Northing, appModel.FixHeading.AngleInRadians);
+                GL.LineWidth(ABLine.lineWidth);
                 GL.Color3(0.825f, 0.22f, 0.90f);
                 GL.Begin(PrimitiveType.LineStrip);
                 for (int h = 0; h < bndBeingMadePts.Count; h++) GL.Vertex3(bndBeingMadePts[h].easting, bndBeingMadePts[h].northing, 0);
@@ -134,13 +144,13 @@ namespace AgOpenGPS
                     if (isDrawRightSide)
                     {
                         GL.Vertex3(bndBeingMadePts[0].easting, bndBeingMadePts[0].northing, 0);
-                        GL.Vertex3(mf.section[mf.tool.numOfSections - 1].rightPoint.easting, mf.section[mf.tool.numOfSections - 1].rightPoint.northing, 0);
+                        GL.Vertex3(section[tool.numOfSections - 1].rightPoint.easting, section[tool.numOfSections - 1].rightPoint.northing, 0);
                         GL.Vertex3(bndBeingMadePts[bndBeingMadePts.Count - 1].easting, bndBeingMadePts[bndBeingMadePts.Count - 1].northing, 0);
                     }
                     else
                     {
                         GL.Vertex3(bndBeingMadePts[0].easting, bndBeingMadePts[0].northing, 0);
-                        GL.Vertex3(mf.section[0].leftPoint.easting, mf.section[0].leftPoint.northing, 0);
+                        GL.Vertex3(section[0].leftPoint.easting, section[0].leftPoint.northing, 0);
                         GL.Vertex3(bndBeingMadePts[bndBeingMadePts.Count - 1].easting, bndBeingMadePts[bndBeingMadePts.Count - 1].northing, 0);
                     }
                 }

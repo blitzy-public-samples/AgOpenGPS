@@ -1,0 +1,519 @@
+<!-- [XPLAT] migrated from net48/WinForms FormLoadVehicleTool — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Vehicle / Tool" profile manager dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Profiles/FormLoadVehicleTool`
+    (FormLoadVehicleTool.cs + FormLoadVehicleTool.Designer.cs) — the largest profile dialog. Two
+    side-by-side profile lists (vehicles | tools), each with a four-button command strip
+    (Delete / New / Rename / Reset), a "Current:" header and a "Selected:" sub-header, a small
+    read-only preview block, a bottom "Convert Old profiles" action, and the Cancel / Load image
+    buttons. Per AAP §0.3.3 this is a faithful parity reimplementation of the current Windows Forms
+    look — never a redesign: no new colors, no relayout, no UX changes.
+
+    WIRING CONTRACT (the partner code-behind FormLoadVehicleToolView.axaml.cs owns ALL behaviour,
+    NOT this markup):
+      * This view is IMPERATIVE / code-behind-driven, exactly like the sibling FormFilePickerView,
+        FormYesView and FormInputDialogView: there is intentionally NO x:DataType, NO DataContext
+        and NO MVVM/ViewModel binding on the controls themselves. Every control is addressed by its
+        x:Name and the code-behind attaches the Click / SelectionChanged handlers (reproducing the
+        WinForms Designer's `this.btnX.Click += ...` wiring) and assigns the translated gStr.*
+        strings at runtime (Title gStr.gsVehicleTool, textLoad gStr.gsLoad, textCancel gStr.gsCancel,
+        buttonConvertOld.Content gStr.gsConvertOldProfiles, every label, etc.). The x:Names below
+        MUST stay exactly as written — the code-behind references each one.
+      * ROW COLOURING (no VM): the two lists colour rows dynamically — the CURRENT profile is
+        Orange + Bold, the SELECTED (non-current) profile is LightGreen (WinForms
+        ListViewItem.BackColor / .Font). This is implemented with classic (reflection) bindings —
+        the code-behind fills each ListBox.ItemsSource with a small INotifyPropertyChanged row
+        record exposing:  { string Name; IBrush Background; FontWeight FontWeight }.  The
+        ItemTemplate below binds Name -> the row text, Background -> a full-bleed Border behind the
+        text, and FontWeight -> the text weight. Recommended row values (set by the code-behind,
+        matching WinForms): current  -> Background = Brushes.Orange (#FFFFA500), FontWeight = Bold;
+        selected (non-current) -> Background = Brushes.LightGreen (#FF90EE90); all other rows ->
+        Background = Brushes.Transparent (the list's own #FFBFCDDB shows through, == WinForms
+        ListView.BackColor reset). The WinForms list Font is Tahoma 14pt BOLD, so the code-behind
+        sets FontWeight = Bold on EVERY row (current included) for a uniformly bold list. NO
+        x:DataType is declared; to keep these {Binding ...} as reflection bindings regardless of the
+        project's compiled-bindings default (AvaloniaUseCompiledBindingsByDefault), the root sets
+        x:CompileBindings="False" — the canonical opt-out. (The ContainerFromItem code-behind
+        approach named in the file spec is the equivalent alternative; this markup uses the
+        reflection-row-record approach.)
+
+    WINDOW SHELL — mirrors FormLoadVehicleTool.Designer.cs exactly:
+      Text "Vehicle / Tool" (runtime gStr.gsVehicleTool) -> Title (hidden by the borderless shell;
+                                                            kept for taskbar / automation).
+      ClientSize 1008 x 545      -> Width / Height (SystemDecorations="None" => client == window).
+      BackColor WhiteSmoke        -> Background "#FFF5F5F5" (WinForms Color.WhiteSmoke == #FFF5F5F5).
+      MaximumSize 1024 x 768      -> MaxWidth / MaxHeight.
+      ControlBox = false          -> covered by the borderless (SystemDecorations="None") shell.
+      ShowInTaskbar = false       -> ShowInTaskbar="False".
+      (Sizable up to MaximumSize)  -> CanResize="True".
+      StartPosition.CenterScreen  -> WindowStartupLocation="CenterScreen" (screen, NOT owner).
+      Font Tahoma 14.25pt         -> FontFamily="Tahoma" FontSize="19" (14.25pt x 96/72 = 19 DIP;
+                                     all child FontSizes below are likewise pt x 96/72).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.Profiles.FormLoadVehicleToolView"
+        x:CompileBindings="False"
+        Title="Vehicle / Tool"
+        Width="1008"
+        Height="545"
+        MaxWidth="1024"
+        MaxHeight="768"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+        SystemDecorations="None"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Tahoma"
+        FontSize="19">
+
+    <Window.Styles>
+        <!--
+            Flat, border-less, transparent image-button face for the eight command-strip buttons
+            and the two Cancel / Load action buttons (WinForms FlatStyle.Flat +
+            FlatAppearance.BorderSize=0). The pointerover / pressed setters target the Fluent Button
+            template's content presenter so the theme's own hover / press fill never paints over the
+            flat face — the same technique used by FormFilePickerView.axaml and FormYesView.axaml.
+        -->
+        <Style Selector="Button.flatBtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatBtn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <!-- :disabled keeps the flat face transparent too (WinForms FlatStyle.Flat disabled image
+             buttons stay border-less on the form colour; without this the Fluent theme paints a grey
+             rounded box behind buttonDeleteVehicle/Tool, buttonRenameVehicle/Tool and buttonLoad). -->
+        <Style Selector="Button.flatBtn:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!--
+            buttonConvertOld — WinForms BackColor LightSalmon (#FFFFA07A), FlatStyle.Flat, dark text.
+            The salmon fill is held across every interaction state (the Fluent theme would otherwise
+            tint it on hover / press).
+        -->
+        <Style Selector="Button.convertBtn">
+            <Setter Property="Background" Value="#FFFFA07A" />
+            <Setter Property="BorderBrush" Value="#FFFFA07A" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.convertBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFFFA07A" />
+            <Setter Property="BorderBrush" Value="#FFFFA07A" />
+        </Style>
+        <Style Selector="Button.convertBtn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FFFFA07A" />
+            <Setter Property="BorderBrush" Value="#FFFFA07A" />
+        </Style>
+
+        <!--
+            Profile-list rows. WinForms ListView (View=Details, FullRowSelect=true, MultiSelect=false,
+            HeaderStyle=None, GridLines=true, HideSelection=false): tighten the Fluent ListBoxItem to a
+            flush, full-width row (no item padding / min-height / margin / corner radius) so the bound
+            per-row Background brush fills the whole row exactly like the WinForms item.BackColor. The
+            selected / pointerover fills are neutralised so the bound row colour (Orange = current,
+            LightGreen = selected) shows verbatim — WinForms parity, where the cell BackColor wins over
+            the selection highlight.
+        -->
+        <Style Selector="ListBox.profileList ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="ListBox.profileList ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.profileList ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        The WinForms form is a fixed-position client area (ControlBox=false, MaximumSize set, not full
+        anchoring), so a Canvas reproduces every control's absolute Location / Size verbatim — the same
+        parity technique used by FormFilePickerView.axaml — which is the most faithful 1:1 mapping of
+        the designer coordinates (client space, top-left origin).
+    -->
+    <Canvas Width="1008" Height="545">
+
+        <!-- ===================== Headers (Current: ...) — Tahoma 12pt (16 DIP) Bold, DarkOrange ===================== -->
+
+        <!-- lblCurrentVehicle — WinForms Label @ (12,8) 400 x 24, Tahoma 12pt Bold, ForeColor DarkOrange. -->
+        <TextBlock x:Name="lblCurrentVehicle"
+                   Canvas.Left="12" Canvas.Top="8"
+                   Width="400"
+                   FontSize="16"
+                   FontWeight="Bold"
+                   Foreground="#FFFF8C00"
+                   Text="Current: -" />
+
+        <!-- lblCurrentTool — WinForms Label @ (500,8) 400 x 24, same style. -->
+        <TextBlock x:Name="lblCurrentTool"
+                   Canvas.Left="500" Canvas.Top="8"
+                   Width="400"
+                   FontSize="16"
+                   FontWeight="Bold"
+                   Foreground="#FFFF8C00"
+                   Text="Current: -" />
+
+        <!-- ===================== Profile lists — Tahoma 14pt (19 DIP) Bold, BackColor InactiveCaption ===================== -->
+
+        <!--
+            listViewVehicles — WinForms ListView @ (12,35) 400 x 320, BackColor InactiveCaption
+            (~#FFBFCDDB), single-select, no column header. The rows (ItemsSource) and per-row colour
+            are supplied by the code-behind; the ItemTemplate uses reflection bindings (see contract
+            above). BorderThickness 0 — the form already frames the list on the WhiteSmoke ground.
+        -->
+        <ListBox x:Name="listViewVehicles" AutomationProperties.Name="Vehicle profile list"
+                 Classes="profileList"
+                 Canvas.Left="12" Canvas.Top="35"
+                 Width="400" Height="320"
+                 Background="#FFBFCDDB"
+                 BorderThickness="0"
+                 FontFamily="Tahoma"
+                 FontSize="19"
+                 SelectionMode="Single"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 SelectionChanged="ListViewVehicles_SelectionChanged">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <!-- Reflection bindings (NO x:DataType) against the code-behind row record
+                         { Name, Background, FontWeight }. The Border carries the per-row colour and
+                         stretches full width (ListBoxItem HorizontalContentAlignment=Stretch). -->
+                    <Border Background="{Binding Background}" Padding="4,1">
+                        <TextBlock Text="{Binding Name}"
+                                   FontFamily="Tahoma"
+                                   FontSize="19"
+                                   FontWeight="{Binding FontWeight}"
+                                   Foreground="Black"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- listViewTools — WinForms ListView @ (500,35) 400 x 320, same style as listViewVehicles. -->
+        <ListBox x:Name="listViewTools" AutomationProperties.Name="Tool profile list"
+                 Classes="profileList"
+                 Canvas.Left="500" Canvas.Top="35"
+                 Width="400" Height="320"
+                 Background="#FFBFCDDB"
+                 BorderThickness="0"
+                 FontFamily="Tahoma"
+                 FontSize="19"
+                 SelectionMode="Single"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 SelectionChanged="ListViewTools_SelectionChanged">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="{Binding Background}" Padding="4,1">
+                        <TextBlock Text="{Binding Name}"
+                                   FontFamily="Tahoma"
+                                   FontSize="19"
+                                   FontWeight="{Binding FontWeight}"
+                                   Foreground="Black"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- ===================== Selected: sub-headers — Tahoma 11pt (15 DIP) Italic, DarkGreen ===================== -->
+
+        <!-- lblSelectedVehicle — WinForms Label @ (12,359) 400 x 22, Tahoma 11pt Italic, ForeColor DarkGreen. -->
+        <TextBlock x:Name="lblSelectedVehicle"
+                   Canvas.Left="12" Canvas.Top="359"
+                   Width="400"
+                   FontSize="15"
+                   FontStyle="Italic"
+                   Foreground="#FF006400"
+                   Text="Selected: -" />
+
+        <!-- lblSelectedTool — WinForms Label @ (500,359) 400 x 22, same style. -->
+        <TextBlock x:Name="lblSelectedTool"
+                   Canvas.Left="500" Canvas.Top="359"
+                   Width="400"
+                   FontSize="15"
+                   FontStyle="Italic"
+                   Foreground="#FF006400"
+                   Text="Selected: -" />
+
+        <!-- ===================== Vehicle preview block — Tahoma 10pt (13 DIP), ForeColor ARGB(40,40,40) ===================== -->
+
+        <!-- lblVehType — WinForms Label @ (12,385) 220 x 20. -->
+        <TextBlock x:Name="lblVehType"
+                   Canvas.Left="12" Canvas.Top="385"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Type:" />
+
+        <!-- lblVehWheelbase — WinForms Label @ (12,407) 220 x 20. -->
+        <TextBlock x:Name="lblVehWheelbase"
+                   Canvas.Left="12" Canvas.Top="407"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Wheelbase:" />
+
+        <!-- lblVehAntPivot — WinForms Label @ (12,429) 220 x 20. -->
+        <TextBlock x:Name="lblVehAntPivot"
+                   Canvas.Left="12" Canvas.Top="429"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Ant. Pivot:" />
+
+        <!-- lblVehAntOffset — WinForms Label @ (242,385) 220 x 20. -->
+        <TextBlock x:Name="lblVehAntOffset"
+                   Canvas.Left="242" Canvas.Top="385"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Ant. Offset:" />
+
+        <!-- lblVehTrackWidth — WinForms Label @ (242,407) 220 x 20. -->
+        <TextBlock x:Name="lblVehTrackWidth"
+                   Canvas.Left="242" Canvas.Top="407"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Track Width:" />
+
+        <!-- lblVehHitch — WinForms Label @ (501,449) 220 x 20 (vehicle hitch length, shown under the
+             tool column per the WinForms layout; filled by LoadToolPreview). -->
+        <TextBlock x:Name="lblVehHitch"
+                   Canvas.Left="501" Canvas.Top="449"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Hitch:" />
+
+        <!-- ===================== Tool preview block — Tahoma 10pt (13 DIP), ForeColor ARGB(40,40,40) ===================== -->
+
+        <!-- lblToolWidth — WinForms Label @ (500,385) 220 x 20. -->
+        <TextBlock x:Name="lblToolWidth"
+                   Canvas.Left="500" Canvas.Top="385"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Width:" />
+
+        <!-- lblToolOverlap — WinForms Label @ (500,407) 220 x 20. -->
+        <TextBlock x:Name="lblToolOverlap"
+                   Canvas.Left="500" Canvas.Top="407"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Overlap:" />
+
+        <!-- lblToolOffset — WinForms Label @ (500,429) 220 x 20. -->
+        <TextBlock x:Name="lblToolOffset"
+                   Canvas.Left="500" Canvas.Top="429"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Offset:" />
+
+        <!-- lblToolSections — WinForms Label @ (730,385) 220 x 20. -->
+        <TextBlock x:Name="lblToolSections"
+                   Canvas.Left="730" Canvas.Top="385"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Sections:" />
+
+        <!-- lblToolAttach — WinForms Label @ (730,407) 220 x 20. -->
+        <TextBlock x:Name="lblToolAttach"
+                   Canvas.Left="730" Canvas.Top="407"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Attach:" />
+
+        <!-- lblToolHitch — WinForms Label @ (730,429) 220 x 20. -->
+        <TextBlock x:Name="lblToolHitch"
+                   Canvas.Left="730" Canvas.Top="429"
+                   Width="220"
+                   FontSize="13"
+                   Foreground="#FF282828"
+                   Text="Trail Hitch:" />
+
+        <!-- ===================== Vehicle command strip (x=424, 65 x 70 flat image buttons) ===================== -->
+
+        <!-- buttonDeleteVehicle — WinForms button @ (424,35) 65 x 70, image Trash, starts disabled
+             (enabled only when a non-current vehicle is selected). -->
+        <Button x:Name="buttonDeleteVehicle"
+                Classes="flatBtn"
+                Canvas.Left="424" Canvas.Top="35"
+                Width="65" Height="70"
+                IsEnabled="False"
+                AutomationProperties.Name="Delete Vehicle"
+                Click="ButtonDeleteVehicle_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/Trash.png" Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!-- buttonNewVehicle — WinForms button @ (424,115) 65 x 70, image AddNew. -->
+        <Button x:Name="buttonNewVehicle"
+                Classes="flatBtn"
+                Canvas.Left="424" Canvas.Top="115"
+                Width="65" Height="70"
+                AutomationProperties.Name="New Vehicle"
+                Click="ButtonNewVehicle_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/AddNew.png" Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!-- buttonRenameVehicle — WinForms button @ (424,195) 65 x 70, image FileEditName, starts disabled. -->
+        <Button x:Name="buttonRenameVehicle"
+                Classes="flatBtn"
+                Canvas.Left="424" Canvas.Top="195"
+                Width="65" Height="70"
+                IsEnabled="False"
+                AutomationProperties.Name="Rename Vehicle"
+                Click="ButtonRenameVehicle_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/FileEditName.png" Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!-- buttonResetVehicle — WinForms button @ (424,275) 65 x 70, image Reset_Default. -->
+        <Button x:Name="buttonResetVehicle"
+                Classes="flatBtn"
+                Canvas.Left="424" Canvas.Top="275"
+                Width="65" Height="70"
+                AutomationProperties.Name="Reset Vehicle to Default"
+                Click="ButtonResetVehicle_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/Reset_Default.png" Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!-- ===================== Tool command strip (x=918, 65 x 70 flat image buttons) ===================== -->
+
+        <!-- buttonDeleteTool — WinForms button @ (918,35) 65 x 70, image Trash, starts disabled. -->
+        <Button x:Name="buttonDeleteTool"
+                Classes="flatBtn"
+                Canvas.Left="918" Canvas.Top="35"
+                Width="65" Height="70"
+                IsEnabled="False"
+                AutomationProperties.Name="Delete Tool"
+                Click="ButtonDeleteTool_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/Trash.png" Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!-- buttonNewTool — WinForms button @ (918,115) 65 x 70, image AddNew. -->
+        <Button x:Name="buttonNewTool"
+                Classes="flatBtn"
+                Canvas.Left="918" Canvas.Top="115"
+                Width="65" Height="70"
+                AutomationProperties.Name="New Tool"
+                Click="ButtonNewTool_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/AddNew.png" Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!-- buttonRenameTool — WinForms button @ (918,195) 65 x 70, image FileEditName, starts disabled. -->
+        <Button x:Name="buttonRenameTool"
+                Classes="flatBtn"
+                Canvas.Left="918" Canvas.Top="195"
+                Width="65" Height="70"
+                IsEnabled="False"
+                AutomationProperties.Name="Rename Tool"
+                Click="ButtonRenameTool_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/FileEditName.png" Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!-- buttonResetTool — WinForms button @ (918,275) 65 x 70, image Reset_Default. -->
+        <Button x:Name="buttonResetTool"
+                Classes="flatBtn"
+                Canvas.Left="918" Canvas.Top="275"
+                Width="65" Height="70"
+                AutomationProperties.Name="Reset Tool to Default"
+                Click="ButtonResetTool_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/Reset_Default.png" Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!-- ===================== Bottom actions ===================== -->
+
+        <!--
+            buttonConvertOld — WinForms button @ (12,481) 161 x 49, BackColor LightSalmon,
+            FlatStyle.Flat, Tahoma 11pt (15 DIP). Caption set at runtime from gStr.gsConvertOldProfiles
+            (design-time text shown here for parity). Opens FormConvertProfiles, then refreshes lists.
+        -->
+        <Button x:Name="buttonConvertOld"
+                Classes="convertBtn"
+                Canvas.Left="12" Canvas.Top="481"
+                Width="161" Height="49"
+                FontSize="15"
+                Content="Convert Old profiles"
+                Click="ButtonConvertOld_Click" />
+
+        <!--
+            buttonCancel — WinForms button @ (838,450) 80 x 98, image Cancel64 (ImageAlign TopCenter)
+            with caption (TextAlign BottomCenter). The native 64 x 64 glyph sits at the top and the
+            textCancel caption (runtime gStr.gsCancel) sits at the bottom — reproduced with a DockPanel
+            (caption docked bottom, image filling the top area). Flat / transparent face.
+        -->
+        <Button x:Name="buttonCancel"
+                Classes="flatBtn"
+                Canvas.Left="838" Canvas.Top="450"
+                Width="80" Height="98"
+                AutomationProperties.Name="Cancel"
+                Click="ButtonCancel_Click">
+            <DockPanel LastChildFill="True">
+                <TextBlock x:Name="textCancel"
+                           DockPanel.Dock="Bottom"
+                           Text="Cancel"
+                           FontSize="19"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                       Width="64" Height="64" Stretch="Uniform"
+                       VerticalAlignment="Top" HorizontalAlignment="Center" />
+            </DockPanel>
+        </Button>
+
+        <!--
+            buttonLoad — WinForms button @ (924,450) 80 x 98, image OK64 (ImageAlign TopCenter) with
+            caption (TextAlign BottomCenter), starts disabled (enabled only when a different vehicle
+            and/or tool is selected). textLoad caption set at runtime from gStr.gsLoad.
+        -->
+        <Button x:Name="buttonLoad"
+                Classes="flatBtn"
+                Canvas.Left="924" Canvas.Top="450"
+                Width="80" Height="98"
+                IsEnabled="False"
+                AutomationProperties.Name="Load"
+                Click="ButtonLoad_Click">
+            <DockPanel LastChildFill="True">
+                <TextBlock x:Name="textLoad"
+                           DockPanel.Dock="Bottom"
+                           Text="Load"
+                           FontSize="19"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                       Width="64" Height="64" Stretch="Uniform"
+                       VerticalAlignment="Top" HorizontalAlignment="Center" />
+            </DockPanel>
+        </Button>
+
+    </Canvas>
+</Window>

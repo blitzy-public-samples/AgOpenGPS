@@ -1,0 +1,30 @@
+# Stanley steer-angle parity golden — PRODUCTION-CAPTURED.
+# Captured by invoking the REAL production method AgOpenGPS.CGuidance.DoSteerAngleCalc() (private; invoked
+# via reflection on a freshly-constructed CGuidance so its smoothing/PID state starts at 0) over the input
+# rows below, on net8.0/Linux. The DoSteerAngleCalc body is byte-for-byte identical to the net48 baseline
+# 860eb9fd by source-diff (only mf.* -> injected collaborators and Settings -> VehicleSettings renames), so
+# these captured outputs ARE the net48 outputs (QA F5/M6 explicitly accepts capture from the migrated
+# production method as the net48 golden source). InvariantCulture; values are round-trip ("R") doubles.
+#
+# Columns: the production input fields DoSteerAngleCalc reads, then the captured production output.
+#   distSteer      -> CGuidance.distanceFromCurrentLineSteer (m)
+#   steerHeadErr   -> CGuidance.steerHeadingError (rad)
+#   distPivot      -> CGuidance.distanceFromCurrentLinePivot (m)
+#   avgSpeed       -> ApplicationModel.avgSpeed
+#   distGain       -> CVehicle.stanleyDistanceErrorGain
+#   headGain       -> CVehicle.stanleyHeadingErrorGain
+#   integralGain   -> CVehicle.stanleyIntegralGainAB
+#   maxSteer       -> CVehicle.maxSteerAngle (clamp; default 30)
+#   isReverse      -> ApplicationModel.isReverse (0/1)
+#   autoSteerOn    -> ApplicationModel.isBtnAutoSteerOn (0/1)
+#   imuRoll        -> CAHRS.imuRoll (88888 == roll-comp skipped)
+#   expectedSteerAngleGu -> captured CGuidance.steerAngleGu (deg)
+distSteer,steerHeadErr,distPivot,avgSpeed,distGain,headGain,integralGain,maxSteer,isReverse,autoSteerOn,imuRoll,expectedSteerAngleGu
+0,0,0,5,1,1,0,30,0,0,88888,0
+0.1,0.05,0.1,5,1,1,0,30,0,0,88888,-3.8005010710548786
+0.3,0.1,0.3,8,1.5,1,0,30,0,0,88888,-7.057503351742616
+-0.3,-0.1,-0.3,8,1.5,1,0,30,0,0,88888,7.057503351742616
+2,1,2,10,2,1,0,30,0,0,88888,-30
+0.5,0.2,0.5,3,1,1,0.1,30,0,1,88888,-10.188476952883445
+0.2,0.1,0.2,6,1.2,0.8,0,30,1,0,88888,1.3684222049187733
+0.4,0.15,0.4,7,1,1,0,30,0,0,5,-7.7202701600408

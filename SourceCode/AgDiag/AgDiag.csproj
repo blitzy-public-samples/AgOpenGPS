@@ -1,46 +1,44 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <!-- [XPLAT] Exe (not WinExe) so the Avalonia app launches as a normal cross-platform process;
+         Avalonia manages its own windowing/message loop. -->
+    <OutputType>Exe</OutputType>
     <PublishDir>..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>AgDiag.ico</ApplicationIcon>
-    <UseWindowsForms>true</UseWindowsForms>
-    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
+    <!-- [XPLAT] cross-platform reach: per-OS self-contained publish RIDs (AAP §0.7.2) -->
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <EmbeddedResourceUseDependentUponConvention>true</EmbeddedResourceUseDependentUponConvention>
-    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+    <!-- [XPLAT] Avalonia application: enable XAML compilation and built-in theme assets. -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <!-- [XPLAT] migrated from net48/WinForms — Avalonia cross-platform UI stack replaces WinForms;
+       System.Configuration.ConfigurationManager replaces the Windows GAC System.Configuration ref
+       (Properties/Settings.Designer.cs derives from ApplicationSettingsBase). The System.Memory
+       polyfill and the unused VS-template Resources.resx pipeline (System.Resources.Extensions +
+       System.Drawing-typed template entries) were dropped — in-box / unused on net8.0.
+       See MIGRATION_DOCS/TRANSITION_MAP.md -->
   <ItemGroup>
-    <Reference Include="System.Configuration" />
+    <PackageReference Include="Avalonia" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.18" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.18" Condition="'$(Configuration)' == 'Debug'" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Memory" Version="4.6.0" />
-    <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Update="Properties\Resources.Designer.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
     <Compile Update="Properties\Settings.Designer.cs">
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <AutoGen>True</AutoGen>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Update="Properties\Resources.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <None Update="Properties\Settings.settings">

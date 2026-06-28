@@ -1,0 +1,64 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AgOpenGPS.Updater.App"
+             RequestedThemeVariant="Light">
+    <!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        Avalonia Application definition for the cross-platform AgOpenGPS Updater.
+        Pairs with the App.axaml.cs code-behind (partial class AgOpenGPS.Updater.App).
+
+        Theme: the Fluent theme is the base; RequestedThemeVariant is pinned to "Light"
+        so the updater always renders light to preserve visual parity with the original
+        Windows Forms updater (light lavender panels, white-on-teal header), independent
+        of the host operating system's light/dark preference (AAP §0.3.3 — parity
+        reimplementation, not a redesign).
+
+        Palette: the semantic brushes below mirror the exact Color.FromArgb values used by the
+        WinForms originals (Forms/FormDialog.cs, Forms/FormUpdate.Designer.cs,
+        Forms/FormReleaseNotes.Designer.cs) so the reimplemented Avalonia dialogs reference them by
+        key (via DynamicResource in XAML and TryFindResource in code-behind) instead of repeating the
+        same hex literal in every view. This is the single source of truth for the updater palette:
+          • Accent / info (teal)     Color.FromArgb(27, 151, 160)  -> #1B97A0  (AccentBrush)
+          • Error (red)              Color.FromArgb(220, 60, 60)   -> #DC3C3C  (ErrorBrush)
+          • Success (green)          Color.FromArgb(40, 167, 69)   -> #28A745  (SuccessBrush)
+          • Main panel (lavender)    Color.FromArgb(210,210,230)   -> #D2D2E6  (PanelBrush)
+          • Footer/button bar        Color.FromArgb(180,180,200)   -> #B4B4C8  (PanelFooterBrush)
+          • Body text (near-black)   Color.FromArgb(10, 10, 20)    -> #0A0A14  (BodyTextBrush)
+          • Danger button (close)    Color.FromArgb(220, 80, 80)   -> #DC5050  (ButtonDangerBrush)
+          • Danger pressed (darker)  Color.FromArgb(200, 60, 60)   -> #C83C3C  (DangerPressedBrush)
+          • Neutral/secondary button Color.FromArgb(100,100,100)   -> #646464  (NeutralButtonBrush)
+          • Verified-source status   Color.FromArgb(100,255, 10)   -> #64FF0A  (VerifiedStatusBrush)
+          • Up-to-date version label Color.FromArgb(60, 60, 80)    -> #3C3C50  (UpToDateBrush)
+    -->
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Color values (must precede the brushes that reference them via StaticResource). -->
+            <Color x:Key="AccentColor">#1B97A0</Color>
+            <Color x:Key="ErrorColor">#DC3C3C</Color>
+            <Color x:Key="SuccessColor">#28A745</Color>
+            <Color x:Key="PanelColor">#D2D2E6</Color>
+            <Color x:Key="PanelFooterColor">#B4B4C8</Color>
+            <Color x:Key="BodyTextColor">#0A0A14</Color>
+            <Color x:Key="ButtonDangerColor">#DC5050</Color>
+            <Color x:Key="DangerPressedColor">#C83C3C</Color>
+            <Color x:Key="NeutralButtonColor">#646464</Color>
+            <Color x:Key="VerifiedStatusColor">#64FF0A</Color>
+            <Color x:Key="UpToDateColor">#3C3C50</Color>
+            <!-- Semantic brushes consumed by the Avalonia updater views (XAML + code-behind). -->
+            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+            <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
+            <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
+            <SolidColorBrush x:Key="PanelBrush" Color="{StaticResource PanelColor}" />
+            <SolidColorBrush x:Key="PanelFooterBrush" Color="{StaticResource PanelFooterColor}" />
+            <SolidColorBrush x:Key="BodyTextBrush" Color="{StaticResource BodyTextColor}" />
+            <SolidColorBrush x:Key="ButtonDangerBrush" Color="{StaticResource ButtonDangerColor}" />
+            <SolidColorBrush x:Key="DangerPressedBrush" Color="{StaticResource DangerPressedColor}" />
+            <SolidColorBrush x:Key="NeutralButtonBrush" Color="{StaticResource NeutralButtonColor}" />
+            <SolidColorBrush x:Key="VerifiedStatusBrush" Color="{StaticResource VerifiedStatusColor}" />
+            <SolidColorBrush x:Key="UpToDateBrush" Color="{StaticResource UpToDateColor}" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

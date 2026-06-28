@@ -1,0 +1,303 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Add Flag" dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Field/FormEnterFlag`
+    (FormEnterFlag.cs + FormEnterFlag.Designer.cs + FormEnterFlag.resx). The dialog adds a flag
+    at the current GPS position in one of three colours (red / green / yellow) and offers CSV
+    import / export of the field's flags. Per AAP §0.3.3 this is faithful parity to the currently
+    rendered Windows Forms UI — never a redesign: no new fields, no relayout, no UX changes. After
+    a flag is added the host opens FormFlagsView (the WinForms original showed FormFlags).
+
+    WINDOW SHELL — mirrors FormEnterFlag.Designer.cs:
+      Text "Enter AB or A+"               -> Title. The literal here is the WinForms designer caption;
+                                            the code-behind overrides it at runtime with the localised
+                                            gStr.gsFormFlag (reproducing the FormEnterFlag.cs ctor) —
+                                            the same Title-in-code-behind convention used by the sibling
+                                            FormSimCoordsView / FormFlagsView, which avoids any compiled-
+                                            binding dependency in the markup.
+      ClientSize 771 x 266                -> the root Canvas Width / Height. SizeToContent="WidthAndHeight"
+                                            sizes the window CLIENT area to exactly fit that Canvas so
+                                            nothing is clipped by the title bar (the same technique as the
+                                            sibling tool-window FormFlagsView / FormBoundaryPlayerView).
+      FormBorderStyle FixedToolWindow + ControlBox=false
+                                          -> standard (non-resizable) decorations are kept so the caption
+                                            shows (a tool window has a caption); CanResize="False"
+                                            reproduces the fixed-size, no-min/max behaviour. SystemDecorations
+                                            is deliberately NOT set to "None" here (unlike the borderless
+                                            FormNumeric) so the FixedToolWindow caption is preserved.
+      ShowInTaskbar = false               -> ShowInTaskbar="False".
+      StartPosition = CenterParent        -> WindowStartupLocation="CenterOwner" (replaces the WinForms
+                                            ScreenHelper.IsOnScreen reposition in FormEnterAB_Load).
+      BackColor WhiteSmoke                -> Background="{DynamicResource AogFrameBrush}" and
+                                            Foreground="{DynamicResource AogTextBrush}", so the dialog
+                                            tracks the app day/night palette defined in App.axaml — the
+                                            same theming choice the sibling lat/lon dialog FormSimCoordsView
+                                            made (its WinForms BackColor was Gainsboro). These are
+                                            ThemeDictionary keys, hence {DynamicResource} (NOT
+                                            {StaticResource}) so the Light<->Dark switch is observed live.
+      Font Tahoma                         -> FontFamily="Tahoma"; each child carries its own point size
+                                            converted to Avalonia DIP as (pt * 96 / 72):
+                                            15.75pt -> 21, 18pt -> 24, 21.75pt -> 29, 27.75pt -> 37.
+
+    LAYOUT — the WinForms form used pure absolute Location/Size with no layout panels and several
+    deliberately OVERLAPPING command buttons (the green/red/yellow flag glyphs), so a top-level
+    Canvas reproduces every coordinate pixel-faithfully (Canvas.Left/Top == Location, Width/Height ==
+    Size). This is the exact strategy used by the functional-twin siblings FormSimCoordsView and
+    FormBoundaryPlayerView (lat/lon + numeric keypad dialogs) and is required for true 1:1 parity —
+    a Grid cannot represent the overlapping button z-order without relayout, which AAP §0.3.3 forbids.
+    Children render in document order (later == on top): the three flag buttons are declared
+    yellow -> red -> green so green is front-most, reproducing the WinForms Controls z-order
+    (green above red above yellow) where their 87 px-wide glyphs overlap.
+
+    WIRING CONTRACT — the partner code-behind (FormEnterFlagView.axaml.cs) owns ALL behaviour:
+      * This view is IMPERATIVE, not MVVM: intentionally NO x:DataType, NO DataContext, NO {Binding}.
+        Every control is addressed by x:Name, exactly like the sibling FormSimCoordsView / FormFlagsView.
+        NO Click handlers are declared in this markup — the code-behind attaches them by name — so the
+        view compiles independently of the handler method names the code-behind chooses.
+      * nudLatitude / nudLongitude reproduce the WinForms NudlessNumericUpDown: read-only numeric
+        DISPLAY buttons (spinner disabled) whose tap pops the on-screen FormNumeric keypad. They are
+        declared here as Button (Classes="numericDisplay"); the code-behind seeds their value text
+        (formatted with CultureInfo.InvariantCulture from the current lat/lon) and raises an edit
+        request that the host services by opening FormNumeric (Views/Inputs). They are NOT spinner
+        controls.
+      * btnRed / btnGreen / btnYellow are the primary "add a flag of this colour" actions. The WinForms
+        original routed all three Click events through one handler that branched on the button Name to a
+        colour byte (red=0, green=1, yellow=2); the code-behind preserves that exact mapping and raises a
+        flag-add request that the host applies (add CFlag, deduplicate, save, open FormFlagsView).
+      * btnImportFlags / btnExportFlags reproduce the WinForms CSV import / export (the file picker and
+        file I/O are host-owned via Avalonia's StorageProvider, consistent with the migration's
+        decoupling from the FormGPS god-object). btnCancel closes the dialog (WinForms DialogResult.Cancel).
+
+    ASSETS — button glyphs are served from the GPS assembly via avares:// URIs
+    (avares://AgOpenGPS/btnImages/{FlagRed,FlagGrn,FlagYel,Cancel64}.png — the same native 64 x 64
+    assets the WinForms Designer pulled from AgOpenGPS.Properties.Resources, matching the on-disk file
+    casing and the convention used by the sibling GPS views). All four image buttons were FlatStyle.Flat
+    with FlatAppearance.BorderSize = 0 and a transparent BackColor, so they use the shared imageButton
+    face (transparent, borderless) defined below. The Import / Export buttons were text-only standard
+    buttons (UseVisualStyleBackColor = true) and so keep the default Fluent button chrome with a text label.
+
+    No WinForms, no System.Drawing, no OpenTK, no GMap, no ColorPicker types are referenced. Avalonia 11.3.x.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormEnterFlagView"
+        Title="Enter AB or A+"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        Background="{DynamicResource AogFrameBrush}"
+        Foreground="{DynamicResource AogTextBrush}">
+
+    <Window.Styles>
+        <!-- Flat, transparent, image-only command buttons (the colour flags + Cancel): reproduce the
+             WinForms FlatStyle.Flat + FlatAppearance.BorderSize=0 + BackColor.Transparent and keep that
+             face in EVERY interaction state (the Fluent Button template otherwise paints a hover/pressed
+             fill, inventing a state the flat WinForms original never showed). Targets the template content
+             presenter — the same technique used by the sibling FormSimCoordsView / FormFlagsView. -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!-- Read-only numeric DISPLAY fields (nudLatitude / nudLongitude): reproduce the
+             NudlessNumericUpDown's static white face + big bold number (WinForms BackColor AliceBlue ->
+             a neutral white field with a thin grey border, matching the sibling FormSimCoordsView). The
+             white fill stays stable across pointerover/pressed (the WinForms control had no hover
+             recolour). The code-behind assigns the value text and opens FormNumeric on click. -->
+        <Style Selector="Button.numericDisplay">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="FontSize" Value="37" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.numericDisplay:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+        <Style Selector="Button.numericDisplay:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="Gray" />
+            <Setter Property="Foreground" Value="Black" />
+        </Style>
+
+        <!-- Import / Export: text-only standard buttons (WinForms UseVisualStyleBackColor = true). Large
+             touch targets with bold Tahoma 18pt -> 24 DIP centred text; default Fluent chrome retained. -->
+        <Style Selector="Button.textButton">
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Absolute layout. Canvas.Left/Canvas.Top == WinForms Location, Width/Height == Size, so the dialog
+        is pixel-faithful to FormEnterFlag.Designer.cs at its fixed 771 x 266 client size.
+    -->
+    <Canvas Width="771" Height="266">
+
+        <!-- label18: "Latitude" caption above the latitude field. WinForms (160,15) 252 x 25, Tahoma
+             15.75pt, MiddleCenter. Themed text brush over the AogFrameBrush chrome. -->
+        <Border Canvas.Left="160" Canvas.Top="15" Width="252" Height="25">
+            <TextBlock FontSize="21"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Text="Latitude" />
+        </Border>
+
+        <!-- label1: "Longitude" caption above the longitude field. WinForms (457,15) 269 x 25, Tahoma
+             15.75pt, MiddleCenter. -->
+        <Border Canvas.Left="457" Canvas.Top="15" Width="269" Height="25">
+            <TextBlock FontSize="21"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Text="Longitude" />
+        </Border>
+
+        <!-- label8: latitude range hint. WinForms AutoSize label at (215,40), Tahoma 15.75pt, default
+             top-left text — reproduced as a bare positioned TextBlock. -->
+        <TextBlock Canvas.Left="215"
+                   Canvas.Top="40"
+                   FontSize="21"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="( +90 to -90)" />
+
+        <!-- label9: longitude range hint. WinForms AutoSize label at (510,40), Tahoma 15.75pt. -->
+        <TextBlock Canvas.Left="510"
+                   Canvas.Top="40"
+                   FontSize="21"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   Text="( +180 to -180 )" />
+
+        <!-- labelPoint: bold caption to the left of the numeric fields. WinForms (22,76) 125 x 34,
+             Tahoma 21.75pt Bold, MiddleCenter. The design-time text "Point A" is intentionally DROPPED;
+             the code-behind assigns the localised gStr.gsPoint at runtime (reproducing the ctor). x:Name
+             is on the TextBlock so the code-behind reaches it via labelPoint.Text. -->
+        <Border Canvas.Left="22" Canvas.Top="76" Width="125" Height="34">
+            <TextBlock x:Name="labelPoint"
+                       FontSize="29"
+                       FontWeight="Bold"
+                       Foreground="{DynamicResource AogTextBrush}"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <!-- nudLatitude: read-only numeric display (NudlessNumericUpDown). WinForms (152,68) 274 x 52,
+             Tahoma 27.75pt Bold, range +90..-90. The code-behind seeds the value text (current latitude,
+             CultureInfo.InvariantCulture) and wires the click to open FormNumeric. NOT a spinner. -->
+        <Button x:Name="nudLatitude"
+                Classes="numericDisplay"
+                Canvas.Left="152"
+                Canvas.Top="68"
+                Width="274"
+                Height="52"
+                AutomationProperties.Name="Latitude" />
+
+        <!-- nudLongitude: read-only numeric display. WinForms (448,68) 298 x 52, Tahoma 27.75pt Bold,
+             range +180..-180. Code-behind seeds the value text and opens FormNumeric on click. -->
+        <Button x:Name="nudLongitude"
+                Classes="numericDisplay"
+                Canvas.Left="448"
+                Canvas.Top="68"
+                Width="298"
+                Height="52"
+                AutomationProperties.Name="Longitude" />
+
+        <!-- btnImportFlags: import flags from a CSV/txt file. WinForms (13,179) 177 x 71, Tahoma 18pt
+             Bold, text "Import Flags". Click -> host opens a file picker and imports (wired in code-behind). -->
+        <Button x:Name="btnImportFlags"
+                Classes="textButton"
+                Canvas.Left="13"
+                Canvas.Top="179"
+                Width="177"
+                Height="71"
+                Content="Import Flags"
+                AutomationProperties.Name="Import Flags" />
+
+        <!-- btnExportFlags: export flags to a CSV file. WinForms (211,180) 171 x 71, Tahoma 18pt Bold,
+             text "Export Flags". Click -> host opens a save picker and exports (wired in code-behind). -->
+        <Button x:Name="btnExportFlags"
+                Classes="textButton"
+                Canvas.Left="211"
+                Canvas.Top="180"
+                Width="171"
+                Height="71"
+                Content="Export Flags"
+                AutomationProperties.Name="Export Flags" />
+
+        <!-- btnCancel: close the dialog (WinForms DialogResult.Cancel). WinForms (413,188) 87 x 58,
+             transparent flat, Cancel64 glyph. Declared before the flag buttons (it does not overlap
+             them); click -> code-behind closes the window. -->
+        <Button x:Name="btnCancel"
+                Classes="imageButton"
+                Canvas.Left="413"
+                Canvas.Top="188"
+                Width="87"
+                Height="58"
+                AutomationProperties.Name="Cancel">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+        </Button>
+
+        <!-- btnYellow: add a YELLOW flag (colour byte = 2). WinForms (515,192) 87 x 58, transparent flat,
+             FlagYel glyph. Declared FIRST of the three overlapping flag buttons (back-most), matching the
+             WinForms z-order where green sits above red sits above yellow. -->
+        <Button x:Name="btnYellow"
+                Classes="imageButton"
+                Canvas.Left="515"
+                Canvas.Top="192"
+                Width="87"
+                Height="58"
+                AutomationProperties.Name="Add yellow flag">
+            <Image Source="avares://AgOpenGPS/btnImages/FlagYel.png" Stretch="Uniform" />
+        </Button>
+
+        <!-- btnRed: add a RED flag (colour byte = 0). WinForms (672,193) 87 x 58, transparent flat,
+             FlagRed glyph. Declared after yellow (its left edge is overlapped by green, declared next). -->
+        <Button x:Name="btnRed"
+                Classes="imageButton"
+                Canvas.Left="672"
+                Canvas.Top="193"
+                Width="87"
+                Height="58"
+                AutomationProperties.Name="Add red flag">
+            <Image Source="avares://AgOpenGPS/btnImages/FlagRed.png" Stretch="Uniform" />
+        </Button>
+
+        <!-- btnGreen: add a GREEN flag (colour byte = 1). WinForms (597,192) 87 x 58, transparent flat,
+             FlagGrn glyph. Declared LAST so it is front-most, reproducing the WinForms z-order (green
+             overlaps both red and yellow at their adjacent edges). -->
+        <Button x:Name="btnGreen"
+                Classes="imageButton"
+                Canvas.Left="597"
+                Canvas.Top="192"
+                Width="87"
+                Height="58"
+                AutomationProperties.Name="Add green flag">
+            <Image Source="avares://AgOpenGPS/btnImages/FlagGrn.png" Stretch="Uniform" />
+        </Button>
+
+    </Canvas>
+</Window>

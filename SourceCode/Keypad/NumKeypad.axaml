@@ -1,0 +1,112 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] Numeric keypad reimplemented as an Avalonia UserControl deriving from GenericKeypad
+    (the standard Avalonia UserControl-inheritance pattern: the XAML root element is the base type,
+    and the derived class is declared via x:Class). This is a 1:1 parity reimplementation of the
+    former WinForms NumKeypad.Designer.cs — no redesign.
+
+    Layout reproduces the original 456x430 WinForms control verbatim: a 4x4 grid of 93x92 buttons at
+    the original absolute coordinates (columns x=3/122/241/360; rows y=3/112-113/223-224/334-335),
+    hosted on a Canvas so the exact button sizes and the ~26 px horizontal / ~19 px vertical gutters
+    are preserved (a stretch-grid would resize the buttons and shrink the gutters). The control
+    background approximates SystemColors.ActiveCaption and shows through those gutters.
+
+    Per-button parity with the WinForms designer:
+      * Every button: FlatStyle.Flat -> square corners (CornerRadius 0) + 2 px blue border
+        (FlatAppearance.BorderColor = Blue, BorderSize = 2); neutral SystemColors.Control face
+        (#FFF0F0F0); ActiveCaptionText foreground (~black); pressed background ARGB(192,192,255)
+        (#C0C0FF) mirroring FlatAppearance.MouseDownBackColor.
+      * btnClear ("C") and btnBackSpace ("CE"): Salmon face (Color.Salmon).
+      * btnOK / btnCancel: image-only (OK64 / Cancel64), no text, with an accessible name.
+    Fonts: digits Tahoma 36 Bold; "+/-" Tahoma 24 Bold; "C" / "CE" / "." Tahoma 28 Bold
+    (the original 27.75 pt, rounded). OK/Cancel carry no glyph (image-only).
+
+    Emitted command tokens are preserved exactly by the NumKeypad.axaml.cs handlers:
+    digits 0-9, 'C' (clear), 'B' (backspace/CE), 'X' (cancel), 'K' (OK/enter), '-' (plus/minus),
+    '.' (decimal). The base type's RaiseButtonPressed(char)/ButtonPressed contract is unchanged so
+    the GPS/AgIO FormNumeric consumers behave identically after migration.
+-->
+<keypad:GenericKeypad xmlns="https://github.com/avaloniaui"
+                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                      xmlns:keypad="clr-namespace:Keypad"
+                      x:Class="Keypad.NumKeypad"
+                      Width="456" Height="430">
+
+    <keypad:GenericKeypad.Styles>
+        <!-- [XPLAT] Base key styling reproduces the WinForms designer defaults shared by every button:
+             Tahoma 36 pt Bold glyphs, flat square 2 px blue border, neutral SystemColors.Control face,
+             and ActiveCaptionText (~black) foreground. Per-button overrides below adjust font size and
+             the salmon command keys. -->
+        <Style Selector="Button">
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="36" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="Background" Value="#FFF0F0F0" />
+            <Setter Property="BorderBrush" Value="Blue" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- [XPLAT] Pressed state == FlatAppearance.MouseDownBackColor ARGB(192,192,255). Target the
+             Fluent Button template's content presenter so the pressed fill (and the blue border)
+             survive the theme's own pressed setters. Uniform across all keys, exactly as the original. -->
+        <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#C0C0FF" />
+            <Setter Property="BorderBrush" Value="Blue" />
+        </Style>
+    </keypad:GenericKeypad.Styles>
+
+    <!-- [XPLAT] Canvas Background approximates SystemColors.ActiveCaption (the original control
+         BackColor); it shows through the inter-button gutters. Exact system colors are theme-dependent,
+         so this static approximation satisfies the parity-to-rendered-UI bar. -->
+    <Canvas Width="456" Height="430" Background="#99B4D1">
+
+        <!-- Row 0:  1   2   3   C(clear) -->
+        <Button x:Name="btn1" Canvas.Left="3" Canvas.Top="3" Width="93" Height="92"
+                Content="1" Click="Btn1_Click" />
+        <Button x:Name="btn2" Canvas.Left="122" Canvas.Top="3" Width="93" Height="92"
+                Content="2" Click="Btn2_Click" />
+        <Button x:Name="btn3" Canvas.Left="241" Canvas.Top="3" Width="93" Height="92"
+                Content="3" Click="Btn3_Click" />
+        <Button x:Name="btnClear" Canvas.Left="360" Canvas.Top="3" Width="93" Height="92"
+                Content="C" FontSize="28" Background="Salmon" Click="BtnClear_Click" />
+
+        <!-- Row 1:  4   5   6   CE(backspace) -->
+        <Button x:Name="btn4" Canvas.Left="3" Canvas.Top="113" Width="93" Height="92"
+                Content="4" Click="Btn4_Click" />
+        <Button x:Name="btn5" Canvas.Left="122" Canvas.Top="112" Width="93" Height="92"
+                Content="5" Click="Btn5_Click" />
+        <Button x:Name="btn6" Canvas.Left="241" Canvas.Top="112" Width="93" Height="92"
+                Content="6" Click="Btn6_Click" />
+        <Button x:Name="btnBackSpace" Canvas.Left="360" Canvas.Top="112" Width="93" Height="92"
+                Content="CE" FontSize="28" Background="Salmon" Click="BtnBackSpace_Click" />
+
+        <!-- Row 2:  7   8   9   Cancel(image) -->
+        <Button x:Name="btn7" Canvas.Left="3" Canvas.Top="223" Width="93" Height="92"
+                Content="7" Click="Btn7_Click" />
+        <Button x:Name="btn8" Canvas.Left="122" Canvas.Top="223" Width="93" Height="92"
+                Content="8" Click="Btn8_Click" />
+        <Button x:Name="btn9" Canvas.Left="241" Canvas.Top="224" Width="93" Height="92"
+                Content="9" Click="Btn9_Click" />
+        <Button x:Name="btnCancel" Canvas.Left="360" Canvas.Top="224" Width="93" Height="92"
+                Click="BtnCancel_Click" AutomationProperties.Name="Cancel">
+            <Image Source="avares://Keypad/Resources/Cancel64.png" Width="56" Height="56" Stretch="Uniform" />
+        </Button>
+
+        <!-- Row 3:  +/-   0   .   OK(image) -->
+        <Button x:Name="btnPlusMinus" Canvas.Left="3" Canvas.Top="334" Width="93" Height="92"
+                Content="+/-" FontSize="24" Click="BtnPlusMinus_Click" />
+        <Button x:Name="btn0" Canvas.Left="122" Canvas.Top="335" Width="93" Height="92"
+                Content="0" Click="Btn0_Click" />
+        <Button x:Name="btnDecimal" Canvas.Left="241" Canvas.Top="335" Width="93" Height="92"
+                Content="." FontSize="28" Click="BtnDecimal_Click" />
+        <Button x:Name="btnOK" Canvas.Left="360" Canvas.Top="335" Width="93" Height="92"
+                Click="BtnOK_Click" AutomationProperties.Name="OK">
+            <Image Source="avares://Keypad/Resources/OK64.png" Width="56" Height="56" Stretch="Uniform" />
+        </Button>
+    </Canvas>
+</keypad:GenericKeypad>

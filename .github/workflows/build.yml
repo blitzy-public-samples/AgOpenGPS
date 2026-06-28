@@ -1,4 +1,5 @@
 name: Build
+# [XPLAT] migrated from net48/WinForms single Windows runner to tri-OS (windows/ubuntu/macos) matrix — see MIGRATION_DOCS/CHANGELOG.md
 
 on:
   push:
@@ -6,21 +7,43 @@ on:
       - develop
   pull_request:
 
+# [XPLAT] Least-privilege GITHUB_TOKEN scope: build CI only reads the repository and uploads build
+# artifacts — it never writes repository contents or creates releases. Declaring this explicitly drops
+# the broad repository-default token permissions the job would otherwise inherit.
+permissions:
+  contents: read
+
 env:
   # Path to the solution file relative to the root of the project.
   SOLUTION_FILE_PATH: ./SourceCode/AgOpenGPS.sln
 
-  # Configuration type to build.
-  # You can convert this to a build matrix if you need coverage of multiple configuration types.
-  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  # Configuration type used for the self-contained publish step.
   BUILD_CONFIGURATION: Release
-
-  # Path to the output folder
-  PUBLISH_DIR: ./AgOpenGPS
 
 jobs:
   build:
-    runs-on: windows-latest
+    # [XPLAT] tri-OS build matrix mirroring release.yml: one leg per OS/RID, each carrying its own
+    # os + rid + framework so the per-RID self-contained publish is exercised on every push/PR exactly
+    # as release.yml will perform it for a real release. Both Apple RIDs (osx-x64 and osx-arm64) build
+    # on the macOS runner. fail-fast: false lets every leg run to completion so cross-OS divergences are
+    # all surfaced. runs-on resolves per leg from ${{ matrix.os }}.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            framework: net8.0-windows
+          - os: ubuntu-latest
+            rid: linux-x64
+            framework: net8.0
+          - os: macos-latest
+            rid: osx-x64
+            framework: net8.0
+          - os: macos-latest
+            rid: osx-arm64
+            framework: net8.0
+    runs-on: ${{ matrix.os }}
 
     steps:
     - name: Checkout
@@ -30,6 +53,14 @@ jobs:
 
     - name: Setup dotnet
       uses: actions/setup-dotnet@v4
+      # [XPLAT] QA F5 m1: explicitly install BOTH the .NET 8 runtime (the test target framework, net8.0)
+      # and the .NET 9 SDK (pinned by global.json). Without 8.0.x the net8.0 test host would abort with
+      # FrameworkNotFound on a 9.0-only runner image. Paired with <RollForward>Major</RollForward> in the
+      # test projects for defense-in-depth — see MIGRATION_DOCS/PARITY_REPORT.md.
+      with:
+        dotnet-version: |
+          8.0.x
+          9.0.x
 
     - name: Setup GitVersion
       uses: gittools/actions/gitversion/setup@v3.2.0
@@ -44,17 +75,38 @@ jobs:
     - name: Install dependencies
       run: dotnet restore ${{env.SOLUTION_FILE_PATH}}
 
+    # [XPLAT] QA Issue 5: build AND test EXPLICITLY in the Release configuration (env.BUILD_CONFIGURATION)
+    # so the CI gate exercises the same analyzer + TreatWarningsAsErrors settings as the publish step and
+    # the local final-acceptance gate. Both steps pin -c Release in lockstep: the --no-build test run must
+    # match the build configuration, otherwise a Debug-defaulted test would not find the Release output.
     - name: Build
-      run: dotnet build --no-restore ${{env.SOLUTION_FILE_PATH}}
+      run: dotnet build -c ${{ env.BUILD_CONFIGURATION }} --no-restore ${{env.SOLUTION_FILE_PATH}}
 
     - name: Test
-      run: dotnet test --no-restore --no-build ${{env.SOLUTION_FILE_PATH}}
+      run: dotnet test -c ${{ env.BUILD_CONFIGURATION }} --no-restore --no-build ${{env.SOLUTION_FILE_PATH}}
 
-    - name: Publish
-      run: dotnet publish --no-restore --configuration ${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
+    # [XPLAT] Per-RID SELF-CONTAINED publish — replaces the former solution-level `dotnet publish` of the
+    # .sln, which failed with NETSDK1129 (a multi-target solution cannot be published without specifying a
+    # framework) and produced neither RID-scoped nor self-contained output. This mirrors release.yml
+    # exactly: each executable app project is published per RID into a per-app subfolder of
+    # publish/${{ matrix.rid }}. GPS and AgIO multi-target net8.0;net8.0-windows, so the framework is
+    # paired to the RID via ${{ matrix.framework }} (win-x64 -> net8.0-windows so the WMI brightness /
+    # Registry migration-read platform code participates; linux-x64/osx-x64/osx-arm64 -> net8.0). The
+    # single-target executables (ModSim/GPS_Out/AgDiag/Updater) are net8.0 only and omit -f. Runs under
+    # bash on every runner (Git Bash on Windows) so the multi-line script — and its set -e fail-fast on
+    # any failing publish — is identical across all three operating systems.
+    - name: Publish (self-contained, ${{ matrix.rid }})
+      shell: bash
+      run: |
+        dotnet publish SourceCode/GPS/AgOpenGPS.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} -f ${{ matrix.framework }} --self-contained true -o "publish/${{ matrix.rid }}/AgOpenGPS"
+        dotnet publish SourceCode/AgIO/Source/AgIO.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} -f ${{ matrix.framework }} --self-contained true -o "publish/${{ matrix.rid }}/AgIO"
+        dotnet publish SourceCode/ModSim/Source/ModSim.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} --self-contained true -o "publish/${{ matrix.rid }}/ModSim"
+        dotnet publish SourceCode/GPS_Out/Source/GPS_Out.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} --self-contained true -o "publish/${{ matrix.rid }}/GPS_Out"
+        dotnet publish SourceCode/AgDiag/AgDiag.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} --self-contained true -o "publish/${{ matrix.rid }}/AgDiag"
+        dotnet publish SourceCode/Updater/AgOpenGPS.Updater.csproj -c ${{ env.BUILD_CONFIGURATION }} -r ${{ matrix.rid }} --self-contained true -o "publish/${{ matrix.rid }}/Updater"
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: AgOpenGPS
-        path: ${{env.PUBLISH_DIR}}
+        name: AgOpenGPS-${{ matrix.rid }}
+        path: publish/${{ matrix.rid }}

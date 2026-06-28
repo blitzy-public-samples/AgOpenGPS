@@ -1,12 +1,35 @@
-﻿using System;
-using System.Security.Policy;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System;
+using System.Globalization;
 using System.Text;
+using AgOpenGPS.Core;
 
 namespace AgOpenGPS
 {
     public class CFieldData
     {
-        private readonly FormGPS mf;
+        // [XPLAT] Decoupled from the WinForms FormGPS host god-object (the former
+        // `private readonly FormGPS mf;` + `CFieldData(FormGPS _f)`). The collaborators this class
+        // read through `mf` are now constructor-injected and used live-by-reference, mirroring the
+        // established CVehicle(ApplicationModel, ...) / CTool(ApplicationModel, ...) /
+        // CBoundary(ApplicationModel, ...) decoupling — no DI container and no new abstraction
+        // (AAP §0.7.1). No FormGPS reference remains, so the field-statistics math is portable across
+        // Windows, Linux and macOS. The area / distance / application-rate formulas, the
+        // metric/imperial unit conversions and the rounding are FROZEN — outputs are unchanged.
+        // Field-by-field decoupling map (was mf.X):
+        //   appModel - shared AgOpenGPS.Core runtime model. Supplies the smoothed vehicle speed in
+        //              km/h (avgSpeed, was mf.avgSpeed; written by the fix/position pipeline, read
+        //              live-by-reference here) and the current field name
+        //              (Fields.CurrentFieldName, was mf.displayFieldName) for the field summary.
+        //   tool     - implement/tool config (was mf.tool): width, numOfSections and overlap, used by
+        //              the work-rate / time-till-finished math and the field summary.
+        //   bnd      - boundary set (was mf.bnd): bndList outer/inner areas used to compute the field
+        //              area. Cyclic peer of this class (CBoundary wires this CFieldData back via
+        //              CBoundary.SetFieldData), so CBoundary is constructed first and injected here.
+        // See MIGRATION_DOCS/TRANSITION_MAP.md.
+        private readonly ApplicationModel appModel;
+        private readonly CTool tool;
+        private readonly CBoundary bnd;
 
         //all the section area added up;
         public double workedAreaTotal;
@@ -33,31 +56,37 @@ namespace AgOpenGPS
         //not really used - but if needed
         public double userSquareMetersAlarm;
 
-        //Area inside Boundary less inside boundary areas
-        public string AreaBoundaryLessInnersHectares => (areaBoundaryOuterLessInner * glm.m2ha).ToString("N2");
+        // [XPLAT] All numeric ToString sites below pass CultureInfo.InvariantCulture so the
+        // field-statistics text (used on-screen and in the GetDescription field summary) is
+        // byte-stable across locales — a Linux/macOS comma-decimal locale would otherwise corrupt any
+        // persisted/exported summary (AAP §0.6.5). The format specifiers and precision are unchanged,
+        // so on the invariant/en-US reference build the output is identical.
 
-        public string AreaBoundaryLessInnersAcres => (areaBoundaryOuterLessInner * glm.m2ac).ToString("N2");
+        //Area inside Boundary less inside boundary areas
+        public string AreaBoundaryLessInnersHectares => (areaBoundaryOuterLessInner * glm.m2ha).ToString("N2", CultureInfo.InvariantCulture);
+
+        public string AreaBoundaryLessInnersAcres => (areaBoundaryOuterLessInner * glm.m2ac).ToString("N2", CultureInfo.InvariantCulture);
 
         //USer tally string
-        public string WorkedUserHectares => (workedAreaTotalUser * glm.m2ha).ToString("N2");
+        public string WorkedUserHectares => (workedAreaTotalUser * glm.m2ha).ToString("N2", CultureInfo.InvariantCulture);
 
         //user tally string
-        public string WorkedUserAcres => (workedAreaTotalUser * glm.m2ac).ToString("N2");
+        public string WorkedUserAcres => (workedAreaTotalUser * glm.m2ac).ToString("N2", CultureInfo.InvariantCulture);
 
         //String of Area worked
-        public string WorkedAcres => (workedAreaTotal * 0.000247105).ToString("N2");
+        public string WorkedAcres => (workedAreaTotal * 0.000247105).ToString("N2", CultureInfo.InvariantCulture);
 
-        public string WorkedHectares => (workedAreaTotal * 0.0001).ToString("N2");
+        public string WorkedHectares => (workedAreaTotal * 0.0001).ToString("N2", CultureInfo.InvariantCulture);
 
         //User Distance strings
-        public string DistanceUserMeters => Convert.ToString(Math.Round(distanceUser, 1));
+        public string DistanceUserMeters => Math.Round(distanceUser, 1).ToString(CultureInfo.InvariantCulture);
 
-        public string DistanceUserFeet => Convert.ToString(Math.Round((distanceUser * glm.m2ft), 1));
+        public string DistanceUserFeet => Math.Round((distanceUser * glm.m2ft), 1).ToString(CultureInfo.InvariantCulture);
 
         //remaining area to be worked
-        public string WorkedAreaRemainHectares => ((areaBoundaryOuterLessInner - workedAreaTotal) * glm.m2ha).ToString("N2");
+        public string WorkedAreaRemainHectares => ((areaBoundaryOuterLessInner - workedAreaTotal) * glm.m2ha).ToString("N2", CultureInfo.InvariantCulture);
 
-        public string WorkedAreaRemainAcres => ((areaBoundaryOuterLessInner - workedAreaTotal) * glm.m2ac).ToString("N2");
+        public string WorkedAreaRemainAcres => ((areaBoundaryOuterLessInner - workedAreaTotal) * glm.m2ac).ToString("N2", CultureInfo.InvariantCulture);
 
         public string WorkedAreaRemainPercentage
         {
@@ -66,7 +95,7 @@ namespace AgOpenGPS
                 if (areaBoundaryOuterLessInner > 10)
                 {
                     barPercent = ((areaBoundaryOuterLessInner - workedAreaTotal) * 100 / areaBoundaryOuterLessInner);
-                    return barPercent.ToString("N1") + "%";
+                    return barPercent.ToString("N1", CultureInfo.InvariantCulture) + "%";
                 }
                 else
                 {
@@ -77,35 +106,41 @@ namespace AgOpenGPS
         }
 
         //overlap strings
-        public string ActualAreaWorkedHectares => (actualAreaCovered * glm.m2ha).ToString("N2");
-        public string ActualAreaWorkedAcres => (actualAreaCovered * glm.m2ac).ToString("N2");
+        public string ActualAreaWorkedHectares => (actualAreaCovered * glm.m2ha).ToString("N2", CultureInfo.InvariantCulture);
+        public string ActualAreaWorkedAcres => (actualAreaCovered * glm.m2ac).ToString("N2", CultureInfo.InvariantCulture);
 
-        public string ActualRemainHectares => ((areaBoundaryOuterLessInner - actualAreaCovered) * glm.m2ha).ToString("N2");
-        public string ActualRemainAcres => ((areaBoundaryOuterLessInner - actualAreaCovered) * glm.m2ac).ToString("N2");
+        public string ActualRemainHectares => ((areaBoundaryOuterLessInner - actualAreaCovered) * glm.m2ha).ToString("N2", CultureInfo.InvariantCulture);
+        public string ActualRemainAcres => ((areaBoundaryOuterLessInner - actualAreaCovered) * glm.m2ac).ToString("N2", CultureInfo.InvariantCulture);
 
-        public string ActualOverlapPercent => overlapPercent.ToString("N1") + "% ";
+        public string ActualOverlapPercent => overlapPercent.ToString("N1", CultureInfo.InvariantCulture) + "% ";
 
         public string TimeTillFinished
         {
             get
             {
-                if (mf.avgSpeed > 2)
+                if (appModel.avgSpeed > 2)
                 {
                     TimeSpan timeSpan = TimeSpan.FromHours(((areaBoundaryOuterLessInner - workedAreaTotal) * glm.m2ha
-                        / (mf.tool.width * mf.avgSpeed * 0.1)));
-                    return timeSpan.Hours.ToString("00:") + timeSpan.Minutes.ToString("00") + '"';
+                        / (tool.width * appModel.avgSpeed * 0.1)));
+                    return timeSpan.Hours.ToString("00:", CultureInfo.InvariantCulture) + timeSpan.Minutes.ToString("00", CultureInfo.InvariantCulture) + '"';
                 }
                 else return "\u221E Hrs";
             }
         }
 
-        public string WorkRateHectares => (mf.tool.width * mf.avgSpeed * 0.1).ToString("N1") + " ha/hr";
-        public string WorkRateAcres => (mf.tool.width * mf.avgSpeed * 0.2471).ToString("N1") + " ac/hr";
+        public string WorkRateHectares => (tool.width * appModel.avgSpeed * 0.1).ToString("N1", CultureInfo.InvariantCulture) + " ha/hr";
+        public string WorkRateAcres => (tool.width * appModel.avgSpeed * 0.2471).ToString("N1", CultureInfo.InvariantCulture) + " ac/hr";
 
         //constructor
-        public CFieldData(FormGPS _f)
+        // [XPLAT] Was CFieldData(FormGPS _f). The shared ApplicationModel and the tool/boundary
+        // collaborators are constructor-injected (no DI container, no new abstraction — AAP §0.7.1).
+        // bnd is a cyclic peer wired back via CBoundary.SetFieldData, so CBoundary is constructed
+        // before this CFieldData and passed in here. The initialization body is unchanged.
+        public CFieldData(ApplicationModel appModel, CTool tool, CBoundary bnd)
         {
-            mf = _f;
+            this.appModel = appModel;
+            this.tool = tool;
+            this.bnd = bnd;
             workedAreaTotal = 0;
             workedAreaTotalUser = 0;
             userSquareMetersAlarm = 0;
@@ -113,14 +148,14 @@ namespace AgOpenGPS
 
         public void UpdateFieldBoundaryGUIAreas()
         {
-            if (mf.bnd.bndList.Count > 0)
+            if (bnd.bndList.Count > 0)
             {
-                areaOuterBoundary = mf.bnd.bndList[0].area;
+                areaOuterBoundary = bnd.bndList[0].area;
                 areaBoundaryOuterLessInner = areaOuterBoundary;
 
-                for (int i = 1; i < mf.bnd.bndList.Count; i++)
+                for (int i = 1; i < bnd.bndList.Count; i++)
                 {
-                    areaBoundaryOuterLessInner -= mf.bnd.bndList[i].area;
+                    areaBoundaryOuterLessInner -= bnd.bndList[i].area;
                 }
             }
             else
@@ -128,14 +163,17 @@ namespace AgOpenGPS
                 areaOuterBoundary = 0;
                 areaBoundaryOuterLessInner = 0;
             }
-            //if (mf.isMetric) mf.btnManualOffOn.Text = AreaBoundaryLessInnersHectares;
-            //else mf.btnManualOffOn.Text = AreaBoundaryLessInnersAcres;
+            // [XPLAT] The manual-on/off button label (formerly set here by the already-disabled
+            // `if (isMetric) btnManualOffOn.Text = AreaBoundaryLessInnersHectares; else ...Acres;`
+            // that read the WinForms button via the FormGPS host) is now produced by the bound
+            // Avalonia view-model from its units state and these area properties. Behavior is
+            // unchanged: the assignment was commented out in the original, so nothing is emitted here.
         }
 
         public String GetDescription()
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendFormat("Field: {0}", mf.displayFieldName);
+            sb.AppendFormat("Field: {0}", appModel.Fields.CurrentFieldName);
             sb.AppendLine();
             sb.AppendFormat("Total Hectares: {0}", AreaBoundaryLessInnersHectares);
             sb.AppendLine();
@@ -149,11 +187,13 @@ namespace AgOpenGPS
             sb.AppendLine();
             sb.AppendFormat("Missing Acres: {0}", WorkedAreaRemainAcres);
             sb.AppendLine();
-            sb.AppendFormat("Tool Width: {0}", mf.tool.width);
+            // [XPLAT] Numeric inserts use InvariantCulture so this field summary is byte-stable across
+            // locales (AAP §0.6.5); values/precision are unchanged from the originals.
+            sb.AppendFormat(CultureInfo.InvariantCulture, "Tool Width: {0}", tool.width);
             sb.AppendLine();
-            sb.AppendFormat("Sections: {0}", mf.tool.numOfSections);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "Sections: {0}", tool.numOfSections);
             sb.AppendLine();
-            sb.AppendFormat("Section Overlap: {0}", mf.tool.overlap);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "Section Overlap: {0}", tool.overlap);
             sb.AppendLine();
             return sb.ToString();
         }

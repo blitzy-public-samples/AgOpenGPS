@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
+using System.Collections.Generic;
 using AgOpenGPS.Core.Models;
 using Dev4Agriculture.ISO11783.ISOXML.TaskFile;
 using Dev4Agriculture.ISO11783.ISOXML;

@@ -1,9 +1,11 @@
+// [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using AgOpenGPS.Updater.Models;
 
@@ -17,6 +19,20 @@ namespace AgOpenGPS.Updater.Services
         private const string AgOpenGPSProcessName = "AgOpenGPS";
         private const string AgIOProcessName = "AgIO";
         private const int MaxWaitSeconds = 10;
+
+        // [XPLAT] Updater's own files (locked while running). net8 self-contained layout:
+        // per-OS apphost (no .exe.config), main .dll, runtimeconfig/deps json, pdb, Newtonsoft.
+        // Names that don't exist on a given OS simply never match (exact OrdinalIgnoreCase compare).
+        private static readonly string[] UpdaterOwnFiles =
+        {
+            "AgOpenGPS.Updater.exe",                 // Windows apphost
+            "AgOpenGPS.Updater",                     // Unix apphost (no extension)
+            "AgOpenGPS.Updater.dll",                 // managed entry assembly (locked on every OS)
+            "AgOpenGPS.Updater.runtimeconfig.json",
+            "AgOpenGPS.Updater.deps.json",
+            "AgOpenGPS.Updater.pdb",
+            "Newtonsoft.Json.dll"
+        };
 
         /// <summary>
         /// Checks for updates and returns the release info if an update is available.
@@ -91,26 +107,55 @@ namespace AgOpenGPS.Updater.Services
         }
 
         /// <summary>
-        /// Mutex name to signal AgOpenGPS that updater is active (prevent shutdown during update).
+        /// Windows single-instance guard / IPC signal name. On Windows this named Mutex doubles as the
+        /// signal that tells AgOpenGPS the updater is active (prevent shutdown during update), so it is
+        /// preserved byte-for-byte. The "Global\" prefix is a Windows kernel-namespace token (NOT a path
+        /// separator) and is meaningless on Unix.
         /// </summary>
         private const string UpdaterMutexName = "Global\\AgOpenGPS_Updater_Active";
 
+        // [XPLAT] Unix single-instance guard (the Windows 'Global\' mutex namespace does not apply on Unix)
+        private static readonly string UpdaterLockFilePath =
+            Path.Combine(Path.GetTempPath(), "AgOpenGPS_Updater_Active.lock");
+
         /// <summary>
         /// Closes AgOpenGPS and AgIO applications gracefully.
-        /// Creates a mutex to prevent AgOpenGPS from shutting down the computer during update.
+        /// Acquires a per-OS single-instance guard (Windows named Mutex / Unix advisory lockfile) to
+        /// prevent AgOpenGPS from shutting down the computer during update.
         /// </summary>
         public async Task<(bool Success, string Message)> CloseApplicationsAsync()
         {
+            // [XPLAT] single-instance guard is per-OS: Windows named Mutex (kernel namespace);
+            // Unix lockfile held open with FileShare.None. See MIGRATION_DOCS/TRANSITION_MAP.md
             System.Threading.Mutex updaterMutex = null;
             try
             {
-                // Create mutex to signal AgOpenGPS that updater is active
-                // This prevents AgOpenGPS from shutting down the computer during update
-                updaterMutex = new System.Threading.Mutex(true, UpdaterMutexName, out bool createdNew);
-                if (!createdNew)
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    // Another updater instance is already running
-                    return (false, "Another updater instance is already running.");
+                    // Create mutex to signal AgOpenGPS that updater is active
+                    // This prevents AgOpenGPS from shutting down the computer during update
+                    updaterMutex = new System.Threading.Mutex(true, UpdaterMutexName, out bool createdNew);
+                    if (!createdNew)
+                    {
+                        // Another updater instance is already running
+                        updaterMutex.Dispose();
+                        return (false, "Another updater instance is already running.");
+                    }
+                }
+                else
+                {
+                    // [XPLAT] Unix: hold the lockfile open with FileShare.None as an advisory lock.
+                    // A stale .lock left after a crash does NOT block a future instance because the OS
+                    // releases the advisory lock when the file descriptor closes.
+                    try
+                    {
+                        _updaterLockStream = new FileStream(
+                            UpdaterLockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                    }
+                    catch (IOException)
+                    {
+                        return (false, "Another updater instance is already running.");
+                    }
                 }
 
                 bool agOpenClosed = await CloseProcessAsync(AgOpenGPSProcessName);
@@ -118,26 +163,27 @@ namespace AgOpenGPS.Updater.Services
 
                 if (!agOpenClosed && !agIOClosed)
                 {
-                    updaterMutex.ReleaseMutex();
-                    updaterMutex.Dispose();
+                    if (updaterMutex != null) { updaterMutex.ReleaseMutex(); updaterMutex.Dispose(); }
+                    if (_updaterLockStream != null) { _updaterLockStream.Dispose(); _updaterLockStream = null; }
                     return (true, "No applications were running.");
                 }
 
-                // Keep mutex alive during update - will be released when UpdateService is disposed
-                // Store it for later disposal
-                _updaterMutex = updaterMutex;
-                updaterMutex = null; // Don't dispose here, will be disposed in cleanup
+                // Keep the guard alive for the duration of the update (released in ReleaseUpdaterMutex)
+                _updaterMutex = updaterMutex;  // null on Unix; set on Windows
+                updaterMutex = null;
 
                 return (true, "Applications closed successfully.");
             }
             catch (Exception ex)
             {
                 updaterMutex?.Dispose();
+                if (_updaterLockStream != null) { _updaterLockStream.Dispose(); _updaterLockStream = null; }
                 return (false, $"Failed to close applications: {ex.Message}");
             }
         }
 
         private System.Threading.Mutex _updaterMutex;
+        private FileStream _updaterLockStream; // [XPLAT] Unix advisory-lock handle
 
         /// <summary>
         /// Attempts to gracefully close a process by name.
@@ -156,7 +202,8 @@ namespace AgOpenGPS.Updater.Services
                 try
                 {
                     // Try graceful close first
-                    if (!process.CloseMainWindow())
+                    // [XPLAT] CloseMainWindow is a Windows graceful close; on Unix go straight to WaitForExit/Kill
+                    if (!(RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && process.CloseMainWindow()))
                     {
                         // If main window close didn't work, wait a bit and try Kill
                         await Task.Run(() => process.WaitForExit(2000));
@@ -345,13 +392,9 @@ namespace AgOpenGPS.Updater.Services
                     // Directories to preserve (don't overwrite)
                     string[] preserveDirs = { "Fields", "Profiles", "Logs", ".backup" };
 
-                    // Files to skip (updater's own files - they're locked while running)
-                    string[] skipFiles = {
-                        "AgOpenGPS.Updater.exe",
-                        "AgOpenGPS.Updater.exe.config",
-                        "Newtonsoft.Json.dll",
-                        "AgOpenGPS.Updater.pdb"
-                    };
+                    // [XPLAT] Files to skip (updater's own files - they're locked while running).
+                    // Uses the shared UpdaterOwnFiles list (net8 self-contained layout; no .exe.config).
+                    string[] skipFiles = UpdaterOwnFiles;
 
                     int copiedFiles = 0;
                     int skippedFiles = 0;
@@ -575,12 +618,11 @@ namespace AgOpenGPS.Updater.Services
             if (!Directory.Exists(backupPath))
                 return;
 
-            // Files that might be locked (updater's own files)
-            string[] lockedFiles = {
-                "AgOpenGPS.Updater.exe",
-                "AgOpenGPS.Updater.exe.config",
-                "Newtonsoft.Json.dll"
-            };
+            // [XPLAT] Files that might be locked (updater's own files).
+            // Uses the shared UpdaterOwnFiles list (net8 self-contained layout; no .exe.config).
+            // Adding .pdb/json to the restore-skip set is behavior-equivalent: the surrounding
+            // try/catch already absorbs delete/restore failures on those files, and it removes list drift.
+            string[] lockedFiles = UpdaterOwnFiles;
 
             // Delete current files (skip locked files and backup directories)
             foreach (var file in Directory.GetFiles(installPath, "*", SearchOption.TopDirectoryOnly))
@@ -686,18 +728,20 @@ namespace AgOpenGPS.Updater.Services
                 // This allows AgOpenGPS to shutdown normally if needed
                 ReleaseUpdaterMutex();
 
-                string exePath = Path.Combine(installPath, "AgOpenGPS.exe");
+                // [XPLAT] net8 apphost has no extension on Unix
+                string exeName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "AgOpenGPS.exe" : "AgOpenGPS";
+                string exePath = Path.Combine(installPath, exeName);
 
                 if (!File.Exists(exePath))
                 {
-                    return (false, "AgOpenGPS.exe not found in installation directory.");
+                    return (false, $"{exeName} not found in installation directory.");
                 }
 
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = exePath,
                     Arguments = arguments ?? string.Empty,
-                    UseShellExecute = true,
+                    UseShellExecute = false, // [XPLAT] launch the apphost directly; UseShellExecute=true is unreliable for raw executables on Unix (xdg-open/open)
                     WorkingDirectory = installPath
                 };
 
@@ -761,18 +805,23 @@ namespace AgOpenGPS.Updater.Services
         }
 
         /// <summary>
-        /// Releases the updater mutex, allowing AgOpenGPS to shutdown normally.
+        /// Releases the updater single-instance guard, allowing AgOpenGPS to shutdown normally.
         /// Call this after update is complete and before restarting AgOpenGPS.
         /// </summary>
         public void ReleaseUpdaterMutex()
         {
+            // [XPLAT] release whichever single-instance guard is held (Windows Mutex or Unix lockfile)
             if (_updaterMutex != null)
+            {
+                try { _updaterMutex.ReleaseMutex(); _updaterMutex.Dispose(); _updaterMutex = null; } catch { }
+            }
+            if (_updaterLockStream != null)
             {
                 try
                 {
-                    _updaterMutex.ReleaseMutex();
-                    _updaterMutex.Dispose();
-                    _updaterMutex = null;
+                    _updaterLockStream.Dispose();
+                    _updaterLockStream = null;
+                    try { if (File.Exists(UpdaterLockFilePath)) File.Delete(UpdaterLockFilePath); } catch { }
                 }
                 catch { }
             }

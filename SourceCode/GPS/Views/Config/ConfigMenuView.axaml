@@ -1,0 +1,170 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] Avalonia 1:1 parity reimplementation of the left-side navigation menu that the legacy
+    WinForms FormConfig embedded (the ConfigMenu.Designer.cs partial). This is the cross-platform
+    configuration MENU / LAUNCHER window; the actual settings panels live in ConfigView, never here.
+
+    Markup half only. Behavior lives in the sibling code-behind ConfigMenuView.axaml.cs
+    (partial class AgOpenGPS.Views.Config.ConfigMenuView : Window), which is expected to:
+      * provide a parameterless constructor that calls InitializeComponent()
+        (AvaloniaConfigMenuPanelPresenter does: new ConfigMenuView { DataContext = configMenuViewModel });
+      * set labelCurrentVehicle.Text / labelCurrentTool.Text from RegistrySettings
+        (parity with the legacy FormConfig.UpdateSummary());
+      * handle OnCloseClick(object sender, RoutedEventArgs e) => Close() for btnClose
+        (the presenter's CloseConfigMenuDialog() also calls .Close()).
+
+    DataContext: AgOpenGPS.Core.ViewModels.ConfigMenuViewModel (compiled bindings via x:DataType).
+    The ONLY view-model members bound here are ShowConfigurationDialogCommand (ICommand) and the
+    inherited IsDay (bool, from DayNightAndUnitsViewModel). The legacy menu navigated within a single
+    config form by switching tabs, so every category button raises the same
+    ShowConfigurationDialogCommand, faithful to that behavior. The presenter supplies the DataContext,
+    so it is intentionally NOT set in this markup.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AgOpenGPS.Core.ViewModels"
+        x:Class="AgOpenGPS.Views.Config.ConfigMenuView"
+        x:DataType="vm:ConfigMenuViewModel"
+        x:CompileBindings="True"
+        Title="Configuration"
+        Width="340" Height="715"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="None"
+        FontFamily="Tahoma"
+        FontSize="13">
+
+    <!--
+        [XPLAT] Optional day/night demonstration using a compiled binding against IsDay (see root
+        Grid below: Classes.night="{Binding !IsDay}"). Surface and context-label colours are driven
+        through STYLES (not local attribute values) on purpose: in Avalonia a locally-set property
+        out-prioritises a style setter, so a conditional class could not override a local value. The
+        night styles are declared AFTER the day styles so the active "night" class wins. This mirrors
+        the WinForms day/night chrome (App.axaml night text == #FFE6E6E6) while staying readable even
+        if this dialog is ever shown without the global RequestedThemeVariant being toggled.
+    -->
+    <Window.Styles>
+        <!-- Day (default) surface -->
+        <Style Selector="Grid#RootLayout">
+            <Setter Property="Background" Value="#FFF0F0F0" />
+        </Style>
+        <!-- Night surface -->
+        <Style Selector="Grid#RootLayout.night">
+            <Setter Property="Background" Value="#FF1E1E1E" />
+        </Style>
+        <!-- Current vehicle/tool context labels: dark text on day -->
+        <Style Selector="TextBlock.context">
+            <Setter Property="Foreground" Value="#FF1E1E1E" />
+        </Style>
+        <!-- Current vehicle/tool context labels: light text on night -->
+        <Style Selector="Grid#RootLayout.night TextBlock.context">
+            <Setter Property="Foreground" Value="#FFE6E6E6" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Four-row launcher: header strip / current context / category buttons / bottom bar. -->
+    <Grid x:Name="RootLayout"
+          RowDefinitions="Auto,Auto,*,Auto"
+          Classes.night="{Binding !IsDay}">
+
+        <!-- Row 0 — header strip (fixed dark title bar in both day and night). -->
+        <Border Grid.Row="0" Background="#FF2D2D30">
+            <TextBlock Text="Configuration"
+                       FontSize="19"
+                       FontWeight="Bold"
+                       Foreground="White"
+                       Margin="8" />
+        </Border>
+
+        <!-- Row 1 — current vehicle / tool context.
+             Text is assigned in code-behind from RegistrySettings (legacy UpdateSummary parity);
+             it is intentionally NOT hard-coded here. -->
+        <StackPanel Grid.Row="1" Margin="8" Spacing="4">
+            <TextBlock x:Name="labelCurrentVehicle"
+                       Classes="context"
+                       TextWrapping="Wrap" />
+            <TextBlock x:Name="labelCurrentTool"
+                       Classes="context"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- Row 2 — menu category buttons. Every category opens the one configuration dialog, so all
+             buttons raise the same ShowConfigurationDialogCommand (faithful to the legacy left menu,
+             which navigated within a single config form). x:Names mirror the legacy button names. -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="8" Spacing="6">
+                <Button x:Name="btnSubVehicle"
+                        Content="Vehicle"
+                        Command="{Binding ShowConfigurationDialogCommand}"
+                        MinHeight="56"
+                        FontSize="15"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" />
+                <Button x:Name="btnSubTool"
+                        Content="Tool"
+                        Command="{Binding ShowConfigurationDialogCommand}"
+                        MinHeight="56"
+                        FontSize="15"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" />
+                <Button x:Name="btnDataSources"
+                        Content="Data Sources"
+                        Command="{Binding ShowConfigurationDialogCommand}"
+                        MinHeight="56"
+                        FontSize="15"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" />
+                <Button x:Name="btnArduino"
+                        Content="Arduino"
+                        Command="{Binding ShowConfigurationDialogCommand}"
+                        MinHeight="56"
+                        FontSize="15"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" />
+                <Button x:Name="btnUTurn"
+                        Content="U-Turn"
+                        Command="{Binding ShowConfigurationDialogCommand}"
+                        MinHeight="56"
+                        FontSize="15"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" />
+                <Button x:Name="btnFeatureHides"
+                        Content="Feature Hides"
+                        Command="{Binding ShowConfigurationDialogCommand}"
+                        MinHeight="56"
+                        FontSize="15"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" />
+                <Button x:Name="btnDisplay"
+                        Content="Display"
+                        Command="{Binding ShowConfigurationDialogCommand}"
+                        MinHeight="56"
+                        FontSize="15"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" />
+                <Button x:Name="btnTram"
+                        Content="Tram"
+                        Command="{Binding ShowConfigurationDialogCommand}"
+                        MinHeight="56"
+                        FontSize="15"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Row 3 — bottom bar. btnClose is wired to Close() in code-behind (OnCloseClick); IsCancel
+             lets the Escape key close the chromeless dialog (keyboard operability). -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="8">
+            <Button x:Name="btnClose"
+                    Content="Close"
+                    MinWidth="90"
+                    MinHeight="40"
+                    IsCancel="True"
+                    Click="OnCloseClick" />
+        </StackPanel>
+
+    </Grid>
+</Window>

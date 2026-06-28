@@ -1,0 +1,312 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:AgIO.Views"
+        x:Class="AgIO.Views.FormSerialPass"
+        x:DataType="vm:FormSerialPassViewModel"
+        Title="Serial Pass Thru Configuration"
+        Width="702" Height="497"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        RequestedThemeVariant="Light"
+        ShowInTaskbar="False"
+        SystemDecorations="Full"
+        Background="#FFDCDCDC"
+        FontFamily="Tahoma"
+        FontSize="14.25">
+    <!-- [XPLAT] migrated from net48/WinForms FormSerialPass.cs + FormSerialPass.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+    <!--
+        [XPLAT] Avalonia 1:1 PARITY reimplementation of the deleted WinForms AgIO
+        "Serial Pass-Through" dialog (Forms/FormSerialPass.designer.cs + Forms/FormSerialPass.cs).
+        Per AAP §0.3.3 this is a visual + behavioural PARITY reimplementation of the original
+        Windows Forms look — never a redesign. No Figma was supplied (AAP §0.8); the rendered
+        WinForms dialog is the sole visual reference.
+
+        Root-attribute parity mapping (WinForms FormSerialPass.designer.cs -> Avalonia):
+          • Form Text "Serial Pass Thru Configuration"  -> Title (verbatim).
+          • ClientSize 702 x 497                         -> Width="702" Height="497".
+          • FormBorderStyle FixedDialog / ControlBox =   -> CanResize="False", SystemDecorations="Full"
+            false / MaximizeBox = MinimizeBox = false       (a fixed, non-resizable dialog footprint).
+          • StartPosition CenterParent                   -> WindowStartupLocation="CenterOwner".
+          • ShowInTaskbar = false                        -> ShowInTaskbar="False".
+          • BackColor Gainsboro                          -> Background="#FFDCDCDC" (Gainsboro). AgIO is
+                                                            LIGHT-ONLY (App.axaml pins
+                                                            RequestedThemeVariant="Light"; no day/night
+                                                            toggle) — restated here so the dialog renders
+                                                            light even on a dark-mode OS.
+          • Form Font Tahoma 12 / control fonts          -> base FontFamily="Tahoma" FontSize="14.25";
+                                                            headers + toggles enlarged/bold via the
+                                                            Window.Styles below for touch parity.
+
+        Data binding (MVVM, COMPILED bindings via x:DataType="vm:FormSerialPassViewModel"; AgIO.csproj
+        sets AvaloniaUseCompiledBindingsByDefault=true). The view-model
+        (Views/FormSerialPassViewModel.cs) owns ALL behaviour — the NTRIP/Radio three-way mutual
+        exclusion, the To-Serial/To-UDP mutual exclusion (in the property setters), culture-safe baud
+        parsing, the shared-radio-port open/close, settings persistence and the cross-platform restart.
+        The WinForms FormLoop "mf" god-object back-reference is gone. Control -> member map:
+          • cboxSerialPassOn  "Serial Pass On"   -> IsChecked {Binding IsPassOn}.
+          • cboxToSerial      "To Serial"        -> IsChecked {Binding SendToSerial}.
+          • cboxToUDP         "To UDP"           -> IsChecked {Binding SendToUdp}.
+                (SendToSerial/SendToUdp are mutually exclusive in the view-model setters — the WinForms
+                 cboxToSerial_Click / cboxToUDP_Click handlers.)
+          • nudSendToUDPPort                     -> Value {Binding SendToUdpPort}.
+          • cboxRadioPort                        -> ItemsSource {Binding AvailablePorts},
+                                                    SelectedItem {Binding SelectedPort}.
+          • cboxBaud                             -> ItemsSource {Binding AvailableBauds},
+                                                    SelectedItem {Binding SelectedBaud}.
+          • btnRescan                            -> {Binding RescanCommand}.
+          • btnOpenSerial                        -> {Binding OpenSerialCommand}  (CanExecute = port closed).
+          • btnCloseSerial                       -> {Binding CloseSerialCommand} (CanExecute = port open).
+          • btnSerialOK                          -> {Binding OkCommand}     (IsDefault — WinForms accept).
+          • btnSerialCancel                      -> {Binding CancelCommand} (IsCancel  — WinForms cancel).
+        The port/baud combos are additionally disabled while the radio port is open
+        (IsEnabled="{Binding !IsRadioPortOpen}"), reproducing the WinForms Load/Open/Close handlers that
+        disabled the combos once mf.spRadio was open. The open/close BUTTONS toggle automatically through
+        their command CanExecute predicates (no IsEnabled binding needed). The dialog-result, the
+        timed-message popups (former mf.TimedMessageBox) and the restart (former Program.Restart) are the
+        hosting Window's concern: the code-behind (FormSerialPass.axaml.cs) subscribes to the view-model's
+        RequestClose / RequestTimedMessage / RequestRestart events, so this markup declares no Click
+        handlers.
+
+        UDP-port keypad: nudSendToUDPPort is an Avalonia NumericUpDown (not a TextBox) precisely so the
+        converted Controls/NumericUpDownExtensions.ShowKeypad(this) touch-keypad helper — wired in the
+        code-behind — can read its Minimum/Maximum/Value and write the FormNumeric result back, exactly
+        as the WinForms ShowKeypad extension did. FormatString="0" keeps the port a plain integer with no
+        culture group separators (AAP §0.6.5 culture safety); Value binds to the int SendToUdpPort
+        (Avalonia converts int <-> decimal? through its default value converter).
+
+        Assets: buttons render as TEXT, not the WinForms ScanPorts / USB_Connect / USB_Disconnect /
+        OK64 / Cancel64 / NtripToSerial / NtripToUDP bitmaps. The migrated AgIO.csproj registers NO
+        btnImages as <AvaloniaResource> (only GPS/AgOpenGPS.csproj does) and excludes
+        Properties/Resources.Designer.cs from compilation (System.Drawing purged), so an
+        avares://AgIO/btnImages/* reference would not resolve and would render a broken image. Every
+        migrated AgIO view therefore uses text affordances — consistent with the sibling
+        FormYes / FormSource / FormRadioChannel / FormAdvancedSettings views; see
+        MIGRATION_DOCS/TRANSITION_MAP.md.
+    -->
+
+    <!-- Large, touch-friendly controls reproduce the WinForms sizing. The three WinForms status
+         toggles (cboxSerialPassOn / cboxToSerial / cboxToUDP) used Appearance.Button with a
+         Salmon (off) -> #80FF80 light-green (on) colour cue; per the agent-prompt they migrate to
+         standard Avalonia CheckBoxes (the on/off state is conveyed by the check glyph + caption). -->
+    <Window.Styles>
+        <Style Selector="CheckBox.statusToggle">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="MinHeight" Value="50" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="10,0,0,0" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="FontFamily" Value="Tahoma" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Outer layout: four stacked content bands over a flexible spacer and a bottom command bar,
+         mirroring the WinForms vertical arrangement (Serial RTCM header -> radio row -> "Send NTRIP
+         To GPS Using:" header -> routing row -> ... -> Serial-Pass-On + Cancel/OK pinned bottom). -->
+    <Grid Margin="16" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+
+        <!-- Row 0 — WinForms label21 "Serial RTCM" (Tahoma 18 Bold), top-centred section header. -->
+        <TextBlock Grid.Row="0"
+                   Text="Serial RTCM"
+                   FontSize="18"
+                   FontWeight="Bold"
+                   HorizontalAlignment="Center"
+                   Margin="0,4,0,12" />
+
+        <!-- Row 1 — radio configuration row. WinForms left-to-right order preserved:
+             btnRescan (x=40) | Port label+combo (x=161) | Baud label+combo (x=316) |
+             btnOpenSerial (x=463) | btnCloseSerial (x=584). -->
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="14"
+                    Margin="0,0,0,8">
+
+            <!-- WinForms btnRescan (ScanPorts image) -> RescanCommand: re-enumerate the serial ports. -->
+            <Button x:Name="btnRescan"
+                    Content="Rescan"
+                    Command="{Binding RescanCommand}"
+                    Width="92" Height="62"
+                    VerticalAlignment="Bottom"
+                    ToolTip.Tip="Re-scan the available serial ports"
+                    AutomationProperties.Name="Rescan serial ports" />
+
+            <!-- WinForms lblCurrentPort "Port" + cboxRadioPort. Disabled while the shared radio port
+                 is open (parity with the WinForms Load/Open/Close handlers). -->
+            <StackPanel Orientation="Vertical" VerticalAlignment="Bottom">
+                <TextBlock Text="Port"
+                           FontWeight="Bold"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,2" />
+                <ComboBox x:Name="cboxRadioPort"
+                          Width="132"
+                          ItemsSource="{Binding AvailablePorts}"
+                          SelectedItem="{Binding SelectedPort}"
+                          IsEnabled="{Binding !IsRadioPortOpen}"
+                          ToolTip.Tip="Radio serial port"
+                          AutomationProperties.Name="Radio serial port" />
+            </StackPanel>
+
+            <!-- WinForms lblCurrentBaud "Baud" + cboxBaud. The baud item list
+                 (4800..256000) is supplied by the view-model's AvailableBauds collection. -->
+            <StackPanel Orientation="Vertical" VerticalAlignment="Bottom">
+                <TextBlock Text="Baud"
+                           FontWeight="Bold"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,2" />
+                <ComboBox x:Name="cboxBaud"
+                          Width="132"
+                          ItemsSource="{Binding AvailableBauds}"
+                          SelectedItem="{Binding SelectedBaud}"
+                          IsEnabled="{Binding !IsRadioPortOpen}"
+                          ToolTip.Tip="Radio baud rate"
+                          AutomationProperties.Name="Radio baud rate" />
+            </StackPanel>
+
+            <!-- WinForms btnOpenSerial (USB_Connect image) -> OpenSerialCommand. The command can
+                 execute only while the port is closed, so the button disables itself once open. -->
+            <Button x:Name="btnOpenSerial"
+                    Content="Open"
+                    Command="{Binding OpenSerialCommand}"
+                    Width="101" Height="58"
+                    VerticalAlignment="Bottom"
+                    ToolTip.Tip="Open the radio serial port"
+                    AutomationProperties.Name="Open serial port" />
+
+            <!-- WinForms btnCloseSerial (USB_Disconnect image) -> CloseSerialCommand. The command can
+                 execute only while the port is open, so the button disables itself once closed. -->
+            <Button x:Name="btnCloseSerial"
+                    Content="Close"
+                    Command="{Binding CloseSerialCommand}"
+                    Width="101" Height="58"
+                    VerticalAlignment="Bottom"
+                    ToolTip.Tip="Close the radio serial port"
+                    AutomationProperties.Name="Close serial port" />
+        </StackPanel>
+
+        <!-- Row 2 — WinForms label23 "Send NTRIP To GPS Using:" (Tahoma 18), centred section header. -->
+        <TextBlock Grid.Row="2"
+                   Text="Send NTRIP To GPS Using:"
+                   FontSize="18"
+                   HorizontalAlignment="Center"
+                   Margin="0,14,0,8" />
+
+        <!-- Row 3 — routing row. WinForms left-to-right order preserved:
+             cboxToSerial (x=98) | label1 "Or" (x=250) | cboxToUDP (x=355) | nudSendToUDPPort (x=517). -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="14"
+                    Margin="0,0,0,8">
+
+            <!-- WinForms cboxToSerial "To Serial" (NtripToSerial image, Appearance.Button toggle) ->
+                 CheckBox bound to SendToSerial. Mutually exclusive with To UDP (view-model setter). -->
+            <CheckBox x:Name="cboxToSerial"
+                      Classes="statusToggle"
+                      Content="To Serial"
+                      IsChecked="{Binding SendToSerial}"
+                      ToolTip.Tip="Send the NTRIP / correction stream to the GPS over the serial RTCM port"
+                      AutomationProperties.Name="Send NTRIP to serial" />
+
+            <!-- WinForms label1 "Or": the separator between the two mutually exclusive send targets. -->
+            <TextBlock Text="Or"
+                       FontWeight="Bold"
+                       VerticalAlignment="Center" />
+
+            <!-- WinForms cboxToUDP "To UDP" (NtripToUDP image, Appearance.Button toggle) ->
+                 CheckBox bound to SendToUdp. Mutually exclusive with To Serial (view-model setter). -->
+            <CheckBox x:Name="cboxToUDP"
+                      Classes="statusToggle"
+                      Content="To UDP"
+                      IsChecked="{Binding SendToUdp}"
+                      ToolTip.Tip="Send the NTRIP / correction stream to AgOpenGPS over UDP"
+                      AutomationProperties.Name="Send NTRIP to UDP" />
+
+            <!-- WinForms nudSendToUDPPort (NumericUpDown, AliceBlue, Max 65535, default 2233). Kept an
+                 Avalonia NumericUpDown so the code-behind can call ShowKeypad(this) to edit it through
+                 the FormNumeric touch keypad. ClipValueToMinMax + Max 65535 reproduce the WinForms
+                 clamp; FormatString="0" keeps it a plain integer (no group separators). -->
+            <NumericUpDown x:Name="nudSendToUDPPort"
+                           Value="{Binding SendToUdpPort}"
+                           Minimum="0"
+                           Maximum="65535"
+                           Increment="1"
+                           ClipValueToMinMax="True"
+                           FormatString="0"
+                           Width="150"
+                           MinHeight="46"
+                           Background="AliceBlue"
+                           FontSize="20"
+                           FontWeight="Bold"
+                           HorizontalContentAlignment="Center"
+                           VerticalContentAlignment="Center"
+                           VerticalAlignment="Center"
+                           ToolTip.Tip="UDP port the NTRIP stream is forwarded to"
+                           AutomationProperties.Name="Send to UDP port" />
+        </StackPanel>
+
+        <!-- Row 4 is the flexible spacer (RowDefinition "*"), pushing the command bar to the bottom. -->
+
+        <!-- Row 5 — bottom command bar. WinForms cboxSerialPassOn (x=215) sat to the LEFT, with
+             btnSerialCancel (x=480) and btnSerialOK (x=593) pinned bottom-right. -->
+        <Grid Grid.Row="5"
+              ColumnDefinitions="Auto,*,Auto"
+              VerticalAlignment="Bottom"
+              Margin="0,8,0,0">
+
+            <!-- WinForms cboxSerialPassOn "Serial Pass On" (Appearance.Button toggle) -> CheckBox bound
+                 to IsPassOn. Toggling has no immediate side effect — the view-model applies the
+                 NTRIP/Radio three-way mutual exclusion only when the dialog is accepted (OkCommand),
+                 matching the WinForms dialog exactly. -->
+            <CheckBox Grid.Column="0"
+                      x:Name="cboxSerialPassOn"
+                      Classes="statusToggle"
+                      Content="Serial Pass On"
+                      IsChecked="{Binding IsPassOn}"
+                      VerticalAlignment="Center"
+                      ToolTip.Tip="Enable serial pass-through (turns NTRIP and Radio off when accepted)"
+                      AutomationProperties.Name="Serial pass-through on" />
+
+            <!-- Right command group: Cancel to the LEFT of OK so OK stays the right-most accept
+                 action (WinForms btnSerialCancel @x=480 sat left of btnSerialOK @x=593). -->
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="13"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom">
+
+                <!-- WinForms btnSerialCancel (Cancel64 image, DialogResult.Cancel) -> CancelCommand.
+                     IsCancel maps the Escape key to this command. -->
+                <Button x:Name="btnSerialCancel"
+                        Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsCancel="True"
+                        Width="88" Height="64"
+                        ToolTip.Tip="Close without saving"
+                        AutomationProperties.Name="Cancel" />
+
+                <!-- WinForms btnSerialOK (OK64 image, the accept action) -> OkCommand. IsDefault maps
+                     the Enter key to this command (WinForms AcceptButton parity). -->
+                <Button x:Name="btnSerialOK"
+                        Content="OK"
+                        Command="{Binding OkCommand}"
+                        IsDefault="True"
+                        Width="88" Height="64"
+                        ToolTip.Tip="Save the settings and restart"
+                        AutomationProperties.Name="OK" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

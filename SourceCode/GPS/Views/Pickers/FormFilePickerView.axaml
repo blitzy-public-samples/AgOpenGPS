@@ -1,0 +1,291 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — Field file-picker dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Pickers/FormFilePicker`
+    (FormFilePicker.cs + FormFilePicker.Designer.cs). It lists every field folder that contains a
+    Field.txt in a 3-column table (Field name / Distance from the current position / Boundary
+    area) and lets the operator sort (cycle the column order), delete the selected field, cancel
+    (clear the pending pick), or open the selected field. Per AAP §0.3.3 this is a faithful parity
+    reimplementation of the current Windows Forms look — never a redesign: no new colors, no
+    relayout, no UX changes.
+
+    WIRING CONTRACT (the partner code-behind FormFilePickerView.axaml.cs owns ALL behaviour, NOT
+    this markup):
+      * This view is IMPERATIVE / code-behind-driven, exactly like the sibling FormYesView and
+        FormInputDialogView: there is intentionally NO x:DataType, NO DataContext and NO MVVM
+        binding on the controls themselves. Every control is addressed by its x:Name and the
+        code-behind attaches the Click handlers programmatically (reproducing the WinForms
+        Designer's `this.btnX.Click += ...` wiring) and assigns the translated gStr.* strings at
+        runtime. The x:Names below MUST stay exactly as written — the code-behind references each
+        one: lvLines, chName, chDistance, chArea, btnByDistance, btnSortText, btnDeleteField,
+        labelDeleteField, btnDeleteAB, labelCancel, btnOpenExistingLv, btnOpenText.
+      * The list ROWS are bound, but with classic (reflection) bindings — {Binding Col0/Col1/Col2}
+        against a small row record (FileItem { Name, Distance, Area, Col0, Col1, Col2 }) that the
+        code-behind defines and fills. Because the column display order cycles (WinForms
+        GetFieldNames(order): 0 = Name|Distance|Area, 1 = Distance|Name|Area,
+        2 = Area|Name|Distance), the code-behind rewrites Col0/Col1/Col2 per row AND swaps the
+        chName/chDistance/chArea header .Text on each Sort click (WinForms UpdateColumnHeaders).
+        NO x:DataType is declared (matches the sibling code-behind dialogs). To keep these as
+        classic REFLECTION bindings regardless of the project's compiled-bindings default
+        (the GPS app, like its sibling AgIO, may set AvaloniaUseCompiledBindingsByDefault=true),
+        the root sets x:CompileBindings="False" — the canonical opt-out that makes every
+        {Binding ...} below a reflection binding. Selection always resolves back to the
+        underlying field Name regardless of the visible column order.
+
+    DEAD CODE OMITTED: the WinForms designer created a `System.Windows.Forms.Timer timer1`
+    (Interval 300) and enabled it in Load, but there is NO timer1_Tick handler anywhere in
+    FormFilePicker.cs — it was dead code. No timer is reproduced here.
+
+    WINDOW SHELL — mirrors FormFilePicker.Designer.cs exactly:
+      Text "FormFilePicker" (runtime gStr.gsFieldPicker) -> Title (hidden by the borderless shell;
+                                                            kept for taskbar / automation).
+      ClientSize 991 x 578        -> Width / Height (SystemDecorations="None" => client == window).
+      BackColor WhiteSmoke        -> Background="WhiteSmoke" (WinForms Color.WhiteSmoke == #FFF5F5F5).
+      ControlBox = false          -> covered by the borderless (SystemDecorations="None") shell.
+      ShowInTaskbar = false       -> ShowInTaskbar="False".
+      (Fixed, not resizable)      -> CanResize="False".
+      StartPosition.CenterParent  -> WindowStartupLocation="CenterOwner".
+      Font Tahoma 14.25pt         -> FontFamily="Tahoma" FontSize="19" (14.25pt x 96/72 = 19 DIP).
+      (NOT TopMost — the designer never set TopMost, so this dialog is intentionally not topmost.)
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.Pickers.FormFilePickerView"
+        x:CompileBindings="False"
+        Title="Field Picker"
+        Width="991"
+        Height="578"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+        SystemDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19">
+
+    <Window.Styles>
+        <!--
+            Shared flat / transparent image-button face. All four command buttons are WinForms
+            flat, border-less, image-faced buttons on the WhiteSmoke form (btnByDistance and
+            btnOpenExistingLv set BackColor=Transparent explicitly; per the file spec the smaller
+            btnDeleteField / btnDeleteAB are likewise rendered transparent so only their glyph
+            shows). The pointerover / pressed setters target the Fluent Button template's content
+            presenter so the theme's own hover / press fill does NOT paint over the flat face — the
+            same technique used by Keypad/NumKeypad.axaml and FormYesView.axaml.
+        -->
+        <Style Selector="Button.flatBtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.flatBtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatBtn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <!--
+            Column-header captions. WinForms ListView (View=Details) renders its header row in the
+            control's own Font (Tahoma 21.75pt = 29 DIP), left aligned with a small text indent.
+        -->
+        <Style Selector="TextBlock.colHeader">
+            <Setter Property="FontSize" Value="29" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="6,2,4,2" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <!-- Row cells inside the ListBox.ItemTemplate share the list's 29 DIP font and the same
+             indent so the values line up directly under the headers. -->
+        <Style Selector="TextBlock.cell">
+            <Setter Property="FontSize" Value="29" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="6,2,4,2" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <!-- Tighten the Fluent ListBoxItem to the WinForms ListView row rhythm: no extra item
+             padding / min-height / corner radius, and stretch the row content full width so the
+             selection highlight spans the whole row (WinForms FullRowSelect=true). -->
+        <Style Selector="ListBox#lvLines ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        The WinForms form is a FIXED 991 x 578 client area (ControlBox=false, not resizable), so
+        the designer's Anchor flags never actually trigger. A Canvas reproduces every control's
+        absolute Location / Size verbatim (the same parity technique as Keypad/NumKeypad.axaml),
+        which is the most faithful 1:1 mapping of the designer coordinates.
+    -->
+    <Canvas Width="991" Height="578">
+
+        <!--
+            lvLines region. WinForms ListView (View=Details) @ (5,12) size 986 x 459. A WinForms
+            Details ListView draws its column-header row INSIDE its own bounds, so the header plus
+            the scrolling rows together occupy the 459 px height: an Auto header row + a "*" list
+            row inside a 986 x 459 Grid reproduces that. The header Grid does NOT scroll; only the
+            ListBox scrolls its rows.
+        -->
+        <Grid Canvas.Left="5" Canvas.Top="12" Width="986" Height="459"
+              RowDefinitions="Auto,*">
+
+            <!--
+                Non-scrolling column-header row over the 680 / 140 / 140 columns (matching the
+                WinForms chName / chDistance / chArea widths). The code-behind assigns the runtime
+                gStr text and SWAPS these three .Text values when Sort cycles the order. The 4th "*"
+                column absorbs the ~26 px the ListBox reserves for its scrollbar so the headers stay
+                aligned with the row cells. The 1 px bottom Border is the header underline and the
+                per-cell right Borders are the vertical rules (WinForms GridLines=true).
+            -->
+            <Border Grid.Row="0" BorderBrush="#FFB0B8C0" BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="680,140,140,*">
+                    <Border Grid.Column="0" BorderBrush="#FFB0B8C0" BorderThickness="0,0,1,0">
+                        <TextBlock x:Name="chName" Classes="colHeader" Text="Field" />
+                    </Border>
+                    <Border Grid.Column="1" BorderBrush="#FFB0B8C0" BorderThickness="0,0,1,0">
+                        <TextBlock x:Name="chDistance" Classes="colHeader" Text="Distance" />
+                    </Border>
+                    <TextBlock x:Name="chArea" Grid.Column="2" Classes="colHeader" Text="Area" />
+                </Grid>
+            </Border>
+
+            <!--
+                The field list. WinForms: BackColor InactiveCaption (~#FFBFCDDB), Tahoma 21.75pt
+                (= 29 DIP), FullRowSelect, MultiSelect=false, HideSelection=false. Avalonia:
+                Background #FFBFCDDB, SelectionMode="Single". Each row stretches the full width via
+                the "ListBox#lvLines ListBoxItem" style above (HorizontalContentAlignment="Stretch"
+                belongs on ListBoxItem, NOT on the ListBox/ItemsControl itself). BorderThickness 0
+                (the form already frames it). The rows (ItemsSource) and the per-row column order are
+                supplied by the code-behind so the visible column order tracks the cycling header order.
+            -->
+            <ListBox x:Name="lvLines"
+                     AutomationProperties.Name="Field list"
+                     Grid.Row="1"
+                     Background="#FFBFCDDB"
+                     BorderThickness="0"
+                     FontSize="29"
+                     SelectionMode="Single"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <!--
+                            One row = three display slots Col0 / Col1 / Col2 over the SAME
+                            680 / 140 / 140 columns as the header. NO x:DataType is set (this is a
+                            code-behind dialog), so {Binding Col0} etc. are classic reflection
+                            bindings against the FileItem row record — exactly as the file spec
+                            prescribes. The bottom rule + per-cell right rules reproduce the WinForms
+                            GridLines.
+                        -->
+                        <Border BorderBrush="#FFA8B6C6" BorderThickness="0,0,0,1">
+                            <Grid ColumnDefinitions="680,140,140">
+                                <Border Grid.Column="0" BorderBrush="#FFA8B6C6" BorderThickness="0,0,1,0">
+                                    <TextBlock Classes="cell" Text="{Binding Col0}" />
+                                </Border>
+                                <Border Grid.Column="1" BorderBrush="#FFA8B6C6" BorderThickness="0,0,1,0">
+                                    <TextBlock Classes="cell" Text="{Binding Col1}" />
+                                </Border>
+                                <TextBlock Grid.Column="2" Classes="cell" Text="{Binding Col2}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+
+        <!--
+            labelDeleteField — WinForms Label @ (43,488), Tahoma 9.75pt (= 13 DIP), AutoSize, text
+            "Delete Field" (runtime gStr.gsDeleteField). Sits just above btnDeleteField.
+        -->
+        <TextBlock x:Name="labelDeleteField"
+                   Canvas.Left="43" Canvas.Top="488"
+                   FontSize="13"
+                   Text="Delete Field" />
+
+        <!--
+            labelCancel — WinForms Label @ (515,488), Tahoma 9.75pt (= 13 DIP), text "Cancel"
+            (runtime gStr.gsCancel). Sits just above btnDeleteAB.
+        -->
+        <TextBlock x:Name="labelCancel"
+                   Canvas.Left="515" Canvas.Top="488"
+                   FontSize="13"
+                   Text="Cancel" />
+
+        <!--
+            btnDeleteField — WinForms button @ (46,507) 71 x 63, image Trash. Deletes the selected
+            field then reloads the list (it stays open — no DialogResult). Image-only, flat /
+            transparent. Native glyph is 64 x 64; shown at 48 x 48 (Uniform) to sit cleanly in the
+            63 px-tall button, consistent with the other command glyphs.
+        -->
+        <Button x:Name="btnDeleteField"
+                Classes="flatBtn"
+                Canvas.Left="46" Canvas.Top="507"
+                Width="71" Height="63"
+                AutomationProperties.Name="Delete Field">
+            <Image Source="avares://AgOpenGPS/btnImages/Trash.png"
+                   Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!--
+            btnByDistance — WinForms button @ (210,507) 147 x 63: image Sort (ImageAlign MiddleLeft)
+            then text "Sort" (TextAlign MiddleRight, TextImageRelation ImageBeforeText). Cycles the
+            column order (btnByDistance_Click: order = (order + 1) % 3). Font Tahoma 18pt (= 24 DIP).
+            Reproduced as a centered horizontal StackPanel (image, then text) per the file spec.
+        -->
+        <Button x:Name="btnByDistance"
+                AutomationProperties.Name="Sort field list"
+                Classes="flatBtn"
+                Canvas.Left="210" Canvas.Top="507"
+                Width="147" Height="63">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Image Source="avares://AgOpenGPS/btnImages/Sort.png"
+                       Width="48" Height="48" Stretch="Uniform" />
+                <TextBlock x:Name="btnSortText" Text="Sort" FontSize="24" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+        <!--
+            btnDeleteAB — WinForms button @ (502,507) 71 x 63, image Cancel64 (WinForms
+            DialogResult.Cancel — the code-behind clears mf.filePickerFileAndDirectory). Image-only,
+            flat / transparent.
+        -->
+        <Button x:Name="btnDeleteAB"
+                Classes="flatBtn"
+                Canvas.Left="502" Canvas.Top="507"
+                Width="71" Height="63"
+                AutomationProperties.Name="Cancel">
+            <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                   Width="48" Height="48" Stretch="Uniform" />
+        </Button>
+
+        <!--
+            btnOpenExistingLv — WinForms button @ (697,507) 261 x 63: image FileOpen (MiddleLeft)
+            then text "Use Selected" (MiddleRight, ImageBeforeText). WinForms DialogResult.Yes — the
+            code-behind sets mf.filePickerFileAndDirectory to the chosen Field.txt and closes. Font
+            Tahoma 18pt (= 24 DIP). Centered horizontal StackPanel (image, then text).
+        -->
+        <Button x:Name="btnOpenExistingLv"
+                AutomationProperties.Name="Use Selected"
+                Classes="flatBtn"
+                Canvas.Left="697" Canvas.Top="507"
+                Width="261" Height="63">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Image Source="avares://AgOpenGPS/btnImages/FileOpen.png"
+                       Width="48" Height="48" Stretch="Uniform" />
+                <TextBlock x:Name="btnOpenText" Text="Use Selected" FontSize="24" VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+    </Canvas>
+</Window>

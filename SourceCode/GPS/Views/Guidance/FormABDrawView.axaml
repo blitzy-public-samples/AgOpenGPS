@@ -1,0 +1,332 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    FormABDrawView.axaml — Avalonia 1:1 parity reimplementation of the WinForms
+    "Draw AB" boundary-tracing dialog (FormABDraw). XAML markup half; the imperative
+    wiring lives in FormABDrawView.axaml.cs.
+
+    Source of truth (behaviour + layout frozen for parity):
+        SourceCode/GPS/Forms/Guidance/FormABDraw.cs
+        SourceCode/GPS/Forms/Guidance/FormABDraw.Designer.cs
+
+    Layout mirrors the WinForms form exactly: a square OpenGL viewport on the LEFT
+    (oglSelf — BackColor Black, Cursor Cross) and the 2-column × 9-row control panel
+    (tlp1, 299 px wide) on the RIGHT. The viewport is NOT instantiated in markup; the
+    code-behind inserts AvaloniaGeoViewport.View into ViewportHost.Child (pattern B —
+    raw immediate-mode GL + custom camera), exactly as sibling Field/Guidance views do.
+
+    Event handlers are attached BY NAME in the code-behind (the established sibling
+    convention so the view compiles independently of the still-gated domain types);
+    each control therefore carries an x:Name and an inline note of its intended handler
+    rather than a Click=/GotFocus= attribute.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:AgOpenGPS.Controls"
+        xmlns:vm="clr-namespace:AgOpenGPS.Views"
+        x:Class="AgOpenGPS.Views.FormABDrawView"
+        x:CompileBindings="True"
+        Title="Draw AB"
+        Background="{DynamicResource AogLegacyWhiteSmokeBrush}"
+        FontFamily="Tahoma"
+        Foreground="Black"
+        CanResize="True"
+        SystemDecorations="Full"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        MinWidth="1022" MinHeight="742"
+        Width="1006" Height="703">
+    <!-- [XPLAT] omit HelpButton — Avalonia has no direct equivalent (matches FormGridView convention).
+         Title is overwritten at runtime by the code-behind to: gStr.gsABDraw + " - " + gStr.gsABDrawHint. -->
+
+    <Window.Styles>
+        <!-- imageButton: flat, transparent image button reproducing WinForms FlatStyle.Flat,
+             BorderSize 0, BackColor Transparent, MouseOver/MouseDownBackColor Transparent.
+             Content alignment is Stretch so the inner Image (Stretch="Uniform") scales to fit the
+             button bounds — the faithful equivalent of the WinForms BackgroundImageLayout = Zoom. -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.imageButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <!-- WinForms greys out a disabled button's image; approximate with reduced opacity. -->
+        <Style Selector="Button.imageButton:disabled">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+
+        <!-- imageToggle: WinForms CheckBox with Appearance=Button. A custom template binds the
+             ContentPresenter Background to the control Background so the toggle colour drives the fill
+             in every interaction state (hover/pressed/checked); the per-class :checked selectors below
+             flip to the WinForms FlatAppearance.CheckedBackColor. BorderColor Black, FlatStyle Flat. -->
+        <Style Selector="ToggleButton.imageToggle">
+            <Setter Property="BorderBrush" Value="Black" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="3" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Name="PART_ContentPresenter"
+                                      Background="{TemplateBinding Background}"
+                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <!-- cboxIsVisible: BackColor 255,200,200 (unchecked); CheckedBackColor 220,250,220. -->
+        <Style Selector="ToggleButton.visToggle">
+            <Setter Property="Background" Value="#FFFFC8C8" />
+        </Style>
+        <Style Selector="ToggleButton.visToggle:checked">
+            <Setter Property="Background" Value="#FFDCFADC" />
+        </Style>
+        <!-- cboxIsZoom: BackColor WhiteSmoke (unchecked); CheckedBackColor 180,255,160. -->
+        <Style Selector="ToggleButton.zoomToggle">
+            <Setter Property="Background" Value="WhiteSmoke" />
+        </Style>
+        <Style Selector="ToggleButton.zoomToggle:checked">
+            <Setter Property="Background" Value="#FFB4FFA0" />
+        </Style>
+    </Window.Styles>
+
+    <!-- Root: square viewport (left, fills) + Auto-width control column (right). -->
+    <Grid ColumnDefinitions="*,Auto">
+
+        <!-- ===== LEFT (Grid.Column 0) — embedded OpenGL viewport host =====
+             Empty by design: code-behind sets ViewportHost.Child = _viewport.View
+             (AvaloniaGeoViewport, from SourceCode/GPS/Controls/AvaloniaGeoViewport.cs).
+             Black background + Cross cursor mirror oglSelf; resize/square-aspect is handled
+             in code-behind, so the Border simply fills column 0. -->
+        <Border x:Name="ViewportHost"
+                Grid.Column="0"
+                Background="Black"
+                Cursor="Cross"
+                Margin="2" />
+
+        <!-- ===== RIGHT (Grid.Column 1) — control column tlp1 (2 cols × 9 rows) =====
+             RowDefinitions mirror the WinForms RowStyles: rows 0-5 proportional, row 6 = name
+             textbox (39 px ≈ 40), row 7 = label/AddTime (52 px), row 8 = bottom Cancel/OK. -->
+        <Grid x:Name="tlp1"
+              Grid.Column="1"
+              Width="299"
+              Margin="2"
+              ColumnDefinitions="*,*"
+              RowDefinitions="*,*,*,*,*,*,40,52,*">
+
+            <!-- R0 C0 — btnBLength (APlusPlusB). Extends curve B-end by 50 pts. Handler: btnBLength_Click -->
+            <Button x:Name="btnBLength" Classes="imageButton"
+                    AutomationProperties.Name="Extend B end"
+                    ToolTip.Tip="Extend B end"
+                    Grid.Row="0" Grid.Column="0"
+                    Width="110" Height="43"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/APlusPlusB.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R0 C1 — btnDrawSections (MappingOff; code-behind swaps to MappingOn). Handler: btnDrawSections_Click -->
+            <Button x:Name="btnDrawSections" Classes="imageButton"
+                    AutomationProperties.Name="Toggle section mapping"
+                    ToolTip.Tip="Toggle section mapping"
+                    Grid.Row="0" Grid.Column="1"
+                    Width="72" Height="61"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/MappingOff.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R1 C0 — btnALength (APlusPlusA). Extends curve A-end by 50 pts. Handler: btnALength_Click -->
+            <Button x:Name="btnALength" Classes="imageButton"
+                    AutomationProperties.Name="Extend A end"
+                    ToolTip.Tip="Extend A end"
+                    Grid.Row="1" Grid.Column="0"
+                    Width="110" Height="43"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/APlusPlusA.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R1 C1 — btnCancelTouch (HeadlandDeletePoints). Handler: btnCancelTouch_Click -->
+            <Button x:Name="btnCancelTouch" Classes="imageButton"
+                    AutomationProperties.Name="Delete touch points"
+                    ToolTip.Tip="Delete touch points"
+                    Grid.Row="1" Grid.Column="1"
+                    Width="72" Height="63"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/HeadlandDeletePoints.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R2 C0 — cboxIsVisible (TrackVisible; code-behind swaps TracksInvisible when unchecked).
+                 WinForms CheckBox Appearance=Button, Checked=true. Handler: cboxIsVisible_Click -->
+            <ToggleButton x:Name="cboxIsVisible" Classes="imageToggle visToggle"
+                          AutomationProperties.Name="Toggle track visibility"
+                          ToolTip.Tip="Toggle track visibility"
+                          Grid.Row="2" Grid.Column="0"
+                          Width="72" Height="68"
+                          IsChecked="True"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          FontFamily="Tahoma" FontSize="21" FontWeight="Bold">
+                <Image Source="avares://AgOpenGPS/btnImages/TrackVisible.png" Stretch="Uniform" />
+            </ToggleButton>
+
+            <!-- R2 C1 — btnMakeBoundaryCurve (BoundaryCurveLine). Handler: btnMakeBoundaryCurve_Click -->
+            <Button x:Name="btnMakeBoundaryCurve" Classes="imageButton"
+                    AutomationProperties.Name="Make boundary curve"
+                    ToolTip.Tip="Make boundary curve"
+                    Grid.Row="2" Grid.Column="1"
+                    Width="100" Height="68"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/BoundaryCurveLine.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R3 C0 — cboxIsZoom (ZoomOGL). WinForms CheckBox Appearance=Button. Handler: cboxIsZoom_Click
+                 (source event was cboxIsZoom_CheckedChanged; code-behind reads IsChecked). -->
+            <ToggleButton x:Name="cboxIsZoom" Classes="imageToggle zoomToggle"
+                          AutomationProperties.Name="Toggle zoom"
+                          ToolTip.Tip="Toggle zoom"
+                          Grid.Row="3" Grid.Column="0"
+                          Width="72" Height="68"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          FontFamily="Tahoma" FontSize="21" FontWeight="Bold">
+                <Image Source="avares://AgOpenGPS/btnImages/ZoomOGL.png" Stretch="Uniform" />
+            </ToggleButton>
+
+            <!-- R3 C1 — btnDeleteCurve (Trash). Handler: btnDeleteCurve_Click -->
+            <Button x:Name="btnDeleteCurve" Classes="imageButton"
+                    AutomationProperties.Name="Delete curve"
+                    ToolTip.Tip="Delete curve"
+                    Grid.Row="3" Grid.Column="1"
+                    Width="72" Height="52"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/Trash.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R4 C0 — btnMakeCurve (ABTrackCurve). Starts disabled. Handler: btnMakeCurve_Click -->
+            <Button x:Name="btnMakeCurve" Classes="imageButton"
+                    AutomationProperties.Name="Make curve"
+                    ToolTip.Tip="Make curve"
+                    Grid.Row="4" Grid.Column="0"
+                    Width="90" Height="80"
+                    IsEnabled="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/ABTrackCurve.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R4 C1 — btnMakeABLine (ABTrackAB). Starts disabled. Handler: btnMakeABLine_Click -->
+            <Button x:Name="btnMakeABLine" Classes="imageButton"
+                    AutomationProperties.Name="Make AB line"
+                    ToolTip.Tip="Make AB line"
+                    Grid.Row="4" Grid.Column="1"
+                    Width="90" Height="80"
+                    IsEnabled="False"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/ABTrackAB.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R5 C0 — btnSelectCurveBk (ABLineCycleBk). Handler: btnSelectCurveBk_Click -->
+            <Button x:Name="btnSelectCurveBk" Classes="imageButton"
+                    AutomationProperties.Name="Previous track"
+                    ToolTip.Tip="Previous track"
+                    Grid.Row="5" Grid.Column="0"
+                    Width="128" Height="68"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/ABLineCycleBk.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R5 C1 — btnSelectCurve (ABLineCycle). Handler: btnSelectCurve_Click -->
+            <Button x:Name="btnSelectCurve" Classes="imageButton"
+                    AutomationProperties.Name="Next track"
+                    ToolTip.Tip="Next track"
+                    Grid.Row="5" Grid.Column="1"
+                    Width="128" Height="68"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/ABLineCycle.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R6 (ColumnSpan 2) — tboxNameCurve. BackColor ControlLight; Tahoma 18 Bold; MaxLength 100;
+                 centered text. Handlers: tboxNameCurve_Enter (GotFocus) / tboxNameCurve_Leave (LostFocus). -->
+            <TextBox x:Name="tboxNameCurve"
+                     Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
+                     Height="36"
+                     Margin="4,0"
+                     HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                     Background="#FFF0F0F0"
+                     Foreground="Black"
+                     BorderBrush="Gray"
+                     BorderThickness="1"
+                     CornerRadius="0"
+                     MaxLength="100"
+                     FontFamily="Tahoma" FontSize="24" FontWeight="Bold"
+                     TextAlignment="Center"
+                     VerticalContentAlignment="Center" />
+
+            <!-- R7 C0 — lblCurveSelected. Tahoma 14.25 Bold, Black, centered. Initial text "1". -->
+            <TextBlock x:Name="lblCurveSelected"
+                       Grid.Row="7" Grid.Column="0"
+                       Text="1"
+                       FontFamily="Tahoma" FontSize="19" FontWeight="Bold"
+                       Foreground="Black"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+            <!-- R7 C1 — btnAddTime (background image JobNameTime). Tahoma 12 Bold. Handler: btnAddTime_Click -->
+            <Button x:Name="btnAddTime" Classes="imageButton"
+                    AutomationProperties.Name="Add time to name"
+                    ToolTip.Tip="Add time to name"
+                    Grid.Row="7" Grid.Column="1"
+                    Width="144" Height="42"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="16" FontWeight="Bold">
+                <Image Source="avares://AgOpenGPS/btnImages/JobNameTime.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R8 C0 — btnCancel (Cancel64). WinForms DialogResult.Cancel. Handler: btnCancel_Click -->
+            <Button x:Name="btnCancel" Classes="imageButton"
+                    AutomationProperties.Name="Cancel"
+                    ToolTip.Tip="Cancel"
+                    Grid.Row="8" Grid.Column="0"
+                    Width="88" Height="56"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    FontFamily="Tahoma" FontSize="19">
+                <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png" Stretch="Uniform" />
+            </Button>
+
+            <!-- R8 C1 — btnExit (OK64). Tahoma 15.75 Bold, Foreground 192,64,0. Commits/closes. Handler: btnExit_Click -->
+            <Button x:Name="btnExit" Classes="imageButton"
+                    AutomationProperties.Name="Save and close"
+                    ToolTip.Tip="Save and close"
+                    Grid.Row="8" Grid.Column="1"
+                    Width="88" Height="56"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Foreground="#FFC04000"
+                    FontFamily="Tahoma" FontSize="21" FontWeight="Bold">
+                <Image Source="avares://AgOpenGPS/btnImages/OK64.png" Stretch="Uniform" />
+            </Button>
+
+        </Grid>
+    </Grid>
+</Window>

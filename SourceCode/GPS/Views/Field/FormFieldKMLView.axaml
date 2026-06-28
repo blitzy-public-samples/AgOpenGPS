@@ -1,0 +1,273 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "Create Field From KML" dialog (Avalonia view).
+
+    1:1 visual-parity reimplementation of the WinForms `Forms/Field/FormFieldKML`
+    (FormFieldKML.cs + FormFieldKML.Designer.cs + FormFieldKML.resx). The operator types a
+    new field name (sanitised live against glm.fileRegex), optionally appends the current date
+    and/or time, picks a Google-Earth KML file whose outer <coordinates> ring becomes the field
+    boundary, then saves — which creates the field directory + initial files and loads the KML
+    boundary. Per AAP §0.3.3 this is a faithful parity reimplementation of the current Windows
+    Forms look, never a redesign: no new colours, no relayout, no UX changes.
+
+    This dialog is the close sibling of FormFieldDir ("Create New Field by name"); it is the same
+    name/date/time pattern PLUS an extra "Load KML" button and a taller shell. The markup therefore
+    deliberately follows the established, validated sibling view FormFieldDirView.axaml so the two
+    dialogs stay visually and structurally consistent.
+
+    Window shell — mirrors FormFieldKML.Designer.cs:
+      ClientSize 608 x 332        -> Width / Height (SystemDecorations="None" => client == window).
+      FormBorderStyle.None        -> SystemDecorations="None".
+      ControlBox = false          -> covered by the borderless (SystemDecorations="None") shell.
+      ShowInTaskbar = false       -> ShowInTaskbar="False".
+      (Fixed, not resizable)      -> CanResize="False".
+      StartPosition CenterParent  -> WindowStartupLocation="CenterOwner" (shown modally over FormGPS;
+                                     this replaces the WinForms ScreenHelper reposition, which per the
+                                     file spec is intentionally NOT ported).
+      Font Tahoma 14.25pt         -> FontFamily="Tahoma" + FontSize="19". WinForms points are converted
+                                     to Avalonia device-independent pixels (pt x 96/72): 14.25 -> 19,
+                                     18 -> 24. Because the window is sized 608 x 332 in DIP (1:1 with the
+                                     WinForms client px), converting the fonts keeps the original physical
+                                     proportions (same convention as the sibling FormFieldDirView).
+      BackColor Gainsboro         -> Background="{DynamicResource AogFrameBrush}". Per this file's spec the
+                                     neutral chrome is themed to the App.axaml day/night palette rather
+                                     than hard-coding a WinForms colour.
+      Text "Create New Field "    -> Title (design-time; the code-behind assigns gStr.gsCreateNewField).
+
+    Wiring contract — the partner code-behind (FormFieldKMLView.axaml.cs) owns ALL behaviour:
+      * Code-behind dialog: NO DataContext, NO x:DataType, NO MVVM bindings — exactly like the sibling
+        FormFieldDirView / FormYesView / FormInputDialogView. Controls are addressed imperatively by
+        their x:Name.
+      * Button Click handlers are declared here (OnAddDateClick / OnAddTimeClick / OnLoadKmlClick /
+        OnCancelClick / OnSaveClick) following the established OnXxxClick convention (e.g.
+        FormYesView.axaml.cs: `private void OnOkClick(object sender, RoutedEventArgs e)`). The code-behind
+        implements them, reproducing btnAddDate_Click (append " yyyy-MM-dd" InvariantCulture),
+        btnAddTime_Click (append " HH-mm" InvariantCulture), btnLoadKML_Click (KML OpenFileDialog ->
+        FindLatLon + LoadKMLBoundary), btnSerialCancel_Click (Close) and btnSave_Click (save current
+        field if a job is started, CreateNewField, LoadKMLBoundary, DialogResult OK, Close).
+      * tboxFieldName declares NO events here: its TextChanged (glm.fileRegex sanitisation, then enable/
+        disable btnLoadKML on a non-empty trimmed name) and its tap -> on-screen keyboard
+        (FormGPS.isKeyboardOn) flow are attached in the code-behind by name, mirroring FormFieldKML.cs.
+      * btnSave starts IsEnabled="False" (WinForms FormFieldDir_Load: btnSave.Enabled = false); the
+        code-behind enables it only after a KML boundary loads successfully (LoadKMLBoundary sets
+        btnSave.Enabled = true).
+      * btnLoadKML starts enabled (its WinForms designer default — no Enabled=false is set); the
+        code-behind disables it on an empty name and re-disables it after a successful load.
+      * The "Enter Field Name" and "+" texts below are design-time placeholders; at runtime the
+        code-behind assigns labelFieldname.Text = gStr.gsEnterFieldName.
+
+    Colours come from App.axaml's day/night ThemeDictionaries via {DynamicResource ...} (so the live
+    Light<->Dark switch is observed) — no WinForms colours, no GDI namespaces. Button glyphs are served
+    from the GPS assembly (assembly name "AgOpenGPS") via avares:// URIs (BoundaryLoadFromGE / OK64 /
+    Cancel64 / JobNameCalendar / JobNameTime) — the convention used by every sibling GPS view. The four
+    OK/Cancel/Calendar/Time glyphs are native 64 x 64 PNGs; BoundaryLoadFromGE is a native 68 x 68 PNG
+    (sized to its intrinsic dimensions below to avoid up/down-scaling).
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormFieldKMLView"
+        Title="Create New Field"
+        Width="608"
+        Height="332"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="Tahoma"
+        FontSize="19"
+        Background="{DynamicResource AogFrameBrush}">
+
+    <!--
+        Flat, borderless, transparent image buttons — the cross-platform equivalent of the WinForms
+        FlatStyle.Flat + FlatAppearance.BorderSize = 0 + BackColor = Transparent carried by every button
+        in FormFieldKML.Designer.cs. The Fluent Button template otherwise paints a hover / pressed /
+        disabled fill; these setters keep the face transparent in all interaction states so only the
+        glyph shows (the same technique used by the sibling FormFieldDirView and Keypad/NumKeypad).
+        The :disabled face stays transparent too; the explicit Opacity below reproduces the greyed
+        look of the WinForms disabled btnSave.
+    -->
+    <Window.Styles>
+        <Style Selector="Button.flatImage">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <!-- Disabled image buttons render their glyph dimmed, reproducing the greyed look WinForms
+             applies to a disabled Button.Image (e.g. the initially-disabled btnSave). An Avalonia
+             <Image> is unaffected by the Fluent theme's disabled foreground, so the dim is applied
+             explicitly here via Opacity; it reverts to full opacity the moment the code-behind sets
+             btnSave.IsEnabled = true after a KML boundary loads. -->
+        <Style Selector="Button.flatImage:disabled">
+            <Setter Property="Opacity" Value="0.5" />
+        </Style>
+        <Style Selector="Button.flatImage:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.flatImage:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Four logical bands (mirrors the designer's taller layout): the name label, the name textbox, the
+        "+ date / + time" append band, and the bottom action band. Unlike the shorter FormFieldDir, the
+        KML designer stacks these vertically inside the 332px height — the add buttons sit on their own
+        row (y125-205) above a separate action row (y238-327) — so the layout uses four stacked rows
+        rather than the sibling's two overlapping groups. The bottom action band places the "Load KML"
+        button on the LEFT and the Cancel / Save buttons on the RIGHT, exactly as the designer positions
+        them (btnLoadKML x=53, btnSerialCancel x=376, btnSave x=520).
+    -->
+    <Grid Margin="15,11,5,5">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- labelFieldname : designer (18,11)             -->
+            <RowDefinition Height="Auto" />   <!-- tboxFieldName  : designer (15,38) 565x36       -->
+            <RowDefinition Height="Auto" />   <!-- add band       : + date (left) + time          -->
+            <RowDefinition Height="*" />      <!-- action band    : LoadKML (left) + Cancel/Save (right) -->
+        </Grid.RowDefinitions>
+
+        <!-- labelFieldname: Tahoma 14.25pt Bold (-> 19 DIP). Runtime text = gStr.gsEnterFieldName. -->
+        <TextBlock x:Name="labelFieldname"
+                   Grid.Row="0"
+                   Text="Enter Field Name"
+                   FontSize="19"
+                   FontWeight="Bold"
+                   Foreground="{DynamicResource AogTextBrush}"
+                   HorizontalAlignment="Left"
+                   Margin="0,0,0,6" />
+
+        <!-- tboxFieldName: Tahoma 18pt Bold (-> 24 DIP), single line, stretched across the dialog
+             (designer 565 wide). This is the focal control. Its TextChanged (sanitisation + btnLoadKML
+             enable) and tap -> on-screen keyboard flow are wired in the code-behind, so no events are
+             declared here. The WinForms BackColor (AliceBlue) is intentionally NOT hard-coded — the
+             Fluent theme supplies the day/night-aware input background (no WinForms colours). -->
+        <TextBox x:Name="tboxFieldName"
+                 Grid.Row="1"
+                 FontSize="24"
+                 FontWeight="Bold"
+                 MinHeight="44"
+                 HorizontalAlignment="Stretch"
+                 VerticalContentAlignment="Center"
+                 AutomationProperties.Name="Field name" />
+
+        <!--
+            Add band: the two "append to name" controls, each a "+" label followed by its image button
+            (designer: label2 + btnAddDate, label3 + btnAddTime), left-aligned. btnAddDate appends the
+            date (yyyy-MM-dd) and btnAddTime appends the time (HH-mm) — handled in the code-behind. The
+            top margin reproduces the vertical gap the designer leaves below the textbox (y74 -> y125).
+        -->
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Left"
+                    Margin="0,18,0,0"
+                    Spacing="40">
+
+            <!-- + date -->
+            <StackPanel Orientation="Horizontal"
+                        Spacing="4"
+                        VerticalAlignment="Center">
+                <TextBlock x:Name="label2"
+                           Text="+"
+                           FontSize="19"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           VerticalAlignment="Center" />
+                <Button x:Name="btnAddDate"
+                        Classes="flatImage"
+                        Width="83"
+                        Height="79"
+                        AutomationProperties.Name="Add date"
+                        Click="OnAddDateClick">
+                    <Image Source="avares://AgOpenGPS/btnImages/JobNameCalendar.png"
+                           Width="64"
+                           Height="64"
+                           Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+
+            <!-- + time -->
+            <StackPanel Orientation="Horizontal"
+                        Spacing="4"
+                        VerticalAlignment="Center">
+                <TextBlock x:Name="label3"
+                           Text="+"
+                           FontSize="19"
+                           Foreground="{DynamicResource AogTextBrush}"
+                           VerticalAlignment="Center" />
+                <Button x:Name="btnAddTime"
+                        Classes="flatImage"
+                        Width="83"
+                        Height="79"
+                        AutomationProperties.Name="Add time"
+                        Click="OnAddTimeClick">
+                    <Image Source="avares://AgOpenGPS/btnImages/JobNameTime.png"
+                           Width="64"
+                           Height="64"
+                           Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+
+        </StackPanel>
+
+        <!--
+            Action band: Load KML (left) + Cancel/Save (right) share the bottom row.
+            Designer x-order: btnLoadKML @ x=53, btnSerialCancel @ x=376, btnSave @ x=520 — all
+            bottom-anchored. btnLoadKML opens the KML OpenFileDialog (code-behind); btnSave is enabled
+            by the code-behind only after a boundary loads.
+        -->
+        <Grid Grid.Row="3">
+
+            <!-- LEFT: Load KML (BoundaryLoadFromGE glyph, native 68 x 68). Starts enabled (designer
+                 default); the code-behind disables it on an empty name / after a successful load. -->
+            <Button x:Name="btnLoadKML"
+                    Classes="flatImage"
+                    Width="83"
+                    Height="79"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    AutomationProperties.Name="Load KML"
+                    Click="OnLoadKmlClick">
+                <Image Source="avares://AgOpenGPS/btnImages/BoundaryLoadFromGE.png"
+                       Width="68"
+                       Height="68"
+                       Stretch="Uniform" />
+            </Button>
+
+            <!-- RIGHT: Cancel then Save (designer order), bottom-aligned. btnSave starts disabled
+                 (WinForms FormFieldDir_Load) and is enabled by the code-behind after a KML load. -->
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Spacing="12">
+                <Button x:Name="btnSerialCancel"
+                        Classes="flatImage"
+                        Width="77"
+                        Height="79"
+                        AutomationProperties.Name="Cancel"
+                        Click="OnCancelClick">
+                    <Image Source="avares://AgOpenGPS/btnImages/Cancel64.png"
+                           Width="64"
+                           Height="64"
+                           Stretch="Uniform" />
+                </Button>
+                <Button x:Name="btnSave"
+                        Classes="flatImage"
+                        Width="83"
+                        Height="79"
+                        IsEnabled="False"
+                        AutomationProperties.Name="Save"
+                        Click="OnSaveClick">
+                    <Image Source="avares://AgOpenGPS/btnImages/OK64.png"
+                           Width="64"
+                           Height="64"
+                           Stretch="Uniform" />
+                </Button>
+            </StackPanel>
+
+        </Grid>
+    </Grid>
+</Window>

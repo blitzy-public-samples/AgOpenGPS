@@ -1,0 +1,247 @@
+<!-- [XPLAT] migrated from net48/WinForms — see MIGRATION_DOCS/TRANSITION_MAP.md -->
+<!--
+    [XPLAT] AgOpenGPS (GPS program) — "System Data" field-work statistics readout (Avalonia view).
+
+    1:1 visual PARITY reimplementation of the WinForms `Forms/Field/FormFieldData`
+    (source: FormFieldData.cs + FormFieldData.Designer.cs + FormFieldData.resx), per AAP §0.3.3 —
+    never a redesign. It is a narrow, modeless panel shown alongside the running app that displays
+    live field-work statistics (worked / applied area, remaining area + time, overlap %, work rate
+    and trip area / distance), refreshed once per second.
+
+    CODE-BEHIND CONTRACT — FormFieldDataView.axaml.cs (partial class AgOpenGPS.Views.FormFieldDataView : Window):
+      * IMPERATIVE, not MVVM — intentionally NO x:DataType, no DataContext, no {Binding}. The original
+        WinForms timer1_Tick (System.Windows.Forms.Timer, Interval = 1000 ms) updated each value Label
+        by name; the code-behind reproduces that with an Avalonia DispatcherTimer that addresses the
+        x:Name'd value TextBlocks below directly, reading the pre-formatted strings from the injected
+        CFieldData (mf.fd). The original ctor was FormFieldData(Form callingForm); the code-behind keeps
+        that reference-to-FormGPS pattern. The timer is non-visual, so it has no element in this markup.
+      * The value x:Name's below ARE that contract and MUST stay spelled exactly as the generated
+        x:Name fields the code-behind references:
+            lblWorkRate, lblApplied, lblActualLessOverlap, lblOverlapPercent,
+            labelAreaValue, labelDistanceDriven,
+          and the boundary-gated "Remain" group values:
+            lblTotalArea, lblAreaRemain, lblTimeRemaining, lblRemainPercent, lblActualRemain.
+      * Caption text is (re)assigned at runtime from gStr in the original ctor
+        (labelTotal=gsTotal+":", labelWorked=gsWorked, labelApplied/labelApplied2=gsApplied+":",
+         labelRemain/labelRemain2=gsRemain+":", labelOverlap=gsOverlap+":", labelActual=gsActual,
+         labelRate=gsRate+":", labelArea=gsArea+":", labelDistance=gsDistance+":"). The English text
+        below is the verbatim Designer placeholder the code-behind overrides — kept (not blanked) so the
+        design-time preview and the no-translation fallback are correct, mirroring the accepted sibling
+        FormSaveOrNotView. labelTrip ("Trip") and the three divider rules (label1 / label7 / label2)
+        are NOT touched by the ctor, so their appearance is fixed here.
+      * Visibility: the "Remain" group — lblTotalArea, lblAreaRemain, lblTimeRemaining, lblRemainPercent,
+        lblActualRemain plus the captions labelRemain / labelRemain2 — is shown only when a field
+        boundary exists (mf.bnd.bndList.Count > 0). FormFieldData_Load calls timer1_Tick immediately, so
+        the code-behind sets these IsVisible states authoritatively on first paint; they default visible
+        here (Designer parity) and the code-behind collapses them when no boundary is present.
+      * btnTripReset_Click resets the trip totals (mf.fd.workedAreaTotalUser = 0; mf.fd.distanceUser = 0).
+
+    WINDOW SHELL — mirrors FormFieldData.Designer.cs:
+      Text "System Data"            -> Title
+      ClientSize 197 x 483          -> Width / Height (SystemDecorations="None" => client == window)
+      FormBorderStyle.None          -> SystemDecorations="None"
+      MaximizeBox/MinimizeBox false -> CanResize="False"
+      ShowInTaskbar = false         -> ShowInTaskbar="False"
+      (StartPosition default)       -> WindowStartupLocation="CenterOwner" (owned panel over FormGPS)
+      Font Tahoma 11.25 (default)   -> FontFamily="Tahoma", FontSize="15" (form default; per-row sizes below)
+
+    THEME — the original drew Color.White text on a Color.Black BackColor. Per the assigned spec this
+    view tracks the app day/night palette instead of hard-coding black/white: Background = AogFrameBrush
+    and text = AogTextBrush, pulled from App.axaml's ThemeDictionaries via {DynamicResource} so the
+    Light<->Dark switch is observed live. No WinForms / System.Drawing colours are referenced.
+
+    Font sizes (WinForms points × 96/72 = Avalonia device-independent pixels):
+      Tahoma 14.25 -> 19   (captions, value labels, section headers — the dominant size)
+      Tahoma 12.75 -> 17   (labelAreaValue, labelDistanceDriven)
+      Tahoma 11.25 -> 15   (form default)
+
+    LAYOUT — the WinForms Designer used absolute Label positions; reproduced here as a single
+    two-column Grid (Auto caption | * value) whose 18 row heights follow the Designer's top-to-bottom
+    Y-deltas so every caption:value data row lands on its original Y. Within each "section header +
+    divider" pair the combined Designer height is split to give the header room and let the rule sit
+    cleanly beneath it (each pair's total is preserved, so the data rows below never move). The section
+    headers ("Worked" / "Actual" / "Trip") and the divider rules span both columns; the boundary-gated
+    "Remain" group occupies the rows between the Worked and Actual headers. The
+    "____________________" separator labels (label1 / label7 / label2) are reproduced as thin themed
+    Border rules rather than underscore glyphs.
+
+    No WinForms, no System.Drawing, no OpenTK namespaces are referenced — Avalonia 11.3 markup only.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AgOpenGPS.Views.FormFieldDataView"
+        Title="System Data"
+        Width="197"
+        Height="483"
+        CanResize="False"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Padding="0"
+        Background="{DynamicResource AogFrameBrush}"
+        Foreground="{DynamicResource AogTextBrush}"
+        FontFamily="Tahoma"
+        FontSize="15">
+
+    <Window.Styles>
+        <!-- Base label rule: themed text colour, single-line, vertically centred. The dominant WinForms
+             label size was Tahoma 14.25 (-> 19), so that is the base; the two trip values override to 17. -->
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AogTextBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="FontSize" Value="19" />
+        </Style>
+
+        <!-- WinForms caption labels: FontStyle.Regular, left-aligned at the form's left margin. -->
+        <Style Selector="TextBlock.caption">
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+
+        <!-- WinForms value labels: FontStyle.Bold, sat in the value column. -->
+        <Style Selector="TextBlock.value">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+
+        <!-- Section headers ("Worked" / "Actual" / "Trip"): FontStyle.Regular, centred across both
+             columns and vertically centred in their row so the divider rule in the next row sits
+             cleanly beneath the caption (mirrors the WinForms header-with-underline grouping). -->
+        <Style Selector="TextBlock.header">
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Divider rules reproduce the WinForms "____________________" separator labels
+             (label1 / label7 / label2) as thin, theme-aware horizontal lines. -->
+        <Style Selector="Border.divider">
+            <Setter Property="Height" Value="2" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Background" Value="{DynamicResource AogTextBrush}" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+
+        <!-- Flat, chrome-less image button: reproduces the WinForms Button with a transparent BackColor
+             and a single BackgroundImage (Resources.back_button). The :pointerover / :pressed template
+             overrides suppress the Fluent hover / press surface so only the glyph shows. -->
+        <Style Selector="Button.imageButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.imageButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="Button.imageButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Styles>
+
+    <!--
+        Single two-column Grid. Column 0 = caption (Auto, MinWidth 88 so the value column stays aligned
+        regardless of caption length / translation); Column 1 = the live value. Row heights follow the
+        Designer's top-to-bottom Y-deltas so every caption:value data row lands on its original Y; within
+        each "section header + divider" pair the combined Designer height is split to give the header
+        room and let the rule sit cleanly beneath it (the pair's total is preserved, so the data rows do
+        not move). The final * row holds the centred reset button (WinForms 76 x 44).
+    -->
+    <Grid Margin="8,0,4,0"
+          RowDefinitions="29,24,13,29,28,30,36,24,16,29,29,38,32,19,6,25,29,*">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" MinWidth="88" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Row 0 — Total: | total field area. WinForms labelTotal @ (13,0) + lblTotalArea @ (99,0).
+             lblTotalArea is part of the boundary-gated "Remain" group (hidden when no boundary). -->
+        <TextBlock x:Name="labelTotal" Classes="caption" Grid.Row="0" Grid.Column="0" Text="Total:" />
+        <TextBlock x:Name="lblTotalArea" Classes="value" Grid.Row="0" Grid.Column="1" Text="-" />
+
+        <!-- Row 1 — "Worked" section header. WinForms labelWorked @ (71,29); text set to gStr.gsWorked. -->
+        <TextBlock x:Name="labelWorked" Classes="header" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Text="Worked" />
+
+        <!-- Row 2 — divider (WinForms label1 @ (4,38) "____________________"). -->
+        <Border x:Name="label1" Classes="divider" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" />
+
+        <!-- Row 3 — Applied: | worked applied area. WinForms labelApplied @ (13,66) + lblApplied @ (114,66). -->
+        <TextBlock x:Name="labelApplied" Classes="caption" Grid.Row="3" Grid.Column="0" Text="Applied:" />
+        <TextBlock x:Name="lblApplied" Classes="value" Grid.Row="3" Grid.Column="1" Text="-" />
+
+        <!-- Row 4 — Remain: | worked area remaining. WinForms labelRemain @ (12,95) + lblAreaRemain @ (114,95).
+             Both are in the boundary-gated "Remain" group. -->
+        <TextBlock x:Name="labelRemain" Classes="caption" Grid.Row="4" Grid.Column="0" Text="Remain:" />
+        <TextBlock x:Name="lblAreaRemain" Classes="value" Grid.Row="4" Grid.Column="1" Text="-" />
+
+        <!-- Row 5 — remaining percentage (no caption). WinForms lblRemainPercent @ (114,123). "Remain" group. -->
+        <TextBlock x:Name="lblRemainPercent" Classes="value" Grid.Row="5" Grid.Column="1" Text="-" />
+
+        <!-- Row 6 — estimated time remaining (no caption). WinForms lblTimeRemaining @ (114,153). "Remain" group. -->
+        <TextBlock x:Name="lblTimeRemaining" Classes="value" Grid.Row="6" Grid.Column="1" Text="-" />
+
+        <!-- Row 7 — "Actual" section header. WinForms labelActual @ (71,189); text set to gStr.gsActual. -->
+        <TextBlock x:Name="labelActual" Classes="header" Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Text="Actual" />
+
+        <!-- Row 8 — divider (WinForms label7 @ (4,203) "____________________"). -->
+        <Border x:Name="label7" Classes="divider" Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2" />
+
+        <!-- Row 9 — Applied: | actual area worked (less overlap). WinForms labelApplied2 @ (9,229) +
+             lblActualLessOverlap @ (112,229). -->
+        <TextBlock x:Name="labelApplied2" Classes="caption" Grid.Row="9" Grid.Column="0" Text="Applied:" />
+        <TextBlock x:Name="lblActualLessOverlap" Classes="value" Grid.Row="9" Grid.Column="1" Text="-" />
+
+        <!-- Row 10 — Remain: | actual remaining. WinForms labelRemain2 @ (10,258) + lblActualRemain @ (113,258).
+             Both are in the boundary-gated "Remain" group. -->
+        <TextBlock x:Name="labelRemain2" Classes="caption" Grid.Row="10" Grid.Column="0" Text="Remain:" />
+        <TextBlock x:Name="lblActualRemain" Classes="value" Grid.Row="10" Grid.Column="1" Text="-" />
+
+        <!-- Row 11 — Overlap: | overlap percentage. WinForms labelOverlap @ (9,287) + lblOverlapPercent @ (113,287). -->
+        <TextBlock x:Name="labelOverlap" Classes="caption" Grid.Row="11" Grid.Column="0" Text="Overlap:" />
+        <TextBlock x:Name="lblOverlapPercent" Classes="value" Grid.Row="11" Grid.Column="1" Text="-" />
+
+        <!-- Row 12 — Rate: | work rate. WinForms labelRate @ (10,325) + lblWorkRate @ (101,325). -->
+        <TextBlock x:Name="labelRate" Classes="caption" Grid.Row="12" Grid.Column="0" Text="Rate:" />
+        <TextBlock x:Name="lblWorkRate" Classes="value" Grid.Row="12" Grid.Column="1" Text="-" />
+
+        <!-- Row 13 — "Trip" section header / caption for the reset button. WinForms labelTrip @ (59,357);
+             NOT set by the ctor, so the literal "Trip" is kept here. -->
+        <TextBlock x:Name="labelTrip" Classes="header" Grid.Row="13" Grid.Column="0" Grid.ColumnSpan="2" Text="Trip" />
+
+        <!-- Row 14 — divider (WinForms label2 @ (7,364) "____________________"). -->
+        <Border x:Name="label2" Classes="divider" Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="2" />
+
+        <!-- Row 15 — Area: | trip area (user). WinForms labelArea @ (10,382) + labelAreaValue @ (102,382),
+             value font Tahoma 12.75 -> 17. -->
+        <TextBlock x:Name="labelArea" Classes="caption" Grid.Row="15" Grid.Column="0" Text="Area:" />
+        <TextBlock x:Name="labelAreaValue" Classes="value" Grid.Row="15" Grid.Column="1" FontSize="17" Text="-" />
+
+        <!-- Row 16 — Dist: | trip distance driven. WinForms labelDistance @ (10,407) + labelDistanceDriven @ (102,407),
+             value font Tahoma 12.75 -> 17. -->
+        <TextBlock x:Name="labelDistance" Classes="caption" Grid.Row="16" Grid.Column="0" Text="Dist:" />
+        <TextBlock x:Name="labelDistanceDriven" Classes="value" Grid.Row="16" Grid.Column="1" FontSize="17" Text="-" />
+
+        <!-- Row 17 — reset trip totals. WinForms btnTripReset @ (63,436) 76 x 44, BackgroundImage =
+             Resources.back_button. Centred across both columns; click handled in code-behind. -->
+        <Button x:Name="btnTripReset"
+                Classes="imageButton"
+                Grid.Row="17" Grid.Column="0" Grid.ColumnSpan="2"
+                Width="76"
+                Height="44"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="Reset Trip"
+                Click="btnTripReset_Click">
+            <Image Source="avares://AgOpenGPS/btnImages/back-button.png" Stretch="Uniform" />
+        </Button>
+
+    </Grid>
+
+</Window>
