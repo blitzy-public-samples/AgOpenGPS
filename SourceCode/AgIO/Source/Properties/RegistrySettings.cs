@@ -6,6 +6,7 @@ using AgOpenGPS.Core.Platform;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace AgIO
@@ -116,7 +117,19 @@ namespace AgIO
             {
                 try
                 {
-                    return XDocument.Load(storePath);
+                    // [XPLAT] SEC-6 (CWE-611 XXE): harden the load against DTD / external-entity processing.
+                    // Although this is local app-data, parsing with DtdProcessing.Prohibit and a null XmlResolver
+                    // ensures a tampered or corrupted store file cannot trigger external-entity expansion —
+                    // consistent with the KML/ISOXML parser hardening already applied elsewhere in the suite.
+                    XmlReaderSettings xmlSettings = new XmlReaderSettings
+                    {
+                        DtdProcessing = DtdProcessing.Prohibit,
+                        XmlResolver = null,
+                    };
+                    using (XmlReader reader = XmlReader.Create(storePath, xmlSettings))
+                    {
+                        return XDocument.Load(reader);
+                    }
                 }
                 catch (Exception ex)
                 {

@@ -873,7 +873,11 @@ namespace AgIO.Views
                             {
                                 string[] words2 = words[i].Split(';');
 
-                                if (words2[0] == "STR")
+                                // [XPLAT] SEC-4 (CWE-20): an NTRIP source-table "STR" record must contain all the
+                                // fields read below (indices up to [10]). A malformed or truncated line would
+                                // otherwise throw IndexOutOfRange, so require the full field count before indexing
+                                // and silently skip rows that are not well-formed STR records.
+                                if (words2.Length > 10 && words2[0] == "STR")
                                 {
                                     dataList.Add(words2[1].Trim() + "," + words2[9] + "," + words2[10]
                                         + "," + words2[3].Trim() + "," + words2[6].Trim());

@@ -658,6 +658,17 @@ namespace AgOpenGPS.Services
         // ================================================================================================
 
         /// <summary>
+        /// [XPLAT] Resets the smoothed pivot cross-track-distance accumulator to zero — the
+        /// <c>longAvgPivDistance = 0</c> assignment that opened the WinForms <c>btnAutoSteer_Click</c>
+        /// handler (Controls.Designer.cs). The accumulator is private render state, so the Avalonia
+        /// autosteer toggle reaches it through <c>ShellCommands.ToggleAutoSteer</c>. Behaviour-frozen.
+        /// </summary>
+        public void ResetLongAvgPivDistance()
+        {
+            longAvgPivDistance = 0;
+        }
+
+        /// <summary>
         /// [XPLAT] One-time GL state setup for the main viewport (was <c>oglMain_Load</c>): the field-paint
         /// clear colour, alpha blend function, back-face cull mode, the saved camera zoom and the initial
         /// vehicle textures. The host invokes this from <c>OnOpenGlInit</c> with the context current; the

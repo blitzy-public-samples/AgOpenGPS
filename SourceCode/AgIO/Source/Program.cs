@@ -38,6 +38,19 @@ namespace AgIO
         /// <c>Application.SetCompatibleTextRenderingDefault(false)</c> setup. The Inter font is registered
         /// here so <c>App.axaml</c> needs no font include.
         /// </summary>
+        /// <remarks>
+        /// [XPLAT] G3 DESKTOP-GL EXEMPTION (review finding AgIO/Program.cs CRITICAL — "consistency").
+        /// AgIO is the loopback comms hub: its views (Form*View) are plain Avalonia controls and AgIO hosts
+        /// NO OpenGL surface — there is no <c>OpenGlControlBase</c>, no <c>AvaloniaGeoViewport</c>, no DrawLib/GLW
+        /// usage and no <c>GL.ReadPixels</c> anywhere in the AgIO assembly. The desktop-GL request hook
+        /// (<c>AvaloniaGeoViewport.RequestDesktopGlProfile</c>) lives in the GPS project's
+        /// <c>AgOpenGPS.Controls</c> namespace, and AgIO deliberately does NOT reference the GPS project (the
+        /// two-program model communicates only over UDP loopback — AAP §0.7.1 / R4), so that type is not — and
+        /// must not become — visible here. Because AgIO never creates a GL context, forcing a desktop-GL profile
+        /// would be inapplicable (it would only constrain a renderer that does not exist). The hook is therefore
+        /// intentionally omitted; should a GL-hosting surface ever be added to AgIO, the desktop-GL profile must
+        /// be requested at that point (replicating the GPS mitigation). See MIGRATION_DOCS/PARITY_REPORT.md.
+        /// </remarks>
         public static AppBuilder BuildAvaloniaApp()
             => AppBuilder.Configure<App>()
                 .UsePlatformDetect()

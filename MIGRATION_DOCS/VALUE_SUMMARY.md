@@ -22,7 +22,7 @@ A few optional, hardware-specific conveniences — such as screen-brightness con
 
 ## How we know it still works
 
-To make sure nothing changed in how the software behaves, the team's work is being verified by automated "golden-file" comparison tests that run on all three operating systems and check the new versions against trusted reference results from the original.
+To make sure nothing changed in how the software behaves, the team's work is verified by automated "golden-file" comparison tests that check the new version against trusted reference results captured from the original Windows product — covering the communication protocol, field files, settings, and the guidance and steering math. These checks pass today on the development environment and are set up to run automatically on all three operating systems (Windows, Linux, and macOS) as the final confirmation step before release.
 
 ---
 

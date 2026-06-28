@@ -106,6 +106,22 @@ namespace AgOpenGPS
 
             VehicleConfig = new VehicleConfig();
 
+            // [XPLAT] The settings-driven field initialisation is extracted into LoadSettings() (pure
+            // extract-method; behaviour identical to the original inline ctor body) so the steer-config
+            // "reset to defaults" workflow can reload the LIVE vehicle in-place after re-saving the default
+            // settings — restoring the WinForms `mf.vehicle = new CVehicle(mf)` propagation in the DI model
+            // without re-allocating the shared VehicleConfig instance. See FormSteerView ResetVehicle.
+            LoadSettings();
+        }
+
+        /// <summary>
+        /// [XPLAT] (Re)loads every settings-backed guidance/steer field from VehicleSettings/ToolSettings/
+        /// Settings and resets the transient run-state flags to their construction defaults. Invoked by the
+        /// constructor and again by the steer-config reset path so a defaults reset takes effect on the live
+        /// object app-wide. Mirrors the original FormGPS behaviour where reset replaced the whole CVehicle.
+        /// </summary>
+        public void LoadSettings()
+        {
             VehicleConfig.AntennaHeight = Properties.VehicleSettings.Default.setVehicle_antennaHeight;
             VehicleConfig.AntennaPivot = Properties.VehicleSettings.Default.setVehicle_antennaPivot;
             VehicleConfig.AntennaOffset = Properties.VehicleSettings.Default.setVehicle_antennaOffset;

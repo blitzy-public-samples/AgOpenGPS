@@ -174,6 +174,24 @@
             <SolidColorBrush x:Key="AogLegacyLightCoralBrush" Color="{StaticResource AogLegacyLightCoralColor}" />
             <SolidColorBrush x:Key="AogLegacyGray127Brush" Color="{StaticResource AogLegacyGray127Color}" />
 
+            <!-- [XPLAT]
+                MainView (kiosk shell) parity surfaces (same rationale as above). These two fixed WinForms
+                colours were previously hard-coded as one-off literals in MainView.axaml; they are centralized
+                here as named, self-documenting tokens so the shell references one resource instead of a raw
+                literal (resolves CR finding MV-4 "replace one-off colors with Aog* resources"). They are
+                theme-INDEPENDENT (fixed in BOTH Light and Dark) because the WinForms originals were never
+                touched by FormGPS.SwapDayNightMode():
+                  - Color.Gray   == #FF808080 (128,128,128): the FlatStyle 1px border on the section/zone
+                    buttons and on the three left-panel UDP status strips. NOTE this is DISTINCT from
+                    AogLegacyGray127 (#FF7F7F7F, 127) above — exact WinForms value is 128.
+                  - Color.Bisque == #FFFFE4C4: the fixed face of lblHardwareMessage, a transient hardware
+                    alert banner that was deliberately excluded from day/night theming.
+                Reference with {DynamicResource ...} for consistency with the other Aog* tokens. -->
+            <Color x:Key="AogLegacyGrayColor">#FF808080</Color>
+            <Color x:Key="AogLegacyBisqueColor">#FFFFE4C4</Color>
+            <SolidColorBrush x:Key="AogLegacyGrayBrush" Color="{StaticResource AogLegacyGrayColor}" />
+            <SolidColorBrush x:Key="AogLegacyBisqueBrush" Color="{StaticResource AogLegacyBisqueColor}" />
+
         </ResourceDictionary>
     </Application.Resources>
 

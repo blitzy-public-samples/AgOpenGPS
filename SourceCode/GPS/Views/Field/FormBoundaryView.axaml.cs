@@ -750,11 +750,15 @@ public partial class FormBoundaryView : Window
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                Process.Start(new ProcessStartInfo { FileName = "open", Arguments = "\"" + target + "\"", UseShellExecute = false });
+                // [XPLAT] SEC-5 (CWE-22): pass the target through ArgumentList rather than a hand-quoted
+                // Arguments string. ArgumentList performs correct per-OS argument escaping, so a path or URL
+                // containing quotes or spaces cannot break out of the argument or inject extra tokens.
+                Process.Start(new ProcessStartInfo { FileName = "open", ArgumentList = { target }, UseShellExecute = false });
             }
             else
             {
-                Process.Start(new ProcessStartInfo { FileName = "xdg-open", Arguments = "\"" + target + "\"", UseShellExecute = false });
+                // [XPLAT] SEC-5 (CWE-22): see above — ArgumentList escaping replaces manual quoting.
+                Process.Start(new ProcessStartInfo { FileName = "xdg-open", ArgumentList = { target }, UseShellExecute = false });
             }
         }
         catch (Exception ex)

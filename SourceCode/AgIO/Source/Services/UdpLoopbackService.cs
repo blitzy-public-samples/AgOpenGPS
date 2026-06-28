@@ -335,6 +335,13 @@ namespace AgIO.Services
             // Send out to udp network
             SendUDPMessage(data, epModule);
 
+            // [XPLAT] SEC-2 (CWE-20): a valid PGN frame is at least [0x80][0x81][src][pgn]..., so guard the PGN
+            // header reads below against null or short datagrams. The receive callback hands us a right-sized
+            // array (new byte[msgLen] + Array.Copy), so a runt packet would otherwise throw IndexOutOfRange on
+            // data[0]/data[1]/data[3]. Forwarding above is unchanged; only the header parse is gated.
+            if (data == null || data.Length < 4)
+                return;
+
             if (data[0] == 0x80 && data[1] == 0x81)
             {
                 switch (data[3])
@@ -490,6 +497,13 @@ namespace AgIO.Services
         {
             try
             {
+                // [XPLAT] SEC-3 (CWE-20): drop null/short datagrams before reading the PGN header. The deeper
+                // byte reads in each branch are already gated by exact-length checks (data.Length == 11/13),
+                // but the unconditional data[0]/data[1]/data[3] reads need this minimum-length guard so a runt
+                // packet cannot throw IndexOutOfRange (silently swallowed by the catch) — it is dropped cleanly.
+                if (data == null || data.Length < 4)
+                    return;
+
                 if (data[0] == 0x80 && data[1] == 0x81)
                 {
                     // module return via udp sent to AOG

@@ -905,7 +905,10 @@ namespace AgOpenGPS.Services
         /// state cycle and the event.
         /// </summary>
         /// <param name="Btn">Zero-based section index (the former button was btnSection{Btn+1}Man).</param>
-        private void PerformSectionClick(int Btn)
+        // [XPLAT] Public so the Avalonia kiosk shell (MainView) can route a manual section-button click here,
+        // exactly as the WinForms btnSection{n}Man_Click called the former private PerformSectionClick (MV-3).
+        // Behavior is unchanged — visibility widening only.
+        public void PerformSectionClick(int Btn)
         {
             btnStates state = GetNextState(section[Btn].sectionBtnState);
             section[Btn].sectionBtnState = state;
@@ -919,7 +922,10 @@ namespace AgOpenGPS.Services
         /// Behavior FROZEN — the zone-range bounds (zone 1 starts at section 0) match the original exactly.
         /// </summary>
         /// <param name="Btn">Zero-based zone index (the former button was btnZone{Btn+1}).</param>
-        private void PerformZoneClick(int Btn)
+        // [XPLAT] Public so the Avalonia kiosk shell (MainView) can route a manual zone-button click here,
+        // exactly as the WinForms btnZone{n}_Click called the former private PerformZoneClick (MV-3).
+        // Behavior is unchanged — visibility widening only.
+        public void PerformZoneClick(int Btn)
         {
             int zoneIndex = Btn + 1;
             btnStates state = GetNextState(section[tool.zoneRanges[zoneIndex] - 1].sectionBtnState);
@@ -931,6 +937,54 @@ namespace AgOpenGPS.Services
             {
                 ZoneRangeToState(state, tool.zoneRanges[zoneIndex - 1], tool.zoneRanges[zoneIndex], zoneIndex);
             }
+        }
+
+        // ========================================================================================
+        // [XPLAT] Read-only section/zone view accessors (MV-3).
+        // In WinForms, FormGPS read tool.numOfSections / tool.zones / tool.isSectionsNotZones /
+        // isJobStarted directly to lay out and colour the section/zone buttons (LineUpIndividualSectionBtns /
+        // LineUpAllZoneButtons in Sections.Designer.cs). MainView is no longer a FormGPS partial and has no
+        // domain access, so it reads the same canonical state through these accessors to decide which
+        // section/zone buttons are visible/enabled and what colour to paint. No state is mutated.
+        // ========================================================================================
+
+        /// <summary>Number of configured tool sections (1..16 in unique-section mode). Mirrors <c>tool.numOfSections</c>.</summary>
+        public int NumOfSections => tool.numOfSections;
+
+        /// <summary>Number of configured zones (used in same-width zone mode). Mirrors <c>tool.zones</c>.</summary>
+        public int NumOfZones => tool.zones;
+
+        /// <summary>True when the tool is in unique-section mode; false when in same-width zone mode. Mirrors <c>tool.isSectionsNotZones</c>.</summary>
+        public bool IsSectionsNotZones => tool.isSectionsNotZones;
+
+        /// <summary>True once a field/job is started; section and zone buttons are only operable while a job is started. Mirrors <c>appModel.isJobStarted</c>.</summary>
+        public bool IsJobStarted => appModel.isJobStarted;
+
+        /// <summary>
+        /// Returns the current tri-state of section <paramref name="index"/> so the view can paint the
+        /// button face (Off/Auto/On) without touching the shared <c>CSection[]</c> directly.
+        /// </summary>
+        /// <param name="index">Zero-based section index.</param>
+        /// <returns>The section's <see cref="btnStates"/>; <see cref="btnStates.Off"/> if the index is out of range.</returns>
+        public btnStates GetSectionState(int index)
+        {
+            if (index < 0 || index >= section.Length) return btnStates.Off;
+            return section[index].sectionBtnState;
+        }
+
+        /// <summary>
+        /// Returns the current tri-state to paint on zone button <paramref name="oneBasedZone"/> (1..8). The
+        /// zone's representative section is the same one <see cref="PerformZoneClick"/> reads
+        /// (<c>section[tool.zoneRanges[zoneIndex] - 1]</c>), so the painted colour matches the cycle exactly.
+        /// </summary>
+        /// <param name="oneBasedZone">One-based zone button index (1..8).</param>
+        /// <returns>The zone's representative <see cref="btnStates"/>; <see cref="btnStates.Off"/> if out of range.</returns>
+        public btnStates GetZoneState(int oneBasedZone)
+        {
+            if (oneBasedZone < 1 || oneBasedZone >= tool.zoneRanges.Length) return btnStates.Off;
+            int idx = tool.zoneRanges[oneBasedZone] - 1;
+            if (idx < 0 || idx >= section.Length) return btnStates.Off;
+            return section[idx].sectionBtnState;
         }
 
         /// <summary>

@@ -730,11 +730,15 @@ namespace AgOpenGPS.Views.Settings
                 }
                 else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 {
-                    Process.Start(new ProcessStartInfo { FileName = "open", Arguments = "\"" + dir + "\"", UseShellExecute = false });
+                    // [XPLAT] SEC-5 (CWE-22): pass the path through ArgumentList rather than a hand-quoted
+                    // Arguments string. ArgumentList performs correct per-OS argument escaping, so a directory
+                    // name containing quotes or spaces cannot break out of the argument or inject extra tokens.
+                    Process.Start(new ProcessStartInfo { FileName = "open", ArgumentList = { dir }, UseShellExecute = false });
                 }
                 else
                 {
-                    Process.Start(new ProcessStartInfo { FileName = "xdg-open", Arguments = "\"" + dir + "\"", UseShellExecute = false });
+                    // [XPLAT] SEC-5 (CWE-22): see above — ArgumentList escaping replaces manual quoting.
+                    Process.Start(new ProcessStartInfo { FileName = "xdg-open", ArgumentList = { dir }, UseShellExecute = false });
                 }
             }
             catch (Exception ex)

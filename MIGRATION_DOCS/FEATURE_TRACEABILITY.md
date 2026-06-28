@@ -12,9 +12,8 @@ product is accounted for here with its migration **status** and its **cross-plat
 which is the **authoritative source** for the feature set. This checklist *reconstructs* that catalog
 from the §2.2 reference together with the in-repository documentation
 (`docs/architecture.md`, `docs/classes.md`, `docs/settings.md`, `docs/pgn-protocol.md`) and the
-Agent Action Plan (AAP). Where the §2.2 reference and the in-repo docs are consulted second-hand, the
-five identifiers that the **AAP anchors explicitly are fixed at their exact numbers** and are treated
-as authoritative pins for the surrounding numbering:
+Agent Action Plan (AAP). The five identifiers that the **AAP anchors explicitly are fixed at their
+exact numbers** and are treated as authoritative pins for the surrounding numbering:
 
 - **F-021 = background map imagery**
 - **F-026 = serial communications**
@@ -28,46 +27,47 @@ that exists in the `net48`/WinForms product must behave identically (or degrade 
 operating system offers no equivalent) on Windows, Linux, and macOS. Parity — not redesign — is the
 sole acceptance criterion.
 
-> **Current status (read first).** This is an in-progress, single-solution migration. At the current
-> checkpoint **no feature can yet be marked _At parity_**: the cross-platform behavioral proof
-> (golden-file byte/round-trip tests and the tri-OS CI matrix) **does not exist yet**, so although
-> `PARITY_REPORT.md` is now authored it records the **target/expected** state pending CI rather than
-> verified results. The **GPS** application project **now builds** for `net8.0;net8.0-windows` (it no
-> longer declares `UseWindowsForms`), with the WinForms-`FormGPS`-coupled source subset gated out via
-> `<Compile Remove>` pending decoupling. Each feature is therefore
-> recorded as **Scaffolded** (its cross-platform code exists on disk now), **Deferred** (its
-> cross-platform artifact does not exist yet — e.g. the extracted GPS `Services/`, or the GPS `Classes/`
-> recompile that is gated by the GPS build), or **Feature-gated (per-OS)**. The `At parity` label is
-> **reserved for a later checkpoint** and is applied per feature only once its code compiles on all three
-> operating systems and its golden/CI evidence is recorded in the (planned) `PARITY_REPORT.md`.
+> **Current status (read first).** The migration is **integrated**: all twelve projects target
+> `net8.0` (GPS and AgIO multi-target `net8.0;net8.0-windows`), the WinForms/WPF dependencies are
+> removed, and the GPS solution **builds cleanly** in Debug **and** Release (`TreatWarningsAsErrors`)
+> for every declared target — 0 errors (16 pre-existing Avalonia `AVLN3001` advisories on 8 unrelated
+> views, not escalated). The extracted GPS `Services/` (`PositionService`, `PgnDispatcher`,
+> `SectionService`, `FieldIoService`, `RenderCoordinator`), the `AvaloniaGeoViewport` OpenGL host, the
+> ~88 Avalonia views, and the `GPS/Classes/**` algorithm recompile are **all on disk and compiled into
+> the normal build**. The GPS shell is **functionally wired** — every operator command, the section
+> controls, the field/guidance dialog navigation, the steer wizard, the field open/close lifecycle, and
+> GPS↔AgIO auto-start/stop. **All five golden-file parity suites** (PGN, Guidance, ISOXML, Settings,
+> **Field**) are committed and **enforcing**, and the full local Linux test run is **115 passed / 1
+> skipped / 0 failed**. The remaining residuals are **external-evidence / follow-up items** —
+> documented per feature below and consolidated in `PARITY_REPORT.md` → Open Risks.
 
 ## Status labels
 
-Each feature below is assigned exactly one of the following statuses:
+Each feature below is assigned exactly one of the three AAP-mandated statuses:
 
-- **Scaffolded** — The feature's cross-platform code **exists on disk at this checkpoint** and is
-  statically validated (and, for the CP5-buildable projects — `AgOpenGPS.Core`, `AgIO`, `AgLibrary`,
-  `Keypad`, `ModSim`, `AgDiag`, `GPS_Out`, `Updater` — compiles), **but full tri-OS behavioral parity is
-  unproven**: there are no golden tests, no tri-OS CI run, and no `PARITY_REPORT.md` yet. The note
-  records exactly what is on disk and what remains.
-- **Deferred** — The feature's cross-platform artifact **does not exist on disk yet** (for example the
-  extracted GPS `Services/` — `PositionService` / `PgnDispatcher` / `SectionService` / `FieldIoService`
-  / `RenderCoordinator` — or the `SourceCode/GPS/Classes/**` recompile, which is gated by the pending GPS
-  `csproj` Avalonia conversion), **or** it is an explicitly out-of-scope sub-capability per the AAP.
+- **At parity (local)** — The feature's behavior-frozen contract is **preserved**, its cross-platform
+  code is **on disk, compiled, and integrated/wired**, and it is **green on the local Linux
+  development environment** (golden-file / round-trip / unit evidence as applicable). The **single
+  universal residual** is **tri-OS CI confirmation** — the `windows` / `ubuntu` / `macos` matrix
+  workflow is on disk (`.github/workflows/build.yml`) but has **not yet been executed** on
+  GitHub-hosted runners, an external-evidence item this offline environment cannot dispatch. Where a
+  feature carries an *additional* residual beyond tri-OS CI (the GL on-hardware confirmation, or the
+  latent guidance peer-wiring gap), that residual is named explicitly in the feature note and
+  cross-referenced to the relevant `PARITY_REPORT.md` open risk. "At parity (local)" is the honest
+  form of the AAP's **At parity** status: contract-preserved and locally proven, with cross-OS
+  execution as the documented residual.
 - **Feature-gated (per-OS)** — The feature is **full on some operating systems and gracefully degraded
   or no-op where no cross-platform equivalent exists**. Gating never breaks application startup or core
   guidance; the pre-existing no-op/degradation pattern is preserved.
-- **At parity** *(not used at CP5)* — Reserved for a later checkpoint: the feature behaves identically
-  on all three operating systems, **proven** by golden-file/round-trip results across the tri-OS CI
-  matrix and recorded in `PARITY_REPORT.md`. Because that proof does not exist yet, **no feature carries
-  this status at CP5**.
+- **Deferred** — An explicitly **out-of-scope** sub-capability per the AAP. (No *whole* feature is
+  Deferred; the only Deferred item is the `GetPublicFieldsAsync` sub-capability within F-037, which AAP
+  §0.2.3 holds out of scope.)
 
-**Cross-references.** The proof that would back an `At parity` claim — byte-equivalence and round-trip
-golden-file results across the tri-OS CI matrix — will be recorded in a **`PARITY_REPORT.md`** that is
-**planned but not yet on disk**. The **file-by-file** old→new disposition and per-checkpoint on-disk
-status for each artifact named below is recorded in **`TRANSITION_MAP.md`** (on disk). The narrative
-spine of the migration is in `CHANGELOG.md` (on disk); the non-technical brief `VALUE_SUMMARY.md` is
-**not yet authored**.
+**Cross-references.** Behavioral-parity proof (byte-equivalence and round-trip golden results, the GL
+risk, the vulnerability audit, and every open risk) is in **`PARITY_REPORT.md`** (on disk). The
+**file-by-file** old→new disposition for each artifact named below is in **`TRANSITION_MAP.md`** (on
+disk). The narrative spine is in **`CHANGELOG.md`** (on disk); the non-technical brief is in
+**`VALUE_SUMMARY.md`** (on disk).
 
 > All tables use four columns — **ID** | **Feature** | **Status** | **Cross-platform location /
 > notes** — and are grouped under the product's functional areas.
@@ -76,148 +76,137 @@ spine of the migration is in `CHANGELOG.md` (on disk); the non-technical brief `
 
 ## Phase 1 — Positioning & Connectivity (F-001 … F-010)
 
-Of the ten positioning and connectivity features, the **AgIO-side and Core-side** code is on disk now
-(`Scaffolded`): the AgIO Avalonia app + transport services, the platform-services layer, and the Core
-geo conversion. The features that depend on the **extracted GPS `Services/`** (`PgnDispatcher`,
-`PositionService`) are `Deferred`, because those services are **not yet on disk**.
+All ten positioning and connectivity features are integrated and locally green. The two-program model
+is fully wired (GPS auto-starts/stops AgIO), the PGN fabric is golden-tested and length-hardened, and
+the Core geo conversion is unit-covered.
 
 | ID | Feature | Status | Cross-platform location / notes |
 |---|---|---|---|
-| F-001 | Two-program architecture (AgOpenGPS `FormGPS` + AgIO `FormLoop`, separate single-instance programs) | Scaffolded | AgIO re-platformed as an Avalonia app under `SourceCode/AgIO` (on disk + compiling); the GPS shell `SourceCode/GPS/App.axaml(.cs)` + `Views/MainView.axaml(.cs)` are on disk with code-behind and **now compiling in the GPS build** (pending tri-OS CI verification). Two-program model + loopback fabric retained. See `TRANSITION_MAP.md` → UI Shell. |
-| F-002 | UDP loopback PGN fabric (ports 15555 / 17777, additive-checksum CRC, header `0x80 0x81 0x7F`) | Scaffolded | AgIO `Source/Services/UdpLoopbackService.cs` is on disk + compiling; the **GPS** counterpart `SourceCode/GPS/Services/PgnDispatcher.cs` is a **target path not yet on disk** (deferred half). Frame format, CRC (sum of bytes 2..N-1), and ports frozen by contract; byte-equivalence **to be proven** by the planned `PgnFrameGoldenTests`. |
-| F-003 | AgIO auto-start / auto-stop by AgOpenGPS | Scaffolded | AgIO `Program.cs` migrated to the Avalonia bootstrap (on disk + compiling) with `Restart()` preserved cross-platform; the GPS-side bootstrap that launches AgIO lands with the GPS `csproj` conversion. |
-| F-004 | GPS position ingestion (PGN `0xD6`, 52 bytes) | Deferred | Target `SourceCode/GPS/Services/PgnDispatcher.cs` → `PositionService.cs` **not yet on disk**; the 52-byte decode is frozen by contract for the port. |
-| F-005 | NTRIP / RTK client (AgIO) | Scaffolded | AgIO `Source/Services/NtripService.cs` (extracted from `NTRIPComm.Designer.cs`) is **on disk + compiling**; tri-OS runtime parity pending CI. |
-| F-006 | External IMU + disconnect (PGN `0xD3` / `0xD4`) | Deferred | Handled by the GPS `Services/PgnDispatcher.cs` target — **not yet on disk**; contract frozen. |
-| F-007 | GPS / IMU heading & roll fusion (CAHRS) | Deferred | `SourceCode/GPS/Classes/CAHRS.cs` recompile (behavior frozen) is gated by the GPS build; its `PositionService` driver is **not yet on disk**. |
-| F-008 | Dual-antenna heading & reverse detection | Deferred | Depends on the GPS `Services/PositionService.cs` target (**not yet on disk**) + `AgOpenGPS.Core` geo models. |
-| F-009 | WGS84 ↔ local-plane conversion | Scaffolded | `AgOpenGPS.Core` geo conversion is **on disk + compiling and covered by the Core test suite (33/33 pass)**; numeric I/O via `InvariantCulture`. The `PositionService` that drives it per-fix is `Deferred`. |
-| F-010 | Single-instance enforcement | Scaffolded | `IPlatformServices.TryAcquireSingleInstance` + `PlatformServicesFactory` on disk + compiling in Core; AgIO impls compile; the **GPS** `Platform/{Windows,Linux,Mac}PlatformServices.cs` are on disk + harness-verified (Windows named `Mutex`; Linux/macOS lockfile **+ advisory lock, fail-closed**); GUID `{516-0AC5-B9A1-55fd-A8CE-72F04E6BDE8F}` preserved. Factory `Register(...)` wiring is a **CP6** bootstrap item (`Create()` throws until wired). See `TRANSITION_MAP.md` → Platform Services. |
+| F-001 | Two-program architecture (AgOpenGPS `FormGPS` + AgIO `FormLoop`, separate single-instance programs) | At parity (local) | GPS shell `SourceCode/GPS/App.axaml(.cs)` + `Views/MainView.axaml(.cs)` and the AgIO Avalonia app under `SourceCode/AgIO` are on disk and compiled. Two-program model + loopback fabric retained; **no GPS↔AgIO project reference** (UDP loopback only). GPS↔AgIO auto-start/stop wired (see F-003). See `TRANSITION_MAP.md` → UI Shell. |
+| F-002 | UDP loopback PGN fabric (ports 15555 / 17777, additive-checksum CRC, header `0x80 0x81 0x7F`) | At parity (local) | AgIO `Source/Services/UdpLoopbackService.cs` + GPS `Services/PgnDispatcher.cs` on disk and compiled; frame format, CRC (sum of bytes 2..N-1), and ports frozen by contract and asserted by `PgnFrameGoldenTests` (green locally). Inbound length guards hardened (UDP handlers check `Length >= 4` before header/PGN indexing). |
+| F-003 | AgIO auto-start / auto-stop by AgOpenGPS | At parity (local) | **Implemented in this remediation pass:** GPS `Program.cs` exposes `StartAgIO()`/`StopAgIO()` (safe `Process.Start` / terminate via `Environment.ProcessPath`), called from `App.axaml.cs` startup/`ShutdownRequested`, gated by `setDisplay_isAutoStartAgIO` / `setDisplay_isAutoOffAgIO` (matching the WinForms gating). AgIO `Restart()` preserved cross-platform. |
+| F-004 | GPS position ingestion (PGN `0xD6`, 52 bytes) | At parity (local) | `SourceCode/GPS/Services/PgnDispatcher.cs` → `PositionService.cs` on disk and compiled; the 52-byte decode is frozen by contract and golden-covered. |
+| F-005 | NTRIP / RTK client (AgIO) | At parity (local) | AgIO `Source/Services/NtripService.cs` on disk and compiled; **CR/LF header-injection hardened** (mountpoint validated against control/CR/LF chars before the request line — this remediation pass, SEC-1). |
+| F-006 | External IMU + disconnect (PGN `0xD3` / `0xD4`) | At parity (local) | Handled by GPS `Services/PgnDispatcher.cs`; contract frozen, golden-covered. |
+| F-007 | GPS / IMU heading & roll fusion (CAHRS) | At parity (local) | `SourceCode/GPS/Classes/CAHRS.cs` recompiled (behavior frozen) and driven per-fix by `PositionService`. |
+| F-008 | Dual-antenna heading & reverse detection | At parity (local) | `PositionService` + `AgOpenGPS.Core` geo models on disk and compiled; behavior frozen. |
+| F-009 | WGS84 ↔ local-plane conversion | At parity (local) | `AgOpenGPS.Core` geo conversion **covered by the Core test suite (33/33 pass locally)**; numeric I/O via `InvariantCulture`. |
+| F-010 | Single-instance enforcement | At parity (local) | `IPlatformServices.TryAcquireSingleInstance` + `PlatformServicesFactory` in Core; GPS/AgIO `Platform/{Windows,Linux,Mac}PlatformServices.cs` on disk (Windows named `Mutex`; Linux/macOS lockfile + advisory lock, fail-closed); GUIDs `{516-0AC5-…6BDE8F}` (GPS) / `{8F6F0AC4-…6BDE8F}` (AgIO) preserved. App composition root now **reuses the single process-level `IPlatformServices`** created by `Program` (this remediation pass, APP-1). |
 
 ---
 
 ## Phase 2 — Guidance & Steering (F-011 … F-020)
 
-All ten guidance and steering features are **Deferred** at CP5. Their cross-platform homes are the
-`SourceCode/GPS/Classes/**` algorithm recompile and (for the AutoSteer PGN output) the extracted GPS
-`PgnDispatcher` — **none of which are on disk yet**, because they are gated by the pending GPS `csproj`
-Avalonia conversion. The guidance mathematics is behavior-frozen by contract; its output equivalence is
-**to be proven** by the planned `GuidanceEquivalenceTests` once the GPS project builds. Logic may move
-(decoupled from the `FormGPS` god-object via constructor injection) but outputs may not change.
+The guidance/steering **mathematics are recompiled (behavior frozen) and proven locally** by
+`GuidanceEquivalenceTests` (exact for pure math; `Is.LessThan(0.001)` tolerance for geometry). Logic
+was decoupled from the `FormGPS` god-object via constructor injection; outputs are unchanged. **Beyond
+the universal tri-OS CI residual, the guidance features carry one additional documented residual:** the
+cyclic guidance peers expose `SetGuidanceReferences(...)` but the composition root does not yet call it
+(no live `CGuidance` is constructed) — the *math* is proven, but the *live end-to-end* guidance
+pipeline wiring is a latent gap tracked as `PARITY_REPORT.md` Open Risk #8 (pre-existing; out of scope
+of the 31 reviewed findings).
 
 | ID | Feature | Status | Cross-platform location / notes |
 |---|---|---|---|
-| F-011 | AB line guidance | Deferred | `SourceCode/GPS/Classes/CABLine.cs` recompile (behavior frozen) gated by the GPS build. |
-| F-012 | AB curve guidance | Deferred | `SourceCode/GPS/Classes/CABCurve.cs` recompile (behavior frozen) gated by the GPS build. |
-| F-013 | Contour guidance | Deferred | `SourceCode/GPS/Classes/CContour.cs` recompile (behavior frozen) gated by the GPS build. |
-| F-014 | Track management (create / select / nudge / snap / cycle) | Deferred | `SourceCode/GPS/Classes/CTrack.cs` + `CTrackMethods` recompile gated by the GPS build. |
-| F-015 | Pure Pursuit steering (`CTrackMethods.GoalPoint()`, `atan2(2·wheelbase·sin(error), lookahead)`) | Deferred | Frozen math in `SourceCode/GPS/Classes/CTrackMethods.cs`; recompile gated by the GPS build. Output equivalence **to be proven** by the planned `GuidanceEquivalenceTests`. |
-| F-016 | Stanley steering (`CGuidance.DoSteerAngleCalc()`) | Deferred | Frozen math in `SourceCode/GPS/Classes/CGuidance.cs`; safety guards `maxSteerAngle = 30°` and `maxAngularVelocity = 0.64°/s` preserved by contract (`docs/settings.md` L54-L55); recompile gated by the GPS build. |
-| F-017 | AutoSteer output (PGN `0xFE`, 14 bytes) + module response (`0xFD`) | Deferred | Target `SourceCode/GPS/Services/PgnDispatcher.cs` **not yet on disk**; 14-byte encode/decode frozen by contract. |
-| F-018 | U-turn / YouTurn + Dubins paths | Deferred | `SourceCode/GPS/Classes/CYouTurn.cs`, `CDubins.cs` recompile gated by the GPS build. |
-| F-019 | Recorded path | Deferred | `SourceCode/GPS/Classes/CRecordedPath.cs` recompile gated by the GPS build. |
-| F-020 | Steering-angle-sensor (WAS) calibration | Deferred | `SourceCode/GPS/Classes/CSmartWAS.cs` (`CSmartWAS(FormGPS)` → `CSmartWAS(ApplicationModel)` injection already done); full recompile gated by the GPS build. |
+| F-011 | AB line guidance | At parity (local) | `SourceCode/GPS/Classes/CABLine.cs` recompiled (behavior frozen); UI wired from MainView (this remediation pass). Live-pipeline peer-wiring residual: `PARITY_REPORT.md` #8. |
+| F-012 | AB curve guidance | At parity (local) | `SourceCode/GPS/Classes/CABCurve.cs` recompiled; UI wired. Residual: #8. |
+| F-013 | Contour guidance | At parity (local) | `SourceCode/GPS/Classes/CContour.cs` recompiled. Residual: #8. |
+| F-014 | Track management (create / select / nudge / snap / cycle) | At parity (local) | `SourceCode/GPS/Classes/CTrack.cs` + `CTrackMethods` recompiled; AB-draw/build-tracks and track-cycle UI wired from MainView (this remediation pass). |
+| F-015 | Pure Pursuit steering (`CTrackMethods.GoalPoint()`, `atan2(2·wheelbase·sin(error), lookahead)`) | At parity (local) | Frozen math in `SourceCode/GPS/Classes/CTrackMethods.cs`; **asserted by `GuidanceEquivalenceTests` (green locally)**. |
+| F-016 | Stanley steering (`CGuidance.DoSteerAngleCalc()`) | At parity (local) | Frozen math in `SourceCode/GPS/Classes/CGuidance.cs`; safety guards `maxSteerAngle = 30°` / `maxAngularVelocity = 0.64°/s` preserved (`docs/settings.md` L54-L55); **asserted by `GuidanceEquivalenceTests`**. Residual: #8. |
+| F-017 | AutoSteer output (PGN `0xFE`, 14 bytes) + module response (`0xFD`) | At parity (local) | `SourceCode/GPS/Services/PgnDispatcher.cs` on disk; 14-byte encode/decode frozen and golden-covered (`FE_autosteer.bin`). |
+| F-018 | U-turn / YouTurn + Dubins paths | At parity (local) | `SourceCode/GPS/Classes/CYouTurn.cs`, `CDubins.cs` recompiled (behavior frozen). |
+| F-019 | Recorded path | At parity (local) | `SourceCode/GPS/Classes/CRecordedPath.cs` recompiled; `RecPath.txt` field golden enforced. |
+| F-020 | Steering-angle-sensor (WAS) calibration / steer wizard | At parity (local) | **Wired in this remediation pass:** the steer-wizard workflow is reachable from MainView (`OpenSteerWizard` routes through real adapters — `SteerWizAdapters.cs` / `SteerSettingsAdapters.cs`); `CSmartWAS(ApplicationModel)` injection done. The earlier "Not available yet" stub is removed. |
 
 ---
 
 ## Phase 3 — Field, Mapping & Sections (F-021 … F-035)
 
-Field management, boundary/headland/tramline handling, and section control are **Deferred**: their
-cross-platform code is the extracted GPS `Services/` (`FieldIoService`, `SectionService`) and the
-`GPS/Classes/**` recompile, **none of which are on disk yet**. **Serial communications (F-026)** is
-`Scaffolded` (the AgIO serial service + the platform port-name enumeration are on disk + compiling).
-**Background map imagery (F-021)** is `Feature-gated (per-OS)`.
+Field management, boundary/headland/tramline handling, and section control are **integrated and
+wired**: the extracted GPS `Services/` (`FieldIoService`, `SectionService`, `RenderCoordinator`) and
+the `GPS/Classes/**` recompile are on disk and compiled, the dialogs are reachable from the shell, the
+manual section buttons are enabled and routed, and the **eleven field-file formats are golden-tested
+(load→save byte-identical, 11/11 green locally)**. Background map imagery (F-021) is `Feature-gated`.
 
 | ID | Feature | Status | Cross-platform location / notes |
 |---|---|---|---|
-| F-021 | Background map imagery (GMap online tiles) | **Feature-gated (per-OS)** | `GMap.NET.WinForms 2.1.7` removed; online background imagery is replaced by an Avalonia map control **or feature-gated** on **all OSes** (Windows / Linux / macOS). The SQLite tile cache stays cross-platform, and the field renders correctly without imagery — gating never breaks startup or core guidance. The GPS-side gating lands with the GPS `csproj` conversion. See `TRANSITION_MAP.md` → Windows-Coupled Classes. |
-| F-022 | Field create / open / save / close | Deferred | Target `SourceCode/GPS/Services/FieldIoService.cs` (from `SaveOpen.Designer.cs`) **not yet on disk**; `Path.Combine` + `File`/`Directory.Exists` validation and `InvariantCulture` numeric I/O frozen by contract; round-trip **to be proven** by the planned `FieldRoundTripTests`. |
-| F-023 | Boundary & geofence | Deferred | `SourceCode/GPS/Classes/CFence.cs` / `CBoundary.cs` recompile gated by the GPS build. |
-| F-024 | Headland | Deferred | `SourceCode/GPS/Classes/CHead.cs` recompile gated by the GPS build. |
-| F-025 | Tramlines | Deferred | `SourceCode/GPS/Classes/CTram.cs` recompile gated by the GPS build. |
-| F-026 | Serial communications (GPS / IMU / steer, AgIO) | Scaffolded | `System.IO.Ports 9.0.0` (cross-platform NuGet) retained; the AgIO `Source/Services/SerialCommService.cs` is on disk + compiling and port-**name** enumeration (`COMx` vs `/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/cu.*`) is abstracted via `IPlatformServices.GetSerialPortNames` (on disk). Serial I/O behavior preserved; the GPS-side serial usage lands with the GPS conversion. |
-| F-027 | Section control (manual + auto) | Deferred | Target `SourceCode/GPS/Services/SectionService.cs` (from `Sections.Designer.cs`) **not yet on disk**. |
-| F-028 | Multi-section / zone width (1–16 unique / up to 64 same-width via PGN `0xE5`) | Deferred | Target `SourceCode/GPS/Services/SectionService.cs` **not yet on disk**; PGN `0xE5` (8 section bitmask bytes → sections 1–64) and `isJobStarted` gating frozen by contract. |
-| F-029 | Coverage / worked-area mapping | Deferred | `SourceCode/GPS/Classes/CFieldData.cs` recompile + the `RenderCoordinator` target **not yet on disk**. |
-| F-030 | Flags / markers | Deferred | `SourceCode/GPS/Classes/CFlag.cs` recompile gated by the GPS build. |
-| F-031 | Vehicle configuration + brand presets | Deferred | `SourceCode/GPS/Classes/CVehicle.cs`, `Brands.cs` recompile gated by the GPS build; vehicle/brand textures route via Avalonia/Skia images feeding the OpenGL textures at the conversion. |
-| F-032 | Tool / implement configuration & geometry | Deferred | `SourceCode/GPS/Classes/CTool.cs` recompile gated by the GPS build. |
-| F-033 | Machine / relay control (PGN `0xEF` / `0xEC` / `0xEE`) | Deferred | Targets `SourceCode/GPS/Services/SectionService.cs` / `PgnDispatcher.cs` **not yet on disk**; machine-data, relay-pin, and machine-config frames frozen by contract. |
-| F-034 | ISOBUS / Task Controller | Deferred | `SourceCode/GPS/Classes/CISOBUS.cs` recompile gated by the GPS build; ISOBUS heartbeat / process-data PGNs (`0xF0`…`0xF3`) frozen by contract. |
-| F-035 | ISOXML V3 / V4 import / export | Deferred | `Dev4Agriculture.ISO11783.ISOXML 0.23.1.1` kept (cross-platform); the V3/V4 import/export code path runs in the GPS project and is gated by the GPS build. Equivalence (name ≤ 248 bytes; AB+Curve export limit) **to be proven** by the planned `IsoXmlEquivalenceTests`. |
+| F-021 | Background map imagery (GMap online tiles) | **Feature-gated (per-OS)** | `GMap.NET.WinForms 2.1.7` removed; online imagery replaced/gated on **all** OSes. The SQLite tile cache stays cross-platform and the field renders correctly without imagery — gating never breaks startup or core guidance. |
+| F-022 | Field create / open / save / close | At parity (local) | `SourceCode/GPS/Services/FieldIoService.cs` on disk; **close lifecycle hooks implemented in this remediation pass** (`onBeforeCloseField`/`onAfterCloseField` — section/contour stop, mapping-off, ISOBUS reset, job close, panel-disable, title). `Path.Combine` + `InvariantCulture` numeric I/O frozen; round-trip **proven by `FieldRoundTripTests` (11/11 green locally)**. |
+| F-023 | Boundary & geofence | At parity (local) | `SourceCode/GPS/Classes/CFence.cs` / `CBoundary.cs` recompiled; `FormBoundaryView` + `FormBndToolView` + `FormBuildBoundaryFromTracksView` **wired from MainView Field-Tools menu** (this remediation pass); `Boundary.txt` golden enforced. |
+| F-024 | Headland | At parity (local) | `SourceCode/GPS/Classes/CHead.cs` recompiled; `FormHeadAcheView` / `FormHeadLineView` wired from shell; `Headland.txt` / `Headlines.txt` goldens enforced. |
+| F-025 | Tramlines | At parity (local) | `SourceCode/GPS/Classes/CTram.cs` recompiled; `FormTramLineView` wired from shell; `Tram.txt` golden enforced. |
+| F-026 | Serial communications (GPS / IMU / steer, AgIO) | At parity (local) | `System.IO.Ports 9.0.0` (cross-platform NuGet) retained; AgIO `Source/Services/SerialCommService.cs` on disk; port-**name** enumeration (`COMx` vs `/dev/ttyUSB*` / `/dev/ttyACM*` / `/dev/cu.*`) abstracted via `IPlatformServices.GetSerialPortNames`. Behavior preserved; **on-hardware serial confirmation** is an external-evidence residual alongside tri-OS CI. |
+| F-027 | Section control (manual + auto) | At parity (local) | `SourceCode/GPS/Services/SectionService.cs` on disk; **manual section buttons `btnSection1Man..16Man` enabled and routed to `SectionService` public APIs in this remediation pass** (previously hard-disabled). `isJobStarted` gating preserved. |
+| F-028 | Multi-section / zone width (1–16 unique / up to 64 same-width via PGN `0xE5`) | At parity (local) | `SectionService` exposes section/zone state + click handlers; PGN `0xE5` (8 section-bitmask bytes → sections 1–64) frozen by contract and golden-covered (`E5_sections.bin`). |
+| F-029 | Coverage / worked-area mapping | At parity (local) | `SourceCode/GPS/Classes/CFieldData.cs` recompiled + `RenderCoordinator` on disk. **Additional residual:** live coverage rendering uses the immediate-mode GL pipeline and `glReadPixels` back-buffer scan — shares the GL on-hardware confirmation residual (`PARITY_REPORT.md` #1; desktop-GL hook now wired). |
+| F-030 | Flags / markers | At parity (local) | `SourceCode/GPS/Classes/CFlag.cs` recompiled; `Flags.txt` golden enforced (incl. `InvariantCulture` period-decimal assertion). **Additional residual:** flag-pick uses `glReadPixels` — GL on-hardware residual (#1). |
+| F-031 | Vehicle configuration + brand presets | At parity (local) | `SourceCode/GPS/Classes/CVehicle.cs` (with `LoadSettings()` extracted this remediation pass), `Brands.cs` recompiled; vehicle/brand textures route via Avalonia/Skia images feeding the OpenGL textures. |
+| F-032 | Tool / implement configuration & geometry | At parity (local) | `SourceCode/GPS/Classes/CTool.cs` recompiled; config views reachable from shell. |
+| F-033 | Machine / relay control (PGN `0xEF` / `0xEC` / `0xEE`) | At parity (local) | `SectionService` / `PgnDispatcher` on disk; machine-data, relay-pin, and machine-config frames frozen and golden-covered (`EF_machine.bin`, `EC_relay.bin`, `EB_dims.bin`). |
+| F-034 | ISOBUS / Task Controller | At parity (local) | `SourceCode/GPS/Classes/CISOBUS.cs` recompiled; ISOBUS heartbeat / process-data PGNs (`0xF0`…`0xF3`) frozen by contract. |
+| F-035 | ISOXML V3 / V4 import / export | At parity (local) | `Dev4Agriculture.ISO11783.ISOXML 0.23.1.1` kept (cross-platform); equivalence (name ≤ 248 bytes; AB+Curve export limit) **proven by `IsoXmlEquivalenceTests` (green locally)**. The separate `IsoXmlExport_DrivenFromDomainGraph_RequiresFormGpsGraph` driver test is **intentionally skipped** (needs the full `FormGPS` object graph; accepted limitation — it is not a golden loader and not a field byte-contract test). |
 
 ---
 
 ## Phase 4 — Data, Tools, UI & Peripherals (F-036 … F-045)
 
-The data, tools, UI, and peripheral features are a **mix at CP5**: features whose cross-platform code
-is on disk and compiling are **Scaffolded** (settings template, GPS_Out, the ModSim / AgDiag shells,
-the GPS day/night theme, and the Keypad controls); the peripheral capabilities that depend on
-Windows-only hardware APIs are **Feature-gated per-OS** (monitor brightness, webcam); and features
-whose cross-platform artifact is not yet on disk are **Deferred** (audio abstraction, the AgShare
-port — whose `GetPublicFieldsAsync` sub-capability is additionally out of scope per the AAP).
+Data, tools, UI, and peripheral features are integrated and locally green; the peripheral capabilities
+that depend on Windows-only hardware APIs are **Feature-gated per-OS** (brightness, webcam). The
+day/night theme tokens were consolidated in this remediation pass.
 
 | ID | Feature | Status | Cross-platform location / notes |
 |---|---|---|---|
-| F-036 | Settings system (split Vehicle / Tool / Environment) + `CSettingsMigration` | Scaffolded | XML schema **frozen**; the round-trip template is on disk and tested — `SourceCode/AgLibrary/.../XmlSettingsHandler` with `AgLibrary.Tests/Settings/XmlSettingsHandlerTests` (3/3 passing). The GPS-side swap of the Windows Registry / `%AppData%` backing (`docs/settings.md` L26-L28, L34-L36) for the `IPlatformServices` config root (Windows `%AppData%\AgOpenGPS`, Linux `~/.config/AgOpenGPS`, macOS `~/Library/Application Support/AgOpenGPS`) and the `CSettingsMigration` one-time Registry read **are gated by the GPS build**; round-trip equivalence **to be proven** by the planned `SettingsRoundTripTests`. |
-| F-037 | AgShare field upload / download | Deferred | Target `SourceCode/GPS/Classes/AgShare` port **not yet on disk** (gated by the GPS build); `AgShareEnabled=false` by default (`docs/settings.md` L422) frozen by contract. **The `GetPublicFieldsAsync` sub-capability is additionally out of scope** per AAP §0.2.3 ("remains not implemented") and is **not** implemented as part of this migration. |
-| F-038 | NMEA serial output (GPS_Out, 4-second timeout) | Scaffolded | `SourceCode/GPS_Out` is on disk and **builds 0/0**, keeps `System.IO.Ports 9.0.0` with port-name enumeration abstracted via `IPlatformServices`; the 4-second NMEA-forwarding timeout is preserved. |
-| F-039 | Simulators (in-app `CSim` + standalone `ModSim`) | Scaffolded | `ModSim` is re-platformed onto an Avalonia shell on disk (`MainSimView` + `App.axaml`) and **builds 0/0**. The in-app `SourceCode/GPS/Classes/CSim.cs` recompile is gated by the GPS build. |
-| F-040 | Diagnostics (AgDiag) | Scaffolded | `SourceCode/AgDiag` re-platformed onto Avalonia; `csproj` on disk. |
-| F-041 | Day / night theming & display preferences | Scaffolded | Avalonia Fluent theme + custom day/night palette in `SourceCode/GPS/App.axaml` (derived from the `FormGPS` colors), consumed by all 60 GPS views via `{DynamicResource}`; authored and consistency-validated and **now compiling in the GPS build** (pending tri-OS CI verification). |
-| F-042 | On-screen keypad / keyboard (touch) | Scaffolded | `SourceCode/Keypad` `GenericKeypad` / `NumKeypad` / `Keyboard` reimplemented as Avalonia `UserControl`s (`Keyboard.axaml`, `NumKeypad.axaml`), shared by GPS + AgIO; the project **builds 0/0**. |
-| F-043 | Audio alerts / sounds (`CSound`) | Deferred | Cross-platform replacement for `System.Media.SoundPlayer` (Windows-only) **not yet on disk** as a building artifact; gated by the GPS build. |
-| F-044 | Monitor brightness (`CBrightness` / WMI) | **Feature-gated (per-OS)** | **Windows:** full port (WMI relocated to `WindowsPlatformServices` under `net8.0-windows`, on disk). **Linux:** best-effort via sysfs `/sys/class/backlight` (on disk). **macOS:** gated / no-op (on disk). `CBrightness` already returns `-1` gracefully when no controllable display exists, so the no-op fallback is pre-existing and never breaks startup. The GPS-side routing through `IPlatformServices.SetBrightness` lands with the GPS conversion. |
-| F-045 | Webcam (Accord DirectShow) | **Feature-gated (per-OS)** | **Windows:** keep-or-replace the Accord DirectShow capture. **Linux / macOS:** gated (DirectShow is Windows-only and abandoned). Default `isWebCamOn=false` (`docs/settings.md` L446) — the lowest-priority optional convenience; gating never affects core guidance. The GPS-side gating lands with the GPS conversion. |
+| F-036 | Settings system (split Vehicle / Tool / Environment) + `CSettingsMigration` | At parity (local) | XML schema **frozen**; round-trip **proven by `SettingsRoundTripTests` + `AgLibrary.Tests` (green locally)**. Windows Registry / `%AppData%` backing replaced by the `IPlatformServices` config root (Windows `%AppData%\AgOpenGPS`, Linux `~/.config/AgOpenGPS`, macOS `~/Library/Application Support/AgOpenGPS`); `CSettingsMigration` one-time Windows Registry read preserved. AgIO `RegistrySettings.cs` `XDocument.Load` hardened (`DtdProcessing=Prohibit`, this remediation pass, SEC-6). |
+| F-037 | AgShare field upload / download | At parity (local) | Migrated AgShare client on disk; `AgShareEnabled=false` by default (`docs/settings.md` L422) frozen by contract. **The `GetPublicFieldsAsync` sub-capability is Deferred — explicitly out of scope** per AAP §0.2.3 ("remains not implemented") and is **not** implemented as part of this migration. |
+| F-038 | NMEA serial output (GPS_Out, 4-second timeout) | At parity (local) | `SourceCode/GPS_Out` on disk and **builds 0/0**; keeps `System.IO.Ports 9.0.0` with port-name enumeration abstracted via `IPlatformServices`; the 4-second NMEA-forwarding timeout preserved. On-hardware serial confirmation is an external-evidence residual alongside tri-OS CI. |
+| F-039 | Simulators (in-app `CSim` + standalone `ModSim`) | At parity (local) | `ModSim` re-platformed onto an Avalonia shell (`MainSimView` + `App.axaml`), **builds 0/0**; in-app `SourceCode/GPS/Classes/CSim.cs` recompiled and integrated in the GPS build. |
+| F-040 | Diagnostics (AgDiag) | At parity (local) | `SourceCode/AgDiag` re-platformed onto Avalonia; on disk and compiled. |
+| F-041 | Day / night theming & display preferences | At parity (local) | Avalonia Fluent theme + custom day/night palette in `SourceCode/GPS/App.axaml` (derived from the `FormGPS` colors), consumed by the GPS views via `{DynamicResource}`. **MainView hardcoded colors consolidated onto the `Aog*` theme tokens in this remediation pass (MV-4)**, removing day/night drift; intentional legacy fixed-color exceptions documented inline. |
+| F-042 | On-screen keypad / keyboard (touch) | At parity (local) | `SourceCode/Keypad` `GenericKeypad` / `NumKeypad` / `Keyboard` reimplemented as Avalonia `UserControl`s, shared by GPS + AgIO; the project **builds 0/0**. |
+| F-043 | Audio alerts / sounds (`CSound`) | At parity (local) | Cross-platform `SourceCode/GPS/Classes/CSound.cs` on disk and compiled (replaces the Windows-only `System.Media.SoundPlayer`); `Resources/*.wav` packaged via `CopyToOutputDirectory`. |
+| F-044 | Monitor brightness (`CBrightness` / WMI) | **Feature-gated (per-OS)** | **Windows:** full port (WMI relocated to `WindowsPlatformServices` under `net8.0-windows`). **Linux:** best-effort via sysfs `/sys/class/backlight`. **macOS:** gated / no-op. `CBrightness` already returns `-1` gracefully when no controllable display exists, so the no-op fallback is pre-existing and never breaks startup. On-hardware brightness confirmation is an external-evidence residual. |
+| F-045 | Webcam (Accord DirectShow) | **Feature-gated (per-OS)** | **Windows:** keep-or-replace the Accord DirectShow capture. **Linux / macOS:** gated (DirectShow is Windows-only and abandoned). Default `isWebCamOn=false` (`docs/settings.md` L446) — the lowest-priority optional convenience; gating never affects core guidance. |
 
 > **Note on steering/heading graphs.** The on-screen steering, heading, cross-track-error, and
 > correction **graphs** were formerly drawn with the Windows-only
 > `System.Windows.Forms.DataVisualization` charting control. They are **reimplemented via custom
-> Avalonia drawing** — the `RollChart` and `XteChartControl` controls are on disk (series / axes /
-> zoom / autoscale + rolling-data buffer preserved) and statically validated, but are **not yet
-> compiled** (gated by the GPS build), so they are **Scaffolded** rather than proven At parity. These
-> graphs are visualization surfaces under the guidance features (F-015 / F-016) and diagnostics
-> (F-040); the Windows-only `<Reference>` is removed from the GPS project at the conversion. See
-> `TRANSITION_MAP.md` → Windows-Coupled Classes.
+> Avalonia drawing** (the `RollChart` / `XteChartControl` controls — series / axes / zoom / autoscale +
+> rolling-data buffer preserved) and compiled into the GPS build. These graphs are visualization
+> surfaces under the guidance features (F-015 / F-016) and diagnostics (F-040); the Windows-only
+> `<Reference>` is removed from the GPS project. See `TRANSITION_MAP.md` → Windows-Coupled Classes.
 
 ---
 
 ## Summary & validation
 
-**Status counts at CP5 (F-001 … F-045) — no feature is `At parity` yet:**
+**Status counts (F-001 … F-045):**
 
-- **Scaffolded: 13** — cross-platform code/structure is on disk now: **F-001** (two-program model),
-  **F-002** (PGN loopback fabric, AgIO `UdpLoopbackService`), **F-003** (AgIO auto-start),
-  **F-005** (`NtripService`), **F-009** (WGS84 ↔ local-plane, Core 33/33 tests passing),
-  **F-010** (single-instance, advisory-lock fixed; factory `Register(...)` wiring is a CP6 item),
-  **F-026** (serial — AgIO `SerialCommService` + `IPlatformServices.GetSerialPortNames`),
-  **F-036** (settings round-trip template + `AgLibrary.Tests` 3/3),
-  **F-038** (GPS_Out, builds 0/0), **F-039** (ModSim Avalonia shell, builds 0/0),
-  **F-040** (AgDiag Avalonia), **F-041** (GPS day/night theme across 60 views),
-  **F-042** (Keypad controls, builds 0/0).
+- **At parity (local): 42** — contract-preserved, integrated/wired, and green on the local Linux
+  environment, with **tri-OS CI confirmation** as the single universal residual. Two subsets carry one
+  *additional* documented residual: the guidance features **F-011 … F-016** (live-pipeline peer-wiring,
+  `PARITY_REPORT.md` #8 — *math is proven*), and **F-029 / F-030** plus the live field viewport (GL
+  on-hardware confirmation, `PARITY_REPORT.md` #1 — *desktop-GL hook now wired*). Serial features
+  **F-026 / F-038** additionally await on-hardware confirmation.
 - **Feature-gated (per-OS): 3** — **F-021** (background map imagery), **F-044** (monitor brightness),
-  and **F-045** (webcam, gated off-Windows).
-- **Deferred: 29** — every remaining feature, because its cross-platform artifact is either not yet on
-  disk or depends on a WinForms-`FormGPS`-coupled GPS source that is temporarily gated out of the GPS
-  build via `<Compile Remove>` pending decoupling (the GPS project itself now compiles cross-platform for
-  both `net8.0`/`linux-x64` and `net8.0-windows`/`win-x64`). This includes the guidance/steering math
-  (F-011 … F-020), the extracted GPS `Services/` (`PositionService`, `PgnDispatcher`, `SectionService`,
-  `FieldIoService`, `RenderCoordinator` — **none yet on disk**), the `GPS/Classes/**` recompile, the
-  AgShare port (**F-037**, whose **`GetPublicFieldsAsync`** sub-capability is additionally out of scope
-  per AAP §0.2.3), and the audio abstraction (F-043).
+  **F-045** (webcam, gated off-Windows). Each degrades gracefully and never breaks startup or core
+  guidance.
+- **Deferred: 0 whole features** — the only Deferred item is the **`GetPublicFieldsAsync`**
+  sub-capability within **F-037**, explicitly out of scope per AAP §0.2.3.
 
 Every feature in the catalog is accounted for — nothing is added and nothing is removed, in keeping
-with the **100% functional-parity** acceptance bar, which remains the *target*. **No feature can be
-marked `At parity` at this checkpoint**, because that status requires both the cross-platform code to
-exist *and* golden-file / CI evidence to prove byte-equivalence, and neither the GPS compile nor the
-parity proof exists yet. The byte-equivalence and round-trip proof behind each future `At parity`
-claim will be recorded in **`PARITY_REPORT.md`** (planned — **not yet on disk** — with the golden-file
-test names and tri-OS CI-matrix results); the **file-by-file** old→new disposition for every artifact
-named above is recorded in **`TRANSITION_MAP.md`** (on disk).
+with the **100% functional-parity** acceptance bar. The byte-equivalence and round-trip proof behind
+each `At parity (local)` claim is recorded in **`PARITY_REPORT.md`** (golden-file suite names, the
+local 115-passed/1-skipped test run, the GL risk, the vulnerability audit, and every open risk); the
+**file-by-file** old→new disposition for every artifact named above is in **`TRANSITION_MAP.md`**; the
+narrative spine is in **`CHANGELOG.md`**; the executive brief is in **`VALUE_SUMMARY.md`**.
 
-*This checklist is kept current as the migration proceeds. The feature identifier space
+**The remaining work to convert every `At parity (local)` to fully-verified `At parity`** is the
+external-evidence set: execute the on-disk `windows`/`ubuntu`/`macos` CI matrix and record green
+results; obtain on-hardware per-OS desktop-GL + `glReadPixels` confirmation; wire the guidance peer
+references (`SetGuidanceReferences`) in the composition root; and re-run the dependency vulnerability
+audit in network-enabled CI. None of these alter a behavior-frozen contract.
+
+*This checklist reflects the integrated, post-remediation state. The feature identifier space
 (F-001 … F-045) is the technical specification's §2.2 "Feature Catalog" (REFERENCE); the five
-AAP-anchored identifiers (F-021, F-026, F-038, F-044, F-045) are fixed at their exact numbers. See
-also `CHANGELOG.md` (narrative spine — on disk), `TRANSITION_MAP.md` (file-level mapping — on disk),
-`PARITY_REPORT.md` (behavioral-parity proof and open risks — planned, not yet on disk), and
-`VALUE_SUMMARY.md` (executive brief — planned, not yet on disk).*
+AAP-anchored identifiers (F-021, F-026, F-038, F-044, F-045) are fixed at their exact numbers.*

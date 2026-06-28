@@ -7,11 +7,16 @@
 // capability (config root, single-instance guard, brightness, serial enumeration) is reached only through
 // that interface, whose concrete per-OS implementations live under this project's Platform/ folder and are
 // selected at startup by PlatformServicesFactory. See MIGRATION_DOCS/TRANSITION_MAP.md.
+using AgLibrary.Logging;
+using AgOpenGPS.Controls;
 using AgOpenGPS.Core.Platform;
 using Avalonia;
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace AgOpenGPS
@@ -69,9 +74,24 @@ namespace AgOpenGPS
         /// <c>App.OnFrameworkInitializationCompleted</c>, not here.
         /// </summary>
         /// <returns>A configured <see cref="AppBuilder"/> for the GPS <see cref="App"/>.</returns>
+        /// <remarks>
+        /// [XPLAT] G3 / AAP §0.6.2 (DOMINANT feasibility risk): the central field viewport's Core DrawLib/GLW
+        /// renderer (<c>RenderCoordinator</c>) uses legacy immediate-mode / fixed-function OpenGL plus three
+        /// <c>GL.ReadPixels</c> back-buffer scans (section look-ahead, zoom-overlap, flag pick). Those exist only
+        /// in a DESKTOP OpenGL (compatibility) context; under the OpenGL ES / ANGLE context Avalonia frequently
+        /// selects by default they would be unavailable and <see cref="AvaloniaGeoViewport"/> would feature-gate
+        /// the viewport to a blank cleared surface. The build is therefore wrapped with
+        /// <see cref="AvaloniaGeoViewport.RequestDesktopGlProfile(AppBuilder)"/>, which requests WGL (Windows) /
+        /// GLX (Linux/X11) native desktop GL with 3.2-compatibility then 2.1 profiles, falling back to software
+        /// rendering. It is a best-effort request — the host still audits the obtained context and gates if it is
+        /// nonetheless GLES — so per-OS/RID hardware confirmation of the live and back-buffer GL paths remains an
+        /// open item tracked in MIGRATION_DOCS/PARITY_REPORT.md. Wiring this hook is the migration's required
+        /// mitigation for the GL-context risk (review G3).
+        /// </remarks>
         public static AppBuilder BuildAvaloniaApp()
-            => AppBuilder.Configure<App>()
-                .UsePlatformDetect()
+            => AvaloniaGeoViewport.RequestDesktopGlProfile(
+                    AppBuilder.Configure<App>()
+                        .UsePlatformDetect())
                 .WithInterFont()
                 .LogToTrace();
 
@@ -163,6 +183,124 @@ namespace AgOpenGPS
                 // mirrors the WinForms process-lifetime Mutex and lets the AgIO Restart() flow re-acquire immediately.
                 _instanceLock?.Dispose();
                 _instanceLock = null;
+            }
+        }
+
+        // [XPLAT] ---- Two-program model: GPS owns the AgIO hub lifecycle (AAP R4 / F-003) ----------------
+        // GPS and AgIO are separate single-instance programs that communicate ONLY over UDP loopback; GPS
+        // auto-starts AgIO on launch and auto-stops it on exit. The WinForms FormGPS did this inline in its
+        // Load handler (Process.GetProcessesByName("AgIO") guard + Process.Start(Application.StartupPath\AgIO.exe))
+        // and in its FormClosing handler (Process.GetProcessesByName("AgIO")[0].CloseMainWindow()). That logic is
+        // lifted here, behaviour-frozen, as two reusable launch/terminate primitives the Avalonia composition
+        // root (App.axaml.cs) and the manual "Start AgIO" button both call. No GPS->AgIO project reference is
+        // introduced (that would break the two-program contract): the sibling is located on disk and managed
+        // purely through System.Diagnostics.Process. See MIGRATION_DOCS/TRANSITION_MAP.md.
+
+        // [XPLAT] OS-specific file name of the sibling AgIO executable. The WinForms build hard-coded "AgIO.exe";
+        // a self-contained publish on Linux/macOS produces an extension-less "AgIO" launcher. RuntimeInformation
+        // selects the right one so auto-start works on every target RID (win-x64/linux-x64/osx-x64/osx-arm64).
+        private static string AgIOExecutableName =>
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "AgIO.exe" : "AgIO";
+
+        // [XPLAT] Process *name* used by the running-instance probe. Process.GetProcessesByName matches the
+        // executable file name WITHOUT its extension on every OS, so the single literal "AgIO" is correct on
+        // Windows, Linux and macOS alike — mirroring the WinForms Process.GetProcessesByName("AgIO") guard.
+        private const string AgIOProcessName = "AgIO";
+
+        /// <summary>
+        /// [XPLAT] Auto-starts the sibling AgIO hub process if it is not already running. Preserves the WinForms
+        /// FormGPS load behaviour (start AgIO when a vehicle profile is selected and <c>setDisplay_isAutoStartAgIO</c>
+        /// is true) — part of the two-program model (AAP R4 / F-003) in which GPS owns AgIO's lifecycle while the
+        /// two communicate only over UDP loopback. The gating decision is made by the caller (the App composition
+        /// root) so this stays a pure, reusable launch primitive that the manual "Start AgIO" button can also call.
+        /// </summary>
+        /// <remarks>
+        /// The AgIO executable is located beside the running GPS executable via <see cref="AppContext.BaseDirectory"/>
+        /// (reliable for both framework-dependent and self-contained publishes, unlike <c>Environment.ProcessPath</c>,
+        /// which under <c>dotnet App.dll</c> points at the shared host). The launch is guarded by a
+        /// <see cref="Process.GetProcessesByName(string)"/> probe so a second AgIO is never spawned, exactly as the
+        /// WinForms build did. All failures are swallowed-and-logged: a missing or unstartable AgIO must never crash
+        /// GPS or block guidance (graceful-degradation rule, AAP §0.7.2).
+        /// </remarks>
+        internal static void StartAgIO()
+        {
+            try
+            {
+                // Don't launch a second hub — mirror the WinForms GetProcessesByName("AgIO").Length == 0 guard.
+                if (Process.GetProcessesByName(AgIOProcessName).Length > 0)
+                {
+                    return;
+                }
+
+                string exePath = Path.Combine(AppContext.BaseDirectory, AgIOExecutableName);
+                if (!File.Exists(exePath))
+                {
+                    // Match the WinForms "Can't Find AgIO" diagnostic. The UI-facing TimedMessageBox the
+                    // WinForms build also showed is intentionally omitted here (auto-start runs before/independently
+                    // of any modal owner); the operator can still start AgIO manually.
+                    Log.EventWriter("Can't Find AgIO, File not Found");
+                    return;
+                }
+
+                ProcessStartInfo processInfo = new ProcessStartInfo
+                {
+                    FileName = exePath,
+                    WorkingDirectory = Path.GetDirectoryName(exePath),
+                    // [XPLAT] UseShellExecute=false launches the executable directly (consistent on all RIDs and
+                    // required for a self-contained launcher); the WinForms default of true is unnecessary here.
+                    UseShellExecute = false,
+                };
+                Process.Start(processInfo);
+                Log.EventWriter("AgIO Started");
+            }
+            catch
+            {
+                // Graceful degradation: never let an AgIO launch failure break GPS startup.
+                Log.EventWriter("Can't Find AgIO, File not Found");
+            }
+        }
+
+        /// <summary>
+        /// [XPLAT] Auto-stops the sibling AgIO hub on GPS shutdown when <c>setDisplay_isAutoOffAgIO</c> is enabled
+        /// (preserving FormGPS's auto-off behaviour and the two-program lifecycle, AAP R4). The WinForms build called
+        /// <c>CloseMainWindow()</c> on the AgIO process; that is a Windows-only graceful close (WM_CLOSE) and a no-op
+        /// on Linux/macOS, so it is followed here by a bounded wait and a <see cref="Process.Kill(bool)"/> fallback to
+        /// guarantee the hub actually exits on every OS — otherwise auto-off would silently fail off-Windows. The
+        /// gating decision is made by the caller; this stays a pure terminate primitive.
+        /// </summary>
+        internal static void StopAgIO()
+        {
+            try
+            {
+                foreach (Process agio in Process.GetProcessesByName(AgIOProcessName))
+                {
+                    try
+                    {
+                        // Graceful first (matches WinForms): WM_CLOSE on Windows, a no-op that returns false elsewhere.
+                        agio.CloseMainWindow();
+
+                        // Give AgIO a moment to release its single-instance guard and tear down cleanly. On Unix
+                        // CloseMainWindow did nothing, so this wait will time out and the Kill fallback runs.
+                        if (!agio.WaitForExit(1500))
+                        {
+                            // Cross-platform guarantee: force-terminate when graceful close did not (or could not)
+                            // take effect. entireProcessTree:true also reaps any AgIO child processes.
+                            agio.Kill(entireProcessTree: true);
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore per-process failures (already exited / access race) and continue with the rest.
+                    }
+                    finally
+                    {
+                        agio.Dispose();
+                    }
+                }
+            }
+            catch
+            {
+                // Never let teardown throw during shutdown.
             }
         }
     }

@@ -325,6 +325,25 @@ namespace AgOpenGPS.Services
             }
         }
 
+        /// <summary>
+        /// [XPLAT] Snaps the trailing tank/tool segments straight behind the vehicle at the current fix heading —
+        /// the behaviour-frozen body of the WinForms <c>btnResetToolHeading_Click</c> (Controls.Designer.cs).
+        /// Moved here (Extract Class / Move Method, AAP §0.3.2) because the tank/tool/hitch positions and the
+        /// fix heading all live in this service after the FormGPS god-object split; the operator button in the
+        /// Avalonia shell invokes it through <c>ShellCommands.ResetToolHeading</c>. The maths are byte-identical
+        /// to the original (no normalization, same hitch lengths).
+        /// </summary>
+        public void ResetToolHeading()
+        {
+            tankPos.heading = fixHeading;
+            tankPos.easting = hitchPos.easting + (Math.Sin(tankPos.heading) * (tool.tankTrailingHitchLength));
+            tankPos.northing = hitchPos.northing + (Math.Cos(tankPos.heading) * (tool.tankTrailingHitchLength));
+
+            toolPivotPos.heading = tankPos.heading;
+            toolPivotPos.easting = tankPos.easting + (Math.Sin(toolPivotPos.heading) * (tool.trailingHitchLength));
+            toolPivotPos.northing = tankPos.northing + (Math.Cos(toolPivotPos.heading) * (tool.trailingHitchLength));
+        }
+
         public void UpdateFixPosition()
         {
             //Measure the frequency of the GPS updates

@@ -22,9 +22,12 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;   // RangeBase (steer-angle slider), ToggleButton
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;          // Bitmap — runtime button-face swaps (parity with WinForms btn.Image = ...)
+using Avalonia.Platform;               // AssetLoader — loads avares:// btnImages
 using Avalonia.Threading;
 using AgLibrary.Logging;
 using AgOpenGPS.Controls;
@@ -112,8 +115,42 @@ public partial class MainView : Window
     public bool IsSimulatorActive
     {
         get => _isSimulatorActive;
-        set => _isSimulatorActive = value;
+        set
+        {
+            _isSimulatorActive = value;
+            // [XPLAT] The simulator control bar (panelSim) is shown only while the simulator is active,
+            // mirroring the WinForms shell where the sim slider bar was hidden in live-GPS mode. Null-guarded
+            // because the property is assigned through an object initializer (App.axaml.cs) — InitializeComponent
+            // has already created the named control by then, but the guard keeps the setter safe in all orders.
+            if (panelSim != null) panelSim.IsVisible = value;
+        }
     }
+
+    /// <summary>
+    /// [XPLAT] The operator-action command map (see <see cref="ShellCommands"/>). The composition root
+    /// (App.axaml.cs) builds this bundle with closures over the domain objects that used to be reached through
+    /// the WinForms <c>FormGPS</c> god-object, then assigns it here. <see cref="WireButtonHandlers"/> attaches
+    /// each shell button's <c>Click</c> to the matching delegate, reproducing the original <c>btnXxx_Click</c>
+    /// behaviour without giving the view any domain dependency. Every invocation is null-guarded, so a button
+    /// whose command is not yet populated is simply inert rather than faulting.
+    /// </summary>
+    public ShellCommands Commands { get; set; }
+
+    /// <summary>
+    /// [XPLAT] The live OpenGL viewport adapter (replacing the WinForms <c>oglMain</c>/<c>oglZoom</c>/<c>oglBack</c>
+    /// controls). Several migrated Field/Guidance dialogs (head-land/head-line/tram editors) take the active
+    /// viewport so they can draw their working overlays into the same GL surface the operator sees. The dialog-open
+    /// closures in App.axaml.cs capture this getter lazily (<c>() =&gt; mainView.Viewport</c>) so it resolves at
+    /// button-click time — after <see cref="WireUpView"/> has constructed <see cref="_viewport"/>. Returns
+    /// <see langword="null"/> before the GL host is built and after teardown, which the consumers null-guard.
+    /// </summary>
+    public AvaloniaGeoViewport Viewport => _viewport;
+
+    /// <summary>
+    /// Guards the steer-angle slider handler so the programmatic re-centre performed by
+    /// <c>btnResetSteerAngle</c> (and other code-driven slider writes) does not re-enter the simulator domain.
+    /// </summary>
+    private bool _suppressSteerScroll;
 
     // ============================================================================================
     //  Constructors
@@ -175,6 +212,7 @@ public partial class MainView : Window
 
         HostViewport();
         WireServiceCallbacks();
+        WireButtonHandlers();
         EnablePanelDrag();
 
         // [XPLAT] KeyPreview parity: handle KeyDown at the window before children (Tunnel), then also on the
@@ -248,13 +286,37 @@ public partial class MainView : Window
         _pgn.OnCycleLines += () => UiPost(() => InvokeButton(btnCycleLines));   // remote "cycle lines" reflects the button
         _pgn.OnCycleLinesBk += () => UiPost(() => InvokeButton(btnCycleLinesBk));
 
-        // ---- SectionService: section/zone/master state changes reflect on the GL field ----
-        // The button face imagery is data-bound in XAML; the authoritative coverage visual is the field, so the
-        // view requests a redraw on every state change (parity with the WinForms oglMain refresh).
-        _sections.OnSectionStateChanged += (_, __) => _viewport?.RequestRender();
-        _sections.OnZoneStateChanged += (_, __) => _viewport?.RequestRender();
-        _sections.OnMasterStateChanged += _ => _viewport?.RequestRender();
-        _sections.OnManualStateChanged += _ => _viewport?.RequestRender();
+        // ---- SectionService: section/zone/master state changes recolour the buttons AND redraw the field ----
+        // The section/zone buttons carry the tri-state colour (the WinForms SetColors equivalent): the service
+        // raises these events with the changed index + new state, and the view paints the matching button and
+        // requests a field redraw (the authoritative coverage visual). Marshalled because they touch controls.
+        _sections.OnSectionStateChanged += (sectionIndexZeroBased, state) =>
+            UiPost(() =>
+            {
+                SetSectionZoneButtonColor(ManualSectionButton(sectionIndexZeroBased + 1), state);
+                _viewport?.RequestRender();
+            });
+        _sections.OnZoneStateChanged += (zoneIndexOneBased, state) =>
+            UiPost(() =>
+            {
+                SetSectionZoneButtonColor(ZoneButton(zoneIndexOneBased), state);
+                _viewport?.RequestRender();
+            });
+        _sections.OnMasterStateChanged += state =>
+            UiPost(() =>
+            {
+                // Section-master AUTO button face: any non-Off state shows the engaged icon (parity with the
+                // WinForms btnSectionMasterAuto image swap).
+                SetImage(imgSectionMasterAuto, state != btnStates.Off ? "SectionMasterOn.png" : "SectionMasterOff.png");
+                _viewport?.RequestRender();
+            });
+        _sections.OnManualStateChanged += state =>
+            UiPost(() =>
+            {
+                // Section-master MANUAL button face.
+                SetImage(imgSectionMasterManual, state != btnStates.Off ? "ManualOn.png" : "ManualOff.png");
+                _viewport?.RequestRender();
+            });
 
         // ---- FieldIoService: field lifecycle reflects in the status strip and the field redraw ----
         _fieldIo.OnFieldOpened += OnFieldOpened;
@@ -447,13 +509,22 @@ public partial class MainView : Window
     }
 
     /// <summary>
-    /// [XPLAT] hotkey[10]: the WinForms steer-wizard dialog (<c>FormSteerWiz</c>) has not been migrated to an
-    /// Avalonia view yet, so the request is logged and acknowledged with a timed message rather than silently
-    /// dropped — preserving the operator feedback without referencing a type that does not exist in this tree.
+    /// [XPLAT] hotkey[10]: opens the migrated Avalonia steer-wizard (<c>FormSteerWizView</c>, was WinForms
+    /// <c>FormSteerWiz</c>). The composition root wires <see cref="ShellCommands.OpenSteerWizard"/> to construct
+    /// the view with its real collaborator adapters; the inline fallback is a defensive guard that only fires if
+    /// the command was never wired, so the hotkey is never silently dropped.
     /// </summary>
     private void OpenSteerWizard()
     {
-        Log.EventWriter("Steer wizard hotkey pressed (Avalonia steer-wizard view pending migration)");
+        // [XPLAT] Route to the real migrated steer-calibration workflow (wired by App composition root).
+        if (Commands?.OpenSteerWizard != null)
+        {
+            Commands.OpenSteerWizard();
+            return;
+        }
+
+        // Defensive fallback only — OpenSteerWizard is populated in production composition.
+        Log.EventWriter("Steer wizard hotkey pressed but OpenSteerWizard command was not wired");
         ShowTimedMessage(2000, "Steer Wizard", "Not available yet");
     }
 
@@ -642,6 +713,17 @@ public partial class MainView : Window
         // [XPLAT] cross-platform window activation replaces the removed Win32 SetForegroundWindow/ShowWindow.
         Activate();
 
+        // Lay out / colour the section & zone buttons for the current tool + job state (WinForms
+        // LineUpIndividualSectionBtns / LineUpAllZoneButtons parity), and seed the status labels.
+        RefreshSectionZoneButtons();
+        RefreshShellLabels();
+
+        // Seed every guidance / bottom-row / recorded-path button face from the initial domain state so the
+        // shell opens with faces matching the restored settings (parity with the WinForms designer initial images).
+        RefreshGuidanceFaces();
+        RefreshBottomFaces();
+        RefreshPathFaces();
+
         // Begin the purely reactive status-strip refresh (off the real-time receive->fuse->steer->section path).
         _statusTimer?.Start();
     }
@@ -795,7 +877,44 @@ public partial class MainView : Window
     /// </summary>
     private void OnFieldOpened()
     {
-        UiPost(() => lblCurrentField.Text = _fieldIo.currentFieldDirectory ?? string.Empty);
+        UiPost(() =>
+        {
+            lblCurrentField.Text = _fieldIo.currentFieldDirectory ?? string.Empty;
+            // A job is now started — the section/zone buttons become operable for the configured tool, and the
+            // guidance/bottom/path faces re-seed from the freshly-loaded field state.
+            RefreshSectionZoneButtons();
+            RefreshGuidanceFaces();
+            RefreshBottomFaces();
+            RefreshPathFaces();
+            RefreshShellLabels();
+        });
+        _viewport?.RequestRender();
+    }
+
+    /// <summary>
+    /// [XPLAT] View-side counterpart of <see cref="OnFieldOpened"/>, invoked by the composition root's
+    /// post-save field-close hook (App.axaml.cs <c>AfterCloseField</c>). It performs the WinForms
+    /// <c>JobClose()</c> view resets that are genuinely view concerns: clearing the current-field readout
+    /// (parity with <c>lblCurrentField</c> being emptied) and requesting a redraw so the now-empty field
+    /// surface repaints. The window title is already the static "AgOpenGPS" (it is never set to a per-field
+    /// caption in the migrated shell), and the section/master button visuals are already driven by the
+    /// <see cref="SectionService"/> events — so no further view mutation is required here. Always marshals to
+    /// the UI thread via <see cref="UiPost"/> because the hook may run on a background continuation thread.
+    /// </summary>
+    public void OnFieldClosedResetUi()
+    {
+        UiPost(() =>
+        {
+            lblCurrentField.Text = string.Empty;
+            // The job is closed — hide the section/zone buttons again (parity with the WinForms job-close
+            // which made the section/zone controls invisible until the next field opens) and re-seed the
+            // guidance/bottom/path faces from the reset domain state.
+            RefreshSectionZoneButtons();
+            RefreshGuidanceFaces();
+            RefreshBottomFaces();
+            RefreshPathFaces();
+            RefreshShellLabels();
+        });
         _viewport?.RequestRender();
     }
 
@@ -823,6 +942,526 @@ public partial class MainView : Window
             lblHardwareMessage.Text = string.Empty;
             lblHardwareMessage.IsVisible = false;
         });
+    }
+
+    // ============================================================================================
+    //  [XPLAT] Operator-button wiring (final-checkpoint finding MV-1).
+    //  Attaches a Click handler to every shell button/toggle/menu item declared in MainView.axaml,
+    //  reproducing the WinForms FormGPS `btnXxx_Click` behaviour. Pure view actions (camera tilt, window
+    //  min/max/close, panel toggles, day/night) are performed inline because the view owns those concerns;
+    //  every domain action is delegated to the ShellCommands map populated by the composition root, so this
+    //  file keeps no domain dependency. Toggle commands return their resulting state and the view swaps the
+    //  button face exactly as WinForms set `btn.Image`. Status indicators that had no WinForms click handler
+    //  (btnChargeStatus, btnIsobusSectionControl) are intentionally left unwired.
+    // ============================================================================================
+
+    /// <summary>
+    /// Wires the <c>Click</c> (and equivalent) events of every shell control to its action. Called once from
+    /// <see cref="WireUpView"/> after the services are connected. Every domain invocation is null-guarded so a
+    /// not-yet-populated command is inert rather than throwing.
+    /// </summary>
+    private void WireButtonHandlers()
+    {
+        // ---- panelLeft ----
+        // btnNavigationSettings keeps its XAML ShowConfigMenuCommand binding (config flow) and additionally
+        // toggles the navigation overlay here so the camera/brightness controls remain reachable (the WinForms
+        // button toggled panelNavigation).
+        btnNavigationSettings.Click += (_, __) => { if (panelNavigation != null) panelNavigation.IsVisible = !panelNavigation.IsVisible; };
+        btnAutoSteerConfig.Click += (_, __) => Commands?.OpenSteerConfig?.Invoke();
+        btnStartAgIO.Click += (_, __) => Commands?.StartAgIO?.Invoke();
+
+        // ---- panelRight (guidance/steering toggles) ----
+        // Each command performs the FULL domain mutation of its WinForms btnXxx_Click — including cross-effects
+        // such as enabling contour turning autosteer off, or cycling tracks turning autosteer off. The view then
+        // repaints EVERY guidance face from the state readers (RefreshGuidanceFaces), so sibling buttons stay in
+        // sync exactly as the WinForms handlers re-imaged them via PerformClick. The autosteer toggle is the single
+        // funnel for both user clicks and domain-requested toggles (PositionService.OnRequestAutoSteerToggle ->
+        // RequestAutoSteerToggle -> InvokeButton(btnAutoSteer)), so the full safe-speed/guidance guard lives in the
+        // ToggleAutoSteer closure.
+        btnContourLock.Click += (_, __) => { Commands?.ContourLock?.Invoke(); RefreshGuidanceFaces(); };
+        btnContour.Click += (_, __) => { Commands?.ToggleContour?.Invoke(); RefreshGuidanceFaces(); };
+        btnCycleLines.Click += (_, __) => { FlashGuidanceLine(Commands?.CycleLines?.Invoke()); RefreshGuidanceFaces(); RefreshShellLabels(); };
+        btnCycleLinesBk.Click += (_, __) => { FlashGuidanceLine(Commands?.CycleLinesBack?.Invoke()); RefreshGuidanceFaces(); RefreshShellLabels(); };
+        btnAutoTrack.Click += (_, __) => { Commands?.ToggleAutoTrack?.Invoke(); RefreshGuidanceFaces(); };
+        btnSectionMasterManual.Click += (_, __) => _sections.PerformSectionMasterManual();   // face swapped by OnManualStateChanged
+        btnSectionMasterAuto.Click += (_, __) => _sections.PerformSectionMasterAuto();        // face swapped by OnMasterStateChanged
+        btnAutoYouTurn.Click += (_, __) => { Commands?.ToggleYouTurn?.Invoke(); RefreshGuidanceFaces(); };
+        btnAutoSteer.Click += (_, __) => { Commands?.ToggleAutoSteer?.Invoke(); RefreshGuidanceFaces(); };
+
+        // ---- Manual section buttons (1..16) and zone buttons (1..8) — route to the SectionService (MV-3).
+        // Colour/visibility are refreshed reactively by the section/zone state-changed events and the
+        // lifecycle RefreshSectionZoneButtons() calls, exactly as the WinForms LineUp* methods coloured them.
+        for (int i = 1; i <= 16; i++)
+        {
+            Button b = ManualSectionButton(i);
+            if (b == null) continue;
+            int idx = i - 1;
+            b.Click += (_, __) => _sections.PerformSectionClick(idx);
+        }
+        for (int i = 1; i <= 8; i++)
+        {
+            Button z = ZoneButton(i);
+            if (z == null) continue;
+            int idx = i - 1;
+            z.Click += (_, __) => _sections.PerformZoneClick(idx);
+        }
+
+        // ---- panelBottom ----
+        cboxpRowWidth.SelectionChanged += (_, __) => Commands?.SetRowSkipWidth?.Invoke(cboxpRowWidth.SelectedIndex + 1);
+        btnYouSkipEnable.Click += (_, __) => { Commands?.YouSkipEnable?.Invoke(); RefreshBottomFaces(); };
+        btnChangeMappingColor.Click += (_, __) => Commands?.OpenMappingColor?.Invoke();
+        btnResetToolHeading.Click += (_, __) => Commands?.ResetToolHeading?.Invoke();
+        btnTramDisplayMode.Click += (_, __) => { Commands?.CycleTramDisplay?.Invoke(); RefreshBottomFaces(); };
+        btnHydLift.Click += (_, __) => { Commands?.ToggleHydLift?.Invoke(); RefreshBottomFaces(); };
+        cboxIsSectionControlled.Click += (_, __) =>
+        {
+            bool on = cboxIsSectionControlled.IsChecked == true;
+            Commands?.ToggleHeadlandSectionControl?.Invoke(on);
+            SetImage(imgHeadlandSection, on ? "HeadlandSectionOn.png" : "HeadlandSectionOff.png");
+        };
+        // btnHeadlandOnOff toggles headland AND (when turning off) forces the hydraulic lift off in the domain;
+        // RefreshBottomFaces repaints both imgHeadland and imgHydLift from the resulting state.
+        btnHeadlandOnOff.Click += (_, __) => { Commands?.ToggleHeadland?.Invoke(); RefreshBottomFaces(); };
+        btnFlag.Click += (_, __) => { Commands?.AddFlag?.Invoke(); RefreshShellLabels(); };
+        btnAdjLeft.Click += (_, __) => Commands?.NudgeLeft?.Invoke();
+        btnAdjRight.Click += (_, __) => Commands?.NudgeRight?.Invoke();
+        btnSnapToPivot.Click += (_, __) => Commands?.SnapToPivot?.Invoke();
+        btnTrack.Click += (_, __) =>
+        {
+            Commands?.TrackButton?.Invoke();
+            flp1.IsVisible = !flp1.IsVisible;            // the track flyout is a view concern
+            if (flp1.IsVisible) RefreshTrackFlyout();
+        };
+
+        // ---- flp1 track flyout (dialog entries are populated in the dialog-navigation phase) ----
+        btnRefNudge.Click += (_, __) => Commands?.OpenRefNudge?.Invoke();
+        cboxAutoSnapToPivot.Click += (_, __) => Commands?.ToggleAutoSnapToPivot?.Invoke();
+        btnTracksOff.Click += (_, __) => { Commands?.TracksOff?.Invoke(); flp1.IsVisible = false; };
+        btnBuildTracks.Click += (_, __) => Commands?.OpenBuildTracks?.Invoke();
+        btnPlusAB.Click += (_, __) => Commands?.OpenQuickAB?.Invoke();
+        btnABDraw.Click += (_, __) => Commands?.OpenABDraw?.Invoke();
+        btnNudge.Click += (_, __) => Commands?.OpenNudge?.Invoke();
+
+        // ---- panelControlBox (top-right) ----
+        btnFieldStats.Click += (_, __) => Commands?.ShowFieldStats?.Invoke();
+        btnGPSData.Click += (_, __) => Commands?.ShowGpsData?.Invoke();              // GPSD-1 / MV-2: GPS data reachable
+        btnMinimizeMainForm.Click += (_, __) => WindowState = WindowState.Minimized;
+        btnMaximizeMainForm.Click += (_, __) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        btnShutdown.Click += (_, __) => Close();
+        // btnChargeStatus: WinForms status indicator with no click handler — intentionally not wired.
+
+        // ---- panelSim ----
+        btnResetSim.Click += (_, __) => Commands?.SimReset?.Invoke();
+        btnResetSteerAngle.Click += (_, __) =>
+        {
+            Commands?.SimResetSteerAngle?.Invoke();
+            _suppressSteerScroll = true;
+            hsbarSteerAngle.Value = 0;                  // re-centre the slider without re-entering the domain
+            _suppressSteerScroll = false;
+        };
+        btnSpeedDn.Click += (_, __) => Commands?.SimSpeedDown?.Invoke();
+        btnSimSetSpeedToZero.Click += (_, __) => Commands?.SimSetSpeedToZero?.Invoke();
+        btnSimSpeedUp.Click += (_, __) => Commands?.SimSpeedUp?.Invoke();
+        btnSimReverseDirection.Click += (_, __) => Commands?.SimReverseDirection?.Invoke();
+        hsbarSteerAngle.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == RangeBase.ValueProperty && !_suppressSteerScroll)
+            {
+                Commands?.SimSteerAngleScroll?.Invoke(hsbarSteerAngle.Value);
+            }
+        };
+
+        // ---- panelNavigation (camera tilt/2D/3D/N2D verbatim from FormGPS; grid + brightness + day/night) ----
+        btnTiltUp.Click += (_, __) =>
+        {
+            if (Camera == null) return;
+            Camera.PitchInDegrees -= ((Camera.PitchInDegrees * 0.012) - 1);
+            if (Camera.PitchInDegrees > -58) Camera.PitchInDegrees = 0;
+            _viewport?.RequestRender();
+        };
+        btnTiltDn.Click += (_, __) =>
+        {
+            if (Camera == null) return;
+            if (Camera.PitchInDegrees > -59) Camera.PitchInDegrees = -60;
+            Camera.PitchInDegrees += ((Camera.PitchInDegrees * 0.012) - 1);
+            if (Camera.PitchInDegrees < -70) Camera.PitchInDegrees = -70;
+            _viewport?.RequestRender();
+        };
+        btn2D.Click += (_, __) => { if (Camera == null) return; Camera.FollowDirectionHint = true; Camera.PitchInDegrees = 0; _viewport?.RequestRender(); };
+        btn3D.Click += (_, __) => { if (Camera == null) return; Camera.FollowDirectionHint = true; Camera.PitchInDegrees = -65; _viewport?.RequestRender(); };
+        btnN2D.Click += (_, __) => { if (Camera == null) return; Camera.FollowDirectionHint = false; Camera.PitchInDegrees = 0; _viewport?.RequestRender(); };
+        btnGrid.Click += (_, __) => Commands?.OpenGrid?.Invoke();
+        btnDayNightMode.Click += (_, __) => ToggleDayNight();
+        btnBrightnessUp.Click += (_, __) => { if (Commands?.BrightnessUp == null) return; lblBrightness.Text = Commands.BrightnessUp() ?? lblBrightness.Text; };
+        btnBrightnessDn.Click += (_, __) => { if (Commands?.BrightnessDown == null) return; lblBrightness.Text = Commands.BrightnessDown() ?? lblBrightness.Text; };
+
+        // ---- panelDrag (recorded path) ----
+        // btnPathGoStop first turns contour/youturn/autosteer off (domain prologue) then toggles path driving;
+        // refresh both the path faces and the guidance faces so the disengaged guidance buttons update too.
+        btnPathGoStop.Click += (_, __) => { Commands?.PathGoStop?.Invoke(); RefreshPathFaces(); RefreshGuidanceFaces(); };
+        btnResumePath.Click += (_, __) => { Commands?.ResumePath?.Invoke(); RefreshPathFaces(); };
+        btnPathRecordStop.Click += (_, __) => { Commands?.PathRecordStop?.Invoke(); RefreshPathFaces(); };
+        btnPickPath.Click += (_, __) => Commands?.OpenPickPath?.Invoke();
+        btnSwapABRecordedPath.Click += (_, __) => Commands?.SwapABRecordedPath?.Invoke();
+
+        // ---- menuStrip1 (hamburger) ----
+        loadVehicleToolToolStripMenuItem.Click += (_, __) => ShowVehicleConfig();
+        menustripLanguage.Click += (_, __) => Commands?.OpenLanguage?.Invoke();
+        simulatorOnToolStripMenuItem.Click += (_, __) => Commands?.ToggleSimulator?.Invoke();
+        enterSimCoordsToolStripMenuItem.Click += (_, __) => Commands?.EnterSimCoords?.Invoke();
+        kioskModeToolStrip.Click += (_, __) => ToggleKioskMode();
+        resetALLToolStripMenuItem.Click += (_, __) => Commands?.ResetAll?.Invoke();
+        resetEverythingToolStripMenuItem.Click += (_, __) => Commands?.ResetAll?.Invoke();
+        AgShareApiMenuItem.Click += (_, __) => Commands?.OpenAgShareApi?.Invoke();
+        checkForUpdatesToolStripMenuItem.Click += (_, __) => Commands?.CheckForUpdates?.Invoke();
+        helpMenuItem.Click += (_, __) => Commands?.ShowHelp?.Invoke();
+
+        // ---- btnFieldTools flyout (was toolStripBtnFieldTools + Tools-menu boundary tool) ----
+        // Each opens a migrated Field/Guidance editor; the composition-root closure applies the original
+        // job-started / boundary / guidance-line gating and refreshes the bottom panel after close.
+        menuBoundaries.Click += (_, __) => Commands?.OpenBoundary?.Invoke();
+        menuHeadland.Click += (_, __) => Commands?.OpenHeadland?.Invoke();
+        menuHeadlandBuild.Click += (_, __) => Commands?.OpenHeadlandBuild?.Invoke();
+        menuTramLines.Click += (_, __) => Commands?.OpenTramLines?.Invoke();
+        menuBoundaryTool.Click += (_, __) => Commands?.OpenBoundaryTool?.Invoke();
+    }
+
+    // ============================================================================================
+    //  [XPLAT] View-side helpers used by the button wiring.
+    // ============================================================================================
+
+    /// <summary>
+    /// [XPLAT] Swaps a button-face <see cref="Image"/> to the named asset under <c>avares://AgOpenGPS/btnImages/</c>,
+    /// the cross-platform stand-in for the WinForms <c>btn.Image = Resources.X</c> assignment. A load failure is
+    /// logged and the previous face is kept, so a missing asset never crashes the shell.
+    /// </summary>
+    /// <param name="target">The image element to update; ignored when <see langword="null"/>.</param>
+    /// <param name="assetFileName">The PNG file name within the <c>btnImages</c> folder.</param>
+    private static void SetImage(Image target, string assetFileName)
+    {
+        if (target == null || string.IsNullOrEmpty(assetFileName))
+        {
+            return;
+        }
+
+        try
+        {
+            var uri = new Uri("avares://AgOpenGPS/btnImages/" + assetFileName);
+            target.Source = new Bitmap(AssetLoader.Open(uri));
+        }
+        catch (Exception ex)
+        {
+            Log.EventWriter("Button image swap failed for " + assetFileName + ": " + ex.Message);
+        }
+    }
+
+    /// <summary>Maps a U-turn skip mode ordinal (the value returned by <see cref="ShellCommands.YouSkipEnable"/>) to its button face.</summary>
+    private static string YouSkipAsset(int skipMode) => skipMode switch
+    {
+        1 => "YouSkipOn.png",            // Alternative
+        2 => "YouSkipWorkedTracks.png",  // IgnoreWorkedTracks
+        _ => "YouSkipOff.png",           // Normal
+    };
+
+    /// <summary>Maps a tram display mode (0..3) to its button face.</summary>
+    private static string TramAsset(int displayMode) => displayMode switch
+    {
+        1 => "TramAll.png",
+        2 => "TramLines.png",
+        3 => "TramOuter.png",
+        _ => "TramOff.png",
+    };
+
+    /// <summary>Maps a recorded-path resume state (0..2) to its button face.</summary>
+    private static string ResumeAsset(int resumeState) => resumeState switch
+    {
+        1 => "pathResumeLast.png",
+        2 => "pathResumeClose.png",
+        _ => "pathResumeStart.png",
+    };
+
+    /// <summary>
+    /// [XPLAT] Flashes a guidance-track name in <c>lblGuidanceLine</c> after a cycle-lines action (the
+    /// <see cref="RenderCoordinator.OnGuidanceLineExpired"/> callback later clears it, matching the WinForms
+    /// guideLineCounter behaviour). A null/empty name leaves the label hidden.
+    /// </summary>
+    private void FlashGuidanceLine(string trackName)
+    {
+        if (string.IsNullOrEmpty(trackName))
+        {
+            return;
+        }
+
+        lblGuidanceLine.Text = trackName;
+        lblGuidanceLine.IsVisible = true;
+    }
+
+    /// <summary>
+    /// [XPLAT] Repaints every panelRight guidance/steering button face from the current domain state exposed by
+    /// the <see cref="ShellCommands"/> readers. Called after any guidance toggle so cross-button effects (contour
+    /// turning autosteer off, cycling tracks turning autosteer off, a path start disengaging guidance) stay in
+    /// sync — the cross-platform equivalent of the WinForms handlers re-imaging sibling buttons through
+    /// PerformClick. The autosteer face selects the snap-to-pivot variant exactly as the original did.
+    /// </summary>
+    private void RefreshGuidanceFaces()
+    {
+        if (Commands == null)
+        {
+            return;
+        }
+
+        bool contour = Commands.IsContourOn?.Invoke() ?? false;
+        SetImage(imgContour, contour ? "ContourOn.png" : "ContourOff.png");
+        SetImage(imgContourLock, (Commands.IsContourLocked?.Invoke() ?? false) ? "ColorLocked.png" : "ColorUnlocked.png");
+        SetImage(imgAutoTrack, (Commands.IsAutoTrackOn?.Invoke() ?? false) ? "AutoTrack.png" : "AutoTrackOff.png");
+        SetImage(imgAutoYouTurn, (Commands.IsYouTurnOn?.Invoke() ?? false) ? "YouTurn80.png" : "YouTurnNo.png");
+
+        bool steer = Commands.IsAutoSteerOn?.Invoke() ?? false;
+        bool snap = Commands.IsAutoSnapToPivotOn?.Invoke() ?? false;
+        SetImage(imgAutoSteer, steer
+            ? (snap ? "AutoSteerOnSnapToPivot.png" : "AutoSteerOn.png")
+            : (snap ? "AutoSteerOffSnapToPivot.png" : "AutoSteerOff.png"));
+
+        // Contour replaces/hides the track button; the U-turn button is only meaningful with an active track and
+        // no contour (parity with WinForms Disable/EnableYouTurnButtons and the contour-on btnTrack hide).
+        bool hasTrack = Commands.HasActiveTrack?.Invoke() ?? false;
+        if (btnTrack != null)
+        {
+            btnTrack.IsVisible = !contour;
+            btnTrack.IsEnabled = !contour;
+        }
+        if (btnAutoYouTurn != null)
+        {
+            btnAutoYouTurn.IsEnabled = !contour && hasTrack;
+        }
+    }
+
+    /// <summary>
+    /// [XPLAT] Repaints the panelBottom button faces (U-turn skip, tramline display, hydraulic lift, headland)
+    /// from the current domain state. Called after the corresponding toggles; headland-off also forces the
+    /// hydraulic-lift face off because the domain clears it.
+    /// </summary>
+    private void RefreshBottomFaces()
+    {
+        if (Commands == null)
+        {
+            return;
+        }
+
+        SetImage(imgYouSkip, YouSkipAsset(Commands.YouSkipMode?.Invoke() ?? 0));
+        SetImage(imgTram, TramAsset(Commands.TramDisplayMode?.Invoke() ?? 0));
+        SetImage(imgHydLift, (Commands.IsHydLiftOn?.Invoke() ?? false) ? "HydraulicLiftOn.png" : "HydraulicLiftOff.png");
+        SetImage(imgHeadland, (Commands.IsHeadlandOn?.Invoke() ?? false) ? "HeadlandOn.png" : "HeadlandOff.png");
+    }
+
+    /// <summary>
+    /// [XPLAT] Repaints the panelDrag recorded-path button faces (go/stop, record/stop, resume style) from the
+    /// current domain state and enforces the mutual-exclusivity enable states the WinForms handlers toggled
+    /// (you cannot record while driving a path, or pick/resume while either is active).
+    /// </summary>
+    private void RefreshPathFaces()
+    {
+        if (Commands == null)
+        {
+            return;
+        }
+
+        bool driving = Commands.IsDrivingRecordedPath?.Invoke() ?? false;
+        bool recording = Commands.IsRecordingPath?.Invoke() ?? false;
+
+        SetImage(imgPathGoStop, driving ? "boundaryStop.png" : "boundaryPlay.png");
+        SetImage(imgPathRecordStop, recording ? "boundaryStop.png" : "BoundaryRecord.png");
+        SetImage(imgResumePath, ResumeAsset(Commands.ResumeState?.Invoke() ?? 0));
+
+        if (btnPathGoStop != null) btnPathGoStop.IsEnabled = !recording;
+        if (btnPathRecordStop != null) btnPathRecordStop.IsEnabled = !driving;
+        if (btnPickPath != null) btnPickPath.IsEnabled = !driving && !recording;
+        if (btnResumePath != null) btnResumePath.IsEnabled = !driving && !recording;
+    }
+
+    /// <summary>
+    /// [XPLAT] Toggles day/night by flipping the bound <see cref="ApplicationViewModel.IsDay"/> (which the
+    /// composition root subscribes to, flipping <c>Application.RequestedThemeVariant</c> and persisting the
+    /// setting — the cross-platform <c>SwapDayNightMode</c> path). Also swaps the button face, recolours the
+    /// section/zone buttons for the new palette and requests a field redraw.
+    /// </summary>
+    private void ToggleDayNight()
+    {
+        if (DataContext is ApplicationViewModel vm)
+        {
+            vm.IsDay = !vm.IsDay;
+            SetImage(imgDayNight, vm.IsDay ? "WindowNightMode.png" : "WindowDayMode.png");
+            RefreshSectionZoneButtons();
+            _viewport?.RequestRender();
+        }
+    }
+
+    /// <summary>
+    /// [XPLAT] Hamburger "Kiosk Mode": toggles borderless full-screen (parity with the WinForms kiosk toggle that
+    /// flipped the form border/state). The shell already starts borderless-maximised, so this restores the normal
+    /// chrome and back.
+    /// </summary>
+    private void ToggleKioskMode()
+    {
+        if (WindowState == WindowState.FullScreen)
+        {
+            WindowState = WindowState.Maximized;
+            SystemDecorations = SystemDecorations.Full;
+        }
+        else
+        {
+            SystemDecorations = SystemDecorations.None;
+            WindowState = WindowState.FullScreen;
+        }
+    }
+
+    /// <summary>Resolves the manual section button (btnSection1Man..btnSection16Man) for <paramref name="n"/> (1..16).</summary>
+    private Button ManualSectionButton(int n) => n switch
+    {
+        1 => btnSection1Man,
+        2 => btnSection2Man,
+        3 => btnSection3Man,
+        4 => btnSection4Man,
+        5 => btnSection5Man,
+        6 => btnSection6Man,
+        7 => btnSection7Man,
+        8 => btnSection8Man,
+        9 => btnSection9Man,
+        10 => btnSection10Man,
+        11 => btnSection11Man,
+        12 => btnSection12Man,
+        13 => btnSection13Man,
+        14 => btnSection14Man,
+        15 => btnSection15Man,
+        16 => btnSection16Man,
+        _ => null,
+    };
+
+    /// <summary>
+    /// [XPLAT] Paints a section/zone button in its tri-state colour, reproducing the WinForms <c>SetColors</c>
+    /// palette (Off = Red/Crimson, Auto = Lime/ForestGreen, On = Yellow/DarkGoldenrod; foreground Black/White)
+    /// chosen by the current day/night mode.
+    /// </summary>
+    private void SetSectionZoneButtonColor(Button button, btnStates state)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        bool day = (DataContext as ApplicationViewModel)?.IsDay ?? true;
+        Color background = state switch
+        {
+            btnStates.Auto => day ? Colors.Lime : Colors.ForestGreen,
+            btnStates.On => day ? Colors.Yellow : Colors.DarkGoldenrod,
+            _ => day ? Colors.Red : Colors.Crimson,
+        };
+
+        button.Background = new SolidColorBrush(background);
+        button.Foreground = new SolidColorBrush(day ? Colors.Black : Colors.White);
+    }
+
+    /// <summary>
+    /// [XPLAT] Lays out and colours the manual-section (1..16) and zone (1..8) buttons for the current tool
+    /// configuration and job state — the cross-platform equivalent of the WinForms
+    /// <c>LineUpIndividualSectionBtns</c> / <c>LineUpAllZoneButtons</c>. Section buttons are visible only when a
+    /// job is started, the tool is in unique-section mode, and the section count covers the button; zone buttons
+    /// only in zone mode. Visible buttons are painted with their current tri-state colour. (Findings MV-1/MV-3.)
+    /// </summary>
+    private void RefreshSectionZoneButtons()
+    {
+        if (_sections == null)
+        {
+            return;
+        }
+
+        bool jobStarted = _sections.IsJobStarted;
+        bool sectionsMode = _sections.IsSectionsNotZones;
+        int sectionCount = _sections.NumOfSections;
+        int zoneCount = _sections.NumOfZones;
+
+        for (int i = 1; i <= 16; i++)
+        {
+            Button b = ManualSectionButton(i);
+            if (b == null) continue;
+
+            bool visible = jobStarted && sectionsMode && sectionCount >= i;
+            b.IsVisible = visible;
+            if (visible)
+            {
+                SetSectionZoneButtonColor(b, _sections.GetSectionState(i - 1));
+            }
+        }
+
+        for (int i = 1; i <= 8; i++)
+        {
+            Button z = ZoneButton(i);
+            if (z == null) continue;
+
+            bool visible = jobStarted && !sectionsMode && zoneCount >= i;
+            z.IsVisible = visible;
+            if (visible)
+            {
+                SetSectionZoneButtonColor(z, _sections.GetZoneState(i));
+            }
+        }
+    }
+
+    /// <summary>
+    /// [XPLAT] Refreshes the shell status labels driven by domain readers — the current track number/count
+    /// (<c>lblNumCu</c>) and the latest flag number (<c>lblFlagNumber</c>). Safe to call when the command map or
+    /// a particular reader is not yet populated (the label is simply left unchanged).
+    /// </summary>
+    private void RefreshShellLabels()
+    {
+        if (Commands?.TrackCountText != null)
+        {
+            lblNumCu.Text = Commands.TrackCountText() ?? string.Empty;
+        }
+
+        if (Commands?.FlagCountText != null)
+        {
+            lblFlagNumber.Text = Commands.FlagCountText() ?? lblFlagNumber.Text;
+        }
+    }
+
+    /// <summary>
+    /// [XPLAT] Updates which entries of the track flyout (<c>flp1</c>) are shown: the "tracks off" entry only
+    /// when at least one track is visible, and the AB-draw entry only when a field boundary exists (parity with
+    /// the WinForms flyout gating). Other entries are always available.
+    /// </summary>
+    private void RefreshTrackFlyout()
+    {
+        if (btnTracksOff != null && Commands?.TrackVisibleCount != null)
+        {
+            btnTracksOff.IsVisible = Commands.TrackVisibleCount() > 0;
+        }
+
+        if (btnABDraw != null && Commands?.HasBoundary != null)
+        {
+            btnABDraw.IsVisible = Commands.HasBoundary();
+        }
+    }
+
+    /// <summary>
+    /// [XPLAT] Re-paints every shell affordance from the current domain state and requests a redraw. This is the
+    /// cross-platform stand-in for the WinForms <c>PanelUpdateRightAndBottom()</c> + <c>PanelsAndOGLSize()</c> +
+    /// <c>SetZoom()</c> sequence the FormGPS dialog open-sites ran after a Field/Guidance editor closed (e.g.
+    /// <c>GetHeadland()</c>, <c>boundariesToolStripMenuItem_Click</c>). The dialog-navigation closures in the
+    /// composition root (App.axaml.cs) invoke this when a migrated editor is dismissed, so a boundary/headland/
+    /// tram/track edit is immediately reflected on the bottom panel faces, the section/zone buttons, the status
+    /// labels, the track flyout gating, and the GL viewport — exactly as the WinForms shell refreshed itself.
+    /// Safe to call at any time; each helper is independently null-guarded.
+    /// </summary>
+    public void RefreshAfterDialog()
+    {
+        RefreshGuidanceFaces();
+        RefreshBottomFaces();
+        RefreshPathFaces();
+        RefreshSectionZoneButtons();
+        RefreshShellLabels();
+        RefreshTrackFlyout();
+        _viewport?.RequestRender();
     }
 
     // [XPLAT] MIGRATION SUMMARY (recap): FormGPS window -> Avalonia MainView; the FormGPS god-object / `mf`

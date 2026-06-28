@@ -489,6 +489,25 @@ namespace AgIO.Services
             if (sendGGAInterval > 0 && ntripCounter == 40 && tmr != null) tmr.Interval = sendGGAInterval * 1000;
         }
 
+        // [XPLAT] SEC-1 (CWE-20): allowlist validation for the NTRIP mountpoint before it is placed in the HTTP
+        // request line. A valid NTRIP mountpoint is a short, non-empty token of printable ASCII with no
+        // whitespace; this set (0x21-0x7E) intrinsically excludes CR (0x0D), LF (0x0A), every other control
+        // character, and the space that would split the request target — closing the CRLF/header-injection vector
+        // without relying on Regex (keeps the file free of new usings and analyzer-clean under Release).
+        private static bool IsValidMountpoint(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return false;
+
+            foreach (char c in value)
+            {
+                if (c < '\u0021' || c > '\u007E')
+                    return false;
+            }
+
+            return true;
+        }
+
         private void SendAuthorization()
         {
             // Check we are connected
@@ -514,6 +533,18 @@ namespace AgIO.Services
                     string htt;
                     if (Properties.Settings.Default.setNTRIP_isHTTP10) htt = "1.0";
                     else htt = "1.1";
+
+                    // [XPLAT] SEC-1 (CWE-20 HTTP header / CRLF injection): the NTRIP mountpoint is interpolated
+                    // directly into the HTTP request line below. A mountpoint containing CR, LF or other control
+                    // characters (from a malicious or corrupted setting) could inject additional request headers.
+                    // Reject any value outside the printable, non-whitespace ASCII allowlist before building the
+                    // request, and abort the connection attempt rather than send a tainted request line.
+                    if (!IsValidMountpoint(mount))
+                    {
+                        Log.EventWriter("NTRIP mountpoint rejected (invalid or non-printable characters); connection aborted.");
+                        ReconnectRequest();
+                        return;
+                    }
 
                     //Build authorization string
                     string str = "GET /" + mount + " HTTP/" + htt + "\r\n";

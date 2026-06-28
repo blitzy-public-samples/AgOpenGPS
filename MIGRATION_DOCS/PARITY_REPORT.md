@@ -29,19 +29,28 @@ declared targets (`net8.0` / `linux-x64` and `net8.0-windows` / `win-x64`, 0 err
 guidance/section/field-coordination classes, the five extracted `Services`, the `AvaloniaGeoViewport`
 host, and their dependent Views are now **all compiled and integrated in the normal GPS build** (Debug +
 Release on both targets) — the temporary exclusion tracked here in earlier checkpoints is closed and is
-recorded as **RESOLVED** under **Open Risks** below. The four golden-consuming parity **suite bodies are
+recorded as **RESOLVED** under **Open Risks** below. **All five golden-consuming parity suite bodies are
 authored and their captured golden fixtures are committed** under `Parity/Golden/**`
-(`Pgn/*.bin`, `Guidance/*.csv`, `IsoXml/*.XML`, `Settings/*.xml`) — they are **no longer `README.md` /
-`.gitkeep` placeholders**. Each golden loader now **enforces presence** (`LoadRequired…` calls
-`Assert.That(File.Exists(path), Is.True, …)`), so a missing required artifact **fails** the test rather
-than silently self-ignoring; the entire `Parity` suite runs green on the **local Linux development
-environment** (60 passed / 1 intentional skip / 0 failed — the single skip is the
-`FormGPS`-graph-dependent ISOXML export driver, not a golden loader). **The one remaining honest gap is
-tri-OS CI confirmation:** the `windows` / `ubuntu` / `macos` matrix has **not yet run**, so cross-OS
-byte/semantic identity is **confirmed locally on Linux but still Pending CI** on Windows and macOS. Each
-contract below is therefore framed as **"asserted by &lt;test&gt; — green locally (linux), Pending CI
-(windows / macos)"**; nothing that has not actually been verified cross-OS is reported as verified, and
-every still-open item is enumerated under **Open Risks**.
+(`Pgn/*.bin`, `Guidance/*.csv`, `IsoXml/*.XML`, `Settings/*.xml`, and — captured in the final
+remediation pass — `Field/*.txt`) — they are **no longer `README.md` / `.gitkeep` placeholders**. Each
+golden loader now **enforces presence** (`LoadRequired…` checks `File.Exists` and calls `Assert.Fail`
+when a required artifact is absent), so a missing required artifact **fails** the test rather than
+silently self-ignoring; the entire `Parity` suite runs green on the **local Linux development
+environment**, and the full `AgOpenGPS.Tests` assembly reports **79 passed / 1 intentional skip / 0
+failed** (the single skip is the `FormGPS`-graph-dependent ISOXML export driver,
+`IsoXmlExport_DrivenFromDomainGraph_RequiresFormGpsGraph`, **not** a golden loader). Across all three
+test assemblies the local Linux total is **115 passed / 1 skipped / 0 failed** (`AgOpenGPS.Core.Tests`
+33, `AgLibrary.Tests` 3, `AgOpenGPS.Tests` 79). **The desktop-GL request hook is now wired** in both
+composition roots (`SourceCode/GPS/Program.cs` and `SourceCode/AgIO/Source/Program.cs` chain
+`AvaloniaGeoViewport.RequestDesktopGlProfile(...)` into `BuildAvaloniaApp()`), closing the bootstrap half
+of the dominant GL risk. **The remaining honest gaps are external-evidence items:** (1) tri-OS CI
+confirmation — the `windows` / `ubuntu` / `macos` matrix has **not yet run**, so cross-OS byte/semantic
+identity is **confirmed locally on Linux but still Pending CI** on Windows and macOS; and (2) on-hardware
+confirmation that a desktop-GL **compatibility** context is actually obtained per-OS and that the
+`glReadPixels` `oglBack` scan renders correctly. Each contract below is therefore framed as **"asserted
+by &lt;test&gt; — green locally (linux), Pending CI (windows / macos)"**; nothing that has not actually
+been verified cross-OS is reported as verified, and every still-open item is enumerated under **Open
+Risks**.
 
 **Companion documents.** The file-by-file old→new disposition and per-checkpoint on-disk status are in
 `TRANSITION_MAP.md`; the per-feature cross-platform status checklist (F-001 … F-045) is in
@@ -62,7 +71,7 @@ identity catches floating-point, culture, and path divergences.
 | Parity Suite | Artifact | Assertion | Status |
 |---|---|---|---|
 | `PgnFrameGoldenTests` | Encoded PGN frames per id (`0xD6` / `0xFE` / `0xEF` / `0xE5` / `0xD0`, etc.) | Exact bytes incl. additive CRC; ports 15555 / 17777 | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
-| `FieldRoundTripTests` | `SourceCode/GPS/IO/` artifacts (boundary / contour / section / headland / track / tram / path / flag / elevation) | Load→save byte-compare | Pending — field goldens deferred to the FINAL `FieldRoundTripTests` checkpoint (out of CP9 scope) |
+| `FieldRoundTripTests` | `SourceCode/GPS/IO/` artifacts (boundary / contour / section / headland / headlines / track / tram / recorded-path / flag / elevation / field-plane) | Load→save byte-compare | **Goldens captured + enforced; green locally (linux, 11/11 field tests); Pending CI (windows / macos)** |
 | `IsoXmlEquivalenceTests` | ISOXML V3 + V4 exports | Semantic equivalence (name ≤ 248 bytes; AB + Curve export limit) | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
 | `SettingsRoundTripTests` | Vehicle / Tool / Environment XML + `CSettingsMigration` | Round-trip byte-compare; Registry→path migration on Windows | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
 | `GuidanceEquivalenceTests` | Steer angle + section state from an identical fix sequence | Exact for pure math; tolerance `Is.LessThan(0.001)` for geometry | **Goldens captured + enforced; green locally (linux); Pending CI (windows / macos)** |
@@ -139,11 +148,20 @@ Field data is a **frozen on-disk format**. The reader/writer pairs under `Source
 Tram**. A migration that silently re-orders fields, changes number formatting, or alters line endings
 would corrupt existing fields, so each format is verified by a load→save→compare cycle.
 
-**Proof.** `FieldRoundTripTests` loads each golden field artifact and re-saves it, then asserts the
-re-saved bytes equal the golden bytes (load→save byte-compare), on all three operating systems.
-Line-ending stability is held by the `.gitattributes` `-text` rules over the parity fixtures, so the
-byte comparison is not perturbed by CRLF↔LF conversion on any OS. **Status: asserted by
-`FieldRoundTripTests` — Pending CI.**
+**Proof.** `FieldRoundTripTests` loads each golden field artifact and re-saves it through the production
+`AgOpenGPS.IO` handler, then asserts the re-saved bytes equal the golden bytes (load→save byte-compare),
+on all three operating systems. The **eleven** golden artifacts (`Field/Boundary.txt`, `Tracks.txt`,
+`Sections.txt`, `Flags.txt`, `Contour.txt`, `Headland.txt`, `Headlines.txt`, `Tram.txt`, `RecPath.txt`,
+`Elevation.txt`, `FieldPlane.txt`) were **captured in the final remediation pass and are committed** —
+each generated by driving the frozen production serializers (`BoundaryFiles`/`TrackFiles`/`SectionsFiles`/
+`FlagsFiles`/`ContourFiles`/`HeadlandFiles`/`HeadlinesFiles`/`TramFiles`/`RecPathFiles`/`ElevationFiles`/
+`FieldPlaneFiles`) under `InvariantCulture`, and each is a **verified fixed point of `Load∘Save`** (a
+re-emit produces byte-identical output). `LoadRequiredGolden` now **fails** (it does not self-skip) if a
+required artifact is absent, so the field byte-contract is **enforced** at the final gate. Line-ending
+stability is held by the `.gitattributes` `-text` rules over the parity fixtures
+(`SourceCode/AgOpenGPS.Tests/Parity/**` and `**/*.txt`), so the byte comparison is not perturbed by
+CRLF↔LF conversion on any OS. **Status: captured + enforced; green locally (linux, 11/11 field
+round-trips byte-identical); Pending CI confirmation on windows / macos.**
 
 ---
 
@@ -233,18 +251,57 @@ and path divergences. All cells below are the **target** end-state.
 
 | OS runner | RID(s) | Build | Unit + parity tests | Self-contained publish |
 |---|---|---|---|---|
-| `windows-latest` | `win-x64` | Pending / to be confirmed green | Pending / to be confirmed green | Pending / to be confirmed green |
-| `ubuntu-latest` | `linux-x64` | Pending / to be confirmed green | Pending / to be confirmed green | Pending / to be confirmed green |
-| `macos-latest` | `osx-x64` **and** `osx-arm64` | Pending / to be confirmed green | Pending / to be confirmed green | Pending / to be confirmed green |
+| `windows-latest` | `win-x64` | Pending CI run | Pending CI run | Pending CI run |
+| `ubuntu-latest` | `linux-x64` | **Green (local dev env): Debug + Release, 0 errors** | **Green (local dev env): 115 passed / 1 skipped / 0 failed** | Pending CI run |
+| `macos-latest` | `osx-x64` **and** `osx-arm64` | Pending CI run | Pending CI run | Pending CI run |
+
+The `ubuntu-latest` Build and Unit+parity cells are recorded as **Green** because the identical
+build/test commands were run in this Linux development environment: `dotnet build SourceCode/AgOpenGPS.sln
+-c Debug` and `-c Release` both report 0 errors (16 pre-existing Avalonia `AVLN3001` "no public
+constructor for runtime loader" advisories on 8 unrelated views × 2 TFMs, not escalated to errors under
+Release `TreatWarningsAsErrors`), and the three test assemblies report 115 passed / 1 skipped / 0 failed.
+The `windows-latest` and `macos-latest` cells, and **all** self-contained publish cells, remain **Pending
+CI run** — they require GitHub-hosted runners not available in this offline environment.
 
 **Simulators (per-OS integration without physical hardware).** The in-app **`CSim`** simulator, the
 standalone **`ModSim`** program, and the passive **`AgDiag`** diagnostic provide simulator-level
 integration coverage on each operating system, so the receive→fuse→steer→section path can be exercised
 end-to-end on `windows`/`ubuntu`/`macos` without a steer module attached.
 
-_The build/release workflow matrix that produces these legs and artifacts is tracked in
-`TRANSITION_MAP.md` (Build / CI) and `CHANGELOG.md` (Build/CI); both are recorded as deferred to the CI
-checkpoint until the matrix is on disk and green._
+_The build/release workflow matrix that produces these legs and artifacts is **on disk**:
+`.github/workflows/build.yml` declares the tri-OS build/test matrix (`windows-latest` / `ubuntu-latest` /
+`macos-latest`, the latter covering both `osx-x64` and `osx-arm64`) with `fail-fast: false`, and
+`.github/workflows/release.yml` declares the per-RID self-contained publish matrix with per-OS upload
+artifacts. What remains **Pending** is the **execution** of that matrix on GitHub-hosted runners and the
+recording of green results here — an external-evidence item (this offline environment cannot dispatch
+GitHub Actions). The local Linux leg is already proven (build + 115 tests green); see the row note
+below._
+
+---
+
+## Dependency Vulnerability Audit
+
+A package vulnerability audit was run in the final remediation pass with **`dotnet list package
+--vulnerable --include-transitive`** against the **live NuGet advisory database**
+(`https://api.nuget.org/v3/index.json`, including `…/v3/vulnerabilities/index.json`, both reachable —
+HTTP 200 — from this environment; the `web_search` tool is domain-restricted, but direct NuGet API access
+is not). After `dotnet restore` synchronised the assets (resolving the earlier "out-of-sync assets"
+blocker), the audit was run **per project** (the solution-level scan does not support the GPS/AgIO
+multi-target) across both `net8.0` and `net8.0-windows7.0` for the two multi-targeted projects.
+
+**Result: zero vulnerable packages** — top-level **and** transitive — across all twelve projects. The two
+GPS Windows-only NuGet packages (`System.Management 9.0.0`, `Microsoft.Win32.Registry 5.0.0`), which a
+`dotnet list package --framework net8.0-windows7.0` tool quirk could not read for the GPS project (a
+cosmetic desync between the `'$(TargetFramework)' == 'net8.0-windows'` ItemGroup condition and the
+canonical `net8.0-windows7.0` moniker — the build itself is correct and both DLLs are confirmed in the
+GPS Windows output), were audited via an isolated probe and are likewise **clean**.
+
+The audited direct inventory is 21 distinct top-level `PackageReference`s (Avalonia 11.3.18 stack,
+`Dev4Agriculture.ISO11783.ISOXML 0.23.1.1`, `OpenTK 3.3.3`, `Newtonsoft.Json 13.0.4`, the SQLite stack,
+`System.IO.Ports 9.0.0`, the NUnit 4.3.2 toolchain, etc.); GPS alone resolves 56 packages including
+transitive — all clean. **Status: audited clean against the live advisory DB (this environment).
+Residual:** re-running the audit inside the network-enabled `windows`/`ubuntu`/`macos` CI matrix remains
+good practice and is the same external-evidence class as the tri-OS test confirmation above.
 
 ---
 
@@ -277,14 +334,20 @@ and is listed first.
      ANGLE/EGL; Linux/X11: `Glx` ahead of EGL; both offer GL 3.2-compatibility then legacy 2.1, software
      last). macOS exposes no per-OS GL-profile knob through Avalonia platform options and relies on the
      runtime gate.
-   **Status: runtime fail-safe ENFORCED and unit-validated** (gate state machine, one-shot `RenderingGated`
-   event, `RequestDesktopGlProfile` null-builder rejection, and live Win32/X11 option-application were all
-   exercised by an ad-hoc `AvaloniaGeoViewport` fixture and pass; the host compiles clean on `net8.0` and
-   `net8.0-windows`, Debug + Release). **STILL OPEN:** (a) the out-of-scope composition root (`Program.cs`)
-   must call `AvaloniaGeoViewport.RequestDesktopGlProfile(...)` in `BuildAvaloniaApp()` to actually obtain a
-   desktop-GL context, and (b) on-hardware, per-OS confirmation that a desktop-GL compatibility context is
-   obtained and that `glReadPixels` `oglBack` parity holds must be run and recorded here. Until (a)+(b) this
-   remains the dominant open feasibility risk — **but it can no longer crash the program.**
+   **Status: runtime fail-safe ENFORCED and unit-validated; desktop-GL request now WIRED.** The gate state
+   machine, one-shot `RenderingGated` event, `RequestDesktopGlProfile` null-builder rejection, and live
+   Win32/X11 option-application were all exercised by an ad-hoc `AvaloniaGeoViewport` fixture and pass; the
+   host compiles clean on `net8.0` and `net8.0-windows`, Debug + Release. **RESOLVED (a):** the composition
+   roots now call the hook — `SourceCode/GPS/Program.cs` `BuildAvaloniaApp()` chains
+   `AvaloniaGeoViewport.RequestDesktopGlProfile(...)` (and `SourceCode/AgIO/Source/Program.cs` applies it
+   consistently for shared-bootstrap parity), so a desktop-GL **compatibility** profile is requested ahead
+   of ANGLE/EGL on Windows (`Wgl`) and Linux/X11 (`Glx`); macOS exposes no per-OS GL-profile knob and relies
+   on the runtime gate. **STILL OPEN (b):** on-hardware, per-OS confirmation that a desktop-GL compatibility
+   context is actually obtained and that live rendering plus the `glReadPixels` `oglBack` section/lookahead
+   and flag-pick scans render correctly must be run on each target OS/RID and recorded here. This on-hardware
+   confirmation is an **external-evidence item** (it requires real GPUs on `windows` / `ubuntu` / `macos`
+   runners or devices, not available in this environment); it remains the dominant open feasibility risk —
+   **but it can no longer crash the program, and the bootstrap is no longer the blocker.**
 2. **Culture / locale (highest data-integrity risk).** Each program sets `CurrentCulture` /
    `CurrentUICulture` from settings. All **numeric file and protocol I/O must use `InvariantCulture`**,
    or a Linux/macOS locale with a comma decimal separator will corrupt field files, settings, ISOXML,
@@ -317,10 +380,24 @@ and is listed first.
    previously tracked here is also **closed at CP9**: the PGN / Guidance / ISOXML / Settings golden
    fixtures are captured, committed under `Parity/Golden/**`, and **enforced** (each `LoadRequired…`
    loader fails when a required artifact is absent — no silent self-ignore), and the full `Parity` suite
-   is **green on the local Linux environment** (60 passed / 1 intentional skip / 0 failed). The **only
+   is **green on the local Linux environment** (the full `AgOpenGPS.Tests` assembly reports 79 passed / 1 intentional skip / 0 failed; 115 passed / 1 skipped across all three test assemblies). The **only
    residual parity item** is **tri-OS CI confirmation** (the `windows` / `macos` legs have not yet run);
    that cross-OS confirmation is tracked under **Golden-File Parity Suites** and **Cross-OS CI Matrix**
    above, not here.
+8. **Guidance peer-reference wiring (latent composition-root gap — discovered during the final
+   remediation pass; not part of the 31 reviewed findings).** The guidance classes expose a
+   `SetGuidanceReferences(...)` method (defined on `CABCurve`, `CABLine`, `CContour`, `CTrack`,
+   `CYouTurn`, `CGuidance`, and `CRecordedPath`) intended to wire the cyclic guidance peers to one
+   another, but it currently has **zero callers**, and **no `new CGuidance(...)` instantiation exists**
+   anywhere in the migrated composition root. The guidance **mathematics are present and unit-proven**
+   (`GuidanceEquivalenceTests` exercises the Stanley / Pure-Pursuit / section-bitmask formulas directly),
+   so this does **not** affect the frozen-output contract; but until the composition root constructs a
+   live `CGuidance` and invokes `SetGuidanceReferences`, the **end-to-end live guidance pipeline** (as
+   opposed to the math in isolation) is not wired and could `NullReferenceException` on a live guidance
+   path. This is a **pre-existing** gap (the WinForms `FormGPS` god-object performed this wiring
+   implicitly; the decoupling extracted the seam but the root has not yet called it). It is recorded here
+   as an open integration risk for a follow-up wiring task; it is **out of scope of the 31 findings**
+   addressed in this remediation pass and was not introduced by it.
 
 **Accepted capability gaps (feature-completeness, not parity, risks).** The following are
 **Feature-gated (per-OS)** by design — they degrade gracefully where no cross-platform equivalent

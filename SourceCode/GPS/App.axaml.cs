@@ -29,8 +29,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+
+using AgLibrary.Logging;
 
 using Avalonia;
 using Avalonia.Controls;
@@ -52,10 +55,17 @@ using AgOpenGPS.Core.Drawing;
 using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Platform;
+using AgOpenGPS.Core.Translations;
 using AgOpenGPS.Core.ViewModels;
 
 using AgOpenGPS.Services;
 using AgOpenGPS.Views;
+// [XPLAT] The dialog-navigation closures (below) construct migrated editors that live in the
+// Views sub-namespaces: FormSteerView / FormSteerWizView / FormSimCoordsView and the Steer*
+// adapters sit in AgOpenGPS.Views.Settings; the colour/record pickers in AgOpenGPS.Views.Pickers.
+// The Guidance/Field dialogs are declared in the flat AgOpenGPS.Views namespace (already imported).
+using AgOpenGPS.Views.Settings;
+using AgOpenGPS.Views.Pickers;
 
 namespace AgOpenGPS
 {
@@ -152,7 +162,16 @@ namespace AgOpenGPS
                 //    paths. Create() selects the implementation for the current OS via RuntimeInformation.
                 // ----------------------------------------------------------------------------------------
                 EnsurePlatformServicesRegistered();
-                IPlatformServices platform = PlatformServicesFactory.Create();
+
+                // [XPLAT] Reuse the SINGLE process-level IPlatformServices instance created by Program.Main
+                // rather than calling PlatformServicesFactory.Create() a second time. Program owns the
+                // single-instance guard ON that very instance (Program._instanceLock), and the per-OS
+                // implementations carry process-level state (config root, lock-file/Mutex handle). Creating a
+                // second instance here would risk split process state for locks/config roots and violate the
+                // intended single platform-service-instance semantics (review finding App.axaml.cs MAJOR L155).
+                // The null-coalescing fallback to Create() keeps non-Program entry paths (XAML previewer / test
+                // host) working; in those paths EnsurePlatformServicesRegistered() above guarantees a factory.
+                IPlatformServices platform = Program.PlatformServices ?? PlatformServicesFactory.Create();
 
                 // ----------------------------------------------------------------------------------------
                 // 2. Base directory. RegistrySettings.baseDirectory is sourced from IPlatformServices.AppDataRoot
@@ -286,6 +305,154 @@ namespace AgOpenGPS
                     pn, ahrs, vehicle, tool, section, trk, ABLine, curve, ct, bnd, yt, recPath,
                     triStrip, fd, mc, sounds, isobus, smartWAS, appCore, pgn, sections);
 
+                // ----------------------------------------------------------------------------------------
+                // [XPLAT] Field-close lifecycle hooks (AAP G2/G5, review App.axaml.cs CRITICAL "FieldIoService
+                //   close lifecycle hooks are null"). FieldIoService deliberately owns only the field-SAVE batch;
+                //   the cross-cutting close orchestration is surfaced as these two optional hooks the composition
+                //   root attaches (see FieldIoService remarks). They reproduce — behaviour-frozen — the WinForms
+                //   close lifecycle that lived in Controls.Designer.cs FileSaveEverythingBeforeClosingField (the
+                //   pre-save stops) and FormGPS.cs JobClose() (the post-save domain reset). The WinForms build ran
+                //   JobClose() inside this.Invoke(...) on the UI thread, so both hooks marshal onto the Avalonia UI
+                //   thread via Dispatcher.UIThread.Invoke (synchronous; runs inline when already on the UI thread,
+                //   else marshals-and-blocks — matching Control.Invoke and avoiding races with the GL render loop).
+                //
+                //   Two WinForms close branches are intentionally inert in the migration and therefore omitted here:
+                //   the Easy-Drive branch (isEasyDriveMode is feature-gated to a constant false — see FormSteerView)
+                //   and the AgShare close-time AUTO-upload (gated on AgShareEnabled && AgShareUploadActive, both
+                //   default false; the field-work snapshot auto-capture was not migrated — the manual
+                //   FormAgShareUploaderView is the migrated AgShare entry point). The view-side UI reset (current-
+                //   field readout) is delegated to MainView via the deferred reference assigned in step 11.
+                // ----------------------------------------------------------------------------------------
+                MainView mainViewRef = null;
+
+                // Pre-save: close in-progress geometry and turn sections/mapping off BEFORE the field is serialized,
+                // so the saved boundary/contour/coverage/sections are complete and not mid-stroke (parity with the
+                // net48 pre-save block in FileSaveEverythingBeforeClosingField).
+                void BeforeCloseField()
+                {
+                    Dispatcher.UIThread.Invoke(() =>
+                    {
+                        // close any open contour line so the saved contour strip is finalized
+                        if (ct.isContourOn) ct.StopContourLine();
+
+                        // turn the section masters off (was btnSectionMasterAuto/Manual.PerformClick() — the
+                        // migrated PerformSectionMaster* are the same toggles; the second check sees the state the
+                        // first already updated, exactly as the WinForms guards did)
+                        if (appModel.autoBtnState == btnStates.Auto) sections.PerformSectionMasterAuto();
+                        if (appModel.manualBtnState == btnStates.On) sections.PerformSectionMasterManual();
+
+                        // cancel any pending per-section on/off requests
+                        for (int j = 0; j < tool.numOfSections; j++)
+                        {
+                            section[j].sectionOnOffCycle = false;
+                            section[j].sectionOffRequest = false;
+                        }
+
+                        // turn mapping off (close open coverage patches) before the save serializes them
+                        for (int j = 0; j < triStrip.Count; j++)
+                        {
+                            if (triStrip[j].isDrawing) triStrip[j].TurnMappingOff();
+                        }
+                    });
+                }
+
+                // Post-save: the JobClose() domain reset — clears all field-scoped state so the next field opens
+                // clean. Behaviour-frozen against FormGPS.cs JobClose(); the WinForms button-image/visibility/panel
+                // mutations are view concerns (the section/master events already update the view; the current-field
+                // readout is reset via MainView.OnFieldClosedResetUi()).
+                void AfterCloseField()
+                {
+                    Dispatcher.UIThread.Invoke(() =>
+                    {
+                        // recorded path
+                        recPath.resumeState = 0;
+                        recPath.currentPositonIndex = 0;
+                        recPath.recList.Clear();
+                        recPath.StopDrivingRecordedPath();
+                        recPath.shortestDubinsList?.Clear();
+                        recPath.shuttleDubinsList?.Clear();
+
+                        // grid-scale string buffer (the single instance shared with PositionService)
+                        position.sbGrid.Clear();
+
+                        // reset field drift offsets unless the operator chose to keep them (FormGPS: isKeepOffsetsOn,
+                        // relocated onto ApplicationModel — the canonical home documented for this very reset)
+                        if (!appModel.isKeepOffsetsOn)
+                        {
+                            appModel.SharedFieldProperties.DriftCompensation = new GeoDelta(0.0, 0.0);
+                        }
+
+                        // headland + boundaries
+                        bnd.isHeadlandOn = false;
+                        bnd.bndList.Clear();
+
+                        // hydraulic lift off — domain source of truth; the machine PGN hydLift byte is rebuilt from
+                        // this flag on the next machine-byte build (was also p_239.pgn[hydLift] = 0)
+                        vehicle.isHydLiftOn = false;
+
+                        // close the field model (clears ActiveField)
+                        appModel.Fields.CloseField();
+
+                        // force section masters off and drive all sections/zones to Off
+                        appModel.autoBtnState = btnStates.Off;
+                        appModel.manualBtnState = btnStates.Off;
+                        if (tool.isSectionsNotZones) sections.AllSectionsToState(btnStates.Off);
+                        else sections.AllZonesToState(btnStates.Off);
+
+                        // applied-coverage patches: clear every strip then seed one fresh patch (parity with
+                        // triStrip.Clear() + triStrip.Add(new CPatches(...)); the same shared patchSaveList is reused)
+                        for (int j = 0; j < triStrip.Count; j++)
+                        {
+                            triStrip[j].patchList?.Clear();
+                            triStrip[j].triangleList?.Clear();
+                            triStrip[j].isDrawing = false;
+                            triStrip[j].numTriangles = 0;
+                        }
+                        triStrip.Clear();
+                        triStrip.Add(new CPatches(appModel, tool, section, fd, patchSaveList));
+
+                        // flags
+                        flagPts.Clear();
+
+                        // tramlines
+                        tram.tramList?.Clear();
+                        tram.displayMode = 0;
+                        tram.generateMode = 0;
+                        tram.tramBndInnerArr?.Clear();
+                        tram.tramBndOuterArr?.Clear();
+
+                        // curve
+                        curve.ResetCurveLine();
+
+                        // tracks
+                        trk.gArr?.Clear();
+                        trk.idx = -1;
+
+                        // contour
+                        ct.ResetContour();
+                        ct.isContourBtnOn = false;
+                        ct.isContourOn = false;
+
+                        // autosteer + youturn domain flags off
+                        appModel.isBtnAutoSteerOn = false;
+                        yt.isYouTurnBtnOn = false;
+                        yt.ResetYouTurn();
+
+                        // worked-area counters
+                        fd.workedAreaTotal = 0;
+                        fd.UpdateFieldBoundaryGUIAreas();
+
+                        // background imagery
+                        worldGrid.BingMap = null;
+
+                        // ISOBUS field-name reset (Task Controller)
+                        isobus.SendFieldName(string.Empty);
+
+                        // view-side reset (current-field readout) — was Text = "AgOpenGPS" / panel disables in JobClose
+                        mainViewRef?.OnFieldClosedResetUi();
+                    });
+                }
+
                 FieldIoService fieldIo = new FieldIoService(
                     pn, fd, triStrip, ct, flagPts, bnd, tram, recPath, trk, hdl, ABLine, worldGrid,
                     position.sbGrid, appCore, agShareClient,
@@ -297,8 +464,8 @@ namespace AgOpenGPS
                         errorPresenter.PresentTimedMessage(TimeSpan.FromSeconds(isError ? 4 : 2), title, message),
                     showTimedMessage: (timeoutMs, title, message) =>
                         errorPresenter.PresentTimedMessage(TimeSpan.FromMilliseconds(timeoutMs), title, message),
-                    onBeforeCloseField: null,
-                    onAfterCloseField: null);
+                    onBeforeCloseField: BeforeCloseField,
+                    onAfterCloseField: AfterCloseField);
 
                 render = new RenderCoordinator(
                     camera, worldGrid, section, tool, tram, bnd, yt, trk, triStrip, vehicle, isobus, pn,
@@ -340,6 +507,11 @@ namespace AgOpenGPS
                     DataContext = appCore.AppViewModel,
                 };
 
+                // [XPLAT] Publish the main view to the field-close hooks (declared before FieldIoService so they
+                // could be passed to its constructor). The hooks are only invoked at runtime during a field close,
+                // by which point this assignment has run; AfterCloseField calls mainViewRef.OnFieldClosedResetUi().
+                mainViewRef = mainView;
+
                 panelPresenter.Owner = mainView;
                 errorPresenter.Owner = mainView;
 
@@ -379,10 +551,837 @@ namespace AgOpenGPS
                 appViewModel.PropertyChanged += (_, __) => ApplyTheme();
 
                 // ----------------------------------------------------------------------------------------
+                // 12b. [XPLAT] Operator-action command map (AAP G2 / R1, finding MV-1..MV-3, GPSD-1).
+                //      FormGPS wired ~70 buttons/hotkeys to `btnXxx_Click` handlers in Controls.Designer.cs /
+                //      GUI.Designer.cs. Each handler is reproduced here as a closure over the behaviour-frozen
+                //      domain objects (Extract Method, AAP §0.6.1). The *domain* mutation — including sounds,
+                //      timed messages, and cross-button effects (e.g. turning contour off also disengages
+                //      autosteer) — lives in these closures verbatim; the resulting visual state is returned so
+                //      MainView (which owns the controls) swaps the button face exactly as the WinForms handler
+                //      set `btnXxx.Image`. Safety-critical autosteer (R3) is funnelled through ToggleAutoSteer.
+                // ----------------------------------------------------------------------------------------
+
+                // Timed-message sink — the migrated equivalent of FormGPS.TimedMessageBox(ms, title, msg).
+                void ShowTimed(int milliseconds, string title, string message) =>
+                    errorPresenter.PresentTimedMessage(TimeSpan.FromMilliseconds(milliseconds), title, message);
+
+                // --- Cross-calling domain actions as local functions (so contour/cycle/path can disengage
+                //     autosteer and youturn exactly as the WinForms `btnXxx.PerformClick()` calls did). ---
+
+                // btnAutoSteer_Click (Controls.Designer.cs) verbatim domain. The over-speed guard is enforced
+                // only when not simulating (was `if (!timerSim.Enabled)`); all three sound plays stay gated on
+                // sounds.isSteerSoundOn exactly as the original. Returns the resulting engaged state.
+                bool ToggleAutoSteerDomain()
+                {
+                    render.ResetLongAvgPivDistance();   // [XPLAT] was: longAvgPivDistance = 0;
+
+                    if (!(position.getIsSimActive?.Invoke() ?? false))
+                    {
+                        if (appModel.avgSpeed > vehicle.maxSteerSpeed)
+                        {
+                            if (appModel.isBtnAutoSteerOn)
+                            {
+                                appModel.isBtnAutoSteerOn = false;
+                                if (sounds.isSteerSoundOn) sounds.sndAutoSteerOff.Play();
+                            }
+
+                            Log.EventWriter("Steer Off, Above Max Safe Speed for Autosteer");
+
+                            if (appViewModel.IsMetric)
+                                ShowTimed(3000, "AutoSteer Disabled", "Above Maximum Safe Steering Speed: " + vehicle.maxSteerSpeed.ToString("N0") + " Kmh");
+                            else
+                                ShowTimed(3000, "AutoSteer Disabled", "Above Maximum Safe Steering Speed: " + Speed.KmhToMph(vehicle.maxSteerSpeed).ToString("N1") + " MPH");
+
+                            return appModel.isBtnAutoSteerOn;
+                        }
+                    }
+
+                    if (appModel.isBtnAutoSteerOn)
+                    {
+                        appModel.isBtnAutoSteerOn = false;
+                        if (sounds.isSteerSoundOn) sounds.sndAutoSteerOff.Play();
+                    }
+                    else
+                    {
+                        if (ct.isContourBtnOn || trk.idx > -1)
+                        {
+                            appModel.isBtnAutoSteerOn = true;
+                            if (sounds.isSteerSoundOn) sounds.sndAutoSteerOn.Play();
+                            if (yt.isYouTurnBtnOn) yt.ResetYouTurn();
+                        }
+                        else
+                        {
+                            ShowTimed(2000, gStr.gsNoGuidanceLines, gStr.gsTurnOnContourOrMakeABLine);
+                        }
+                    }
+
+                    return appModel.isBtnAutoSteerOn;
+                }
+
+                // btnAutoYouTurn_Click verbatim domain. Returns the resulting on state.
+                bool ToggleYouTurnDomain()
+                {
+                    yt.isTurnCreationTooClose = false;
+
+                    if (bnd.bndList.Count == 0)
+                    {
+                        ShowTimed(2000, gStr.gsNoBoundary, gStr.gsCreateABoundaryFirst);
+                        return yt.isYouTurnBtnOn;   // false
+                    }
+
+                    yt.turnTooCloseTrigger = false;
+
+                    if (!yt.isYouTurnBtnOn)
+                    {
+                        yt.ResetCreatedYouTurn();
+                        if (trk.idx == -1) return yt.isYouTurnBtnOn;   // false
+                        yt.isYouTurnBtnOn = true;
+                        yt.isTurnCreationTooClose = false;
+                        yt.isTurnCreationNotCrossingError = false;
+                        yt.ResetYouTurn();
+                    }
+                    else
+                    {
+                        yt.isYouTurnBtnOn = false;
+                        yt.RestorePreTriggerState();
+                        yt.ResetYouTurn();
+                        yt.ResetCreatedYouTurn();
+                    }
+
+                    return yt.isYouTurnBtnOn;
+                }
+
+                // btnContour_Click verbatim domain. Returns the resulting contour on state.
+                bool ToggleContourDomain()
+                {
+                    if (trk.idx != -1) trk.idx = -1;
+                    trk.isAutoTrack = false;
+
+                    ct.isContourBtnOn = !ct.isContourBtnOn;
+                    if (ct.isContourBtnOn)
+                    {
+                        // (WinForms DisableYouTurnButtons() — the youturn/track button enables are recomputed
+                        //  by MainView.RefreshGuidanceFaces from the resulting domain state.)
+                        position.guidanceLookAheadTime = 0.5;
+                        ct.isLocked = false;
+                    }
+                    else
+                    {
+                        ABLine.isABValid = false;
+                        curve.isCurveValid = false;
+                        ct.isLocked = false;
+                        position.guidanceLookAheadTime = Properties.Settings.Default.setAS_guidanceLookAheadTime;
+
+                        if (appModel.isBtnAutoSteerOn)
+                        {
+                            ToggleAutoSteerDomain();   // was: btnAutoSteer.PerformClick();
+                            ShowTimed(2000, gStr.gsGuidanceStopped, gStr.gsContourOn);
+                        }
+                    }
+
+                    return ct.isContourBtnOn;
+                }
+
+                // btnCycleLines_Click verbatim domain. Advances to the next *visible* track, disengaging
+                // autosteer and youturn as the original did. Returns the newly-active track name (for the flash),
+                // or null when nothing changed. The visible-track search is bounded by the track count so a
+                // pathological all-hidden list can never hang (identical result for any valid track set).
+                string CycleLinesDomain()
+                {
+                    trk.isAutoTrack = false;
+                    string flash = null;
+
+                    if (trk.gArr.Count > 1)
+                    {
+                        for (int guard = 0; guard < trk.gArr.Count; guard++)
+                        {
+                            trk.idx++;
+                            if (trk.idx == trk.gArr.Count) trk.idx = 0;
+                            if (trk.gArr[trk.idx].isVisible) { flash = trk.gArr[trk.idx].name; break; }
+                        }
+
+                        if (appModel.isBtnAutoSteerOn)
+                        {
+                            ToggleAutoSteerDomain();
+                            ShowTimed(2000, gStr.gsGuidanceStopped, "Track Changed");
+                        }
+                        if (yt.isYouTurnBtnOn) ToggleYouTurnDomain();
+                    }
+
+                    ABLine.isABValid = false;
+                    curve.isCurveValid = false;
+                    return flash;
+                }
+
+                // btnCycleLinesBk_Click verbatim domain. When contour is on it locks to line instead (original
+                // behaviour) and changes no track. Note the WinForms asymmetry: the backward cycle does NOT
+                // toggle youturn off, unlike the forward cycle — preserved here.
+                string CycleLinesBackDomain()
+                {
+                    if (ct.isContourBtnOn) { ct.SetLockToLine(); return null; }
+
+                    trk.isAutoTrack = false;
+                    string flash = null;
+
+                    if (trk.gArr.Count > 1)
+                    {
+                        for (int guard = 0; guard < trk.gArr.Count; guard++)
+                        {
+                            trk.idx--;
+                            if (trk.idx == -1) trk.idx = trk.gArr.Count - 1;
+                            if (trk.gArr[trk.idx].isVisible) { flash = trk.gArr[trk.idx].name; break; }
+                        }
+
+                        if (appModel.isBtnAutoSteerOn)
+                        {
+                            ToggleAutoSteerDomain();
+                            ShowTimed(2000, gStr.gsGuidanceStopped, "Track Changed");
+                        }
+                    }
+
+                    ABLine.isABValid = false;
+                    curve.isCurveValid = false;
+                    return flash;
+                }
+
+                // btnPathGoStop_Click verbatim domain. Turns off all guidance first (contour/youturn/autosteer
+                // and the active track), then starts or stops recorded-path driving. Returns the resulting
+                // driving state. The button image/enable swaps are MainView.RefreshPathFaces concerns.
+                bool PathGoStopDomain()
+                {
+                    if (ct.isContourBtnOn) ToggleContourDomain();
+                    if (yt.isYouTurnBtnOn) ToggleYouTurnDomain();
+                    if (appModel.isBtnAutoSteerOn)
+                    {
+                        ToggleAutoSteerDomain();
+                        ShowTimed(2000, gStr.gsGuidanceStopped, "Paths Enabled");
+                        Log.EventWriter("Autosteer On While Enable Paths");
+                    }
+                    if (trk.idx > -1) trk.idx = -1;
+
+                    if (recPath.isDrivingRecordedPath)
+                    {
+                        recPath.StopDrivingRecordedPath();
+                        return false;
+                    }
+
+                    if (!recPath.StartDrivingRecordedPath())
+                    {
+                        recPath.StopDrivingRecordedPath();
+                        ShowTimed(1500, gStr.gsProblemMakingPath, gStr.gsCouldntGenerateValidPath);
+                        return false;
+                    }
+
+                    return true;
+                }
+
+                // GPS-data and field-statistics windows are non-modal; track the single open instance so a
+                // second press closes it (reachability for finding GPSD-1 / MV-2).
+                FormGPSDataView gpsDataWindow = null;
+                FormFieldDataView fieldStatsWindow = null;
+
+                // Flag colour index — FormGPS seeded btnFlag with the default (red) colour slot.
+                int flagColorIndex = 0;
+
+                // ----------------------------------------------------------------------------------------
+                // [XPLAT] Dialog-navigation support (findings MVC-1/MVC-3/APP-3 and the Field/Guidance group
+                // BNDY/BBT/BND/ABD/GRID/HA/HL/TL). The WinForms FormGPS opened every editor through the `mf`
+                // back-reference; the Avalonia shell has none, so each migrated dialog is constructed here with
+                // its collaborators injected and shown parented on the MainView window. The original open-site
+                // gating (job-started / boundary / guidance-line) and the post-close PanelUpdateRightAndBottom +
+                // SetZoom refresh are reproduced verbatim. mainView.RefreshAfterDialog() is the cross-platform
+                // stand-in for that refresh sequence.
+                // ----------------------------------------------------------------------------------------
+
+                // Unit-conversion snapshots — were FormGPS GUI.Designer.cs L472-501, recomputed from the live
+                // metric flag at open time (so a mid-session units change is honoured, exactly as the WinForms
+                // PanelUpdateRightAndBottom did). Unit strings keep their original LEADING space.
+                double M2FtOrM() => render.IsMetric ? 1.0 : glm.m2ft;
+                double FtOrMtoM() => render.IsMetric ? 1.0 : glm.ft2m;
+                string UnitsFtM() => render.IsMetric ? " m" : " ft";
+                string UnitsInCm() => render.IsMetric ? " cm" : " in";
+                double Cm2CmOrIn() => render.IsMetric ? 1.0 : 0.394;
+                // m2InchOrCm tracks the live render value (metric 100 / imperial 39.3701); inchOrCm2m is its
+                // reciprocal (metric 0.01 / imperial 0.0254) — the original always kept them paired this way.
+                double M2InchOrCmVal() => render.M2InchOrCm;
+                double InchOrCm2mVal() => render.M2InchOrCm != 0 ? 1.0 / render.M2InchOrCm : 0.01;
+
+                // Shows a migrated editor parented on the shell, refreshing the shell faces/labels/viewport when
+                // it closes (the WinForms open-sites called PanelUpdateRightAndBottom()/SetZoom() after close).
+                void ShowEditorDialog(Window dlg)
+                {
+                    if (dlg == null) return;
+                    dlg.Closed += (_, __) => mainView.RefreshAfterDialog();
+                    dlg.ShowDialog(mainView);
+                }
+
+                // Shared dialog DI delegates (the same closures the WinForms shell passed as `mf.` callbacks).
+                Func<vec3> getPivotAxlePos = () => render.PivotAxlePos;
+                Func<double> getMaxFieldDistance = () => render.maxFieldDistance;
+                Func<double> getFieldCenterX = () => render.fieldCenterX;
+                Func<double> getFieldCenterY = () => render.fieldCenterY;
+                Action calculateMinMax = () => render.CalculateMinMax();
+                Func<bool> isKeyboardOn = () => Properties.Settings.Default.setDisplay_isKeyboardOn;
+                Func<bool> isBtnAutoSteerOnFn = () => appModel.isBtnAutoSteerOn;
+                Func<bool> isYouTurnBtnOnFn = () => yt.isYouTurnBtnOn;
+                Action performAutoSteerClick = () => ToggleAutoSteerDomain();
+                Action performAutoYouTurnClick = () => ToggleYouTurnDomain();
+                Action<int> setTwoSecondCounter = _ => { };   // no per-frame two-second host in the migrated shell
+                Action panelUpdateRightAndBottom = () => mainView.RefreshAfterDialog();
+                Action saveTracks = () => fieldIo.FileSaveTracks();
+                Action activateMainView = () => mainView.Activate();
+                Action<int, string, string> timedMessageBox = (ms, title, msg) => ShowTimed(ms, title, msg);
+                // The IBoundaryFieldData seam the boundary dialogs use (fd area recompute + render extents).
+                IBoundaryFieldData boundaryFieldData = new BoundaryFieldDataAdapter(fd, render);
+
+                ShellCommands shellCommands = new ShellCommands
+                {
+                    // --- Guidance / steering toggles (return resulting visual state) ---
+                    ToggleAutoSteer = ToggleAutoSteerDomain,
+                    ToggleYouTurn = ToggleYouTurnDomain,
+                    ToggleContour = ToggleContourDomain,
+                    ContourLock = () =>
+                    {
+                        if (ct.isContourBtnOn) ct.SetLockToLine();
+                        return ct.isLocked;
+                    },
+                    ToggleAutoTrack = () =>
+                    {
+                        trk.isAutoTrack = !trk.isAutoTrack;
+                        return trk.isAutoTrack;
+                    },
+                    ToggleAutoSnapToPivot = () =>
+                    {
+                        trk.isAutoSnapToPivot = !trk.isAutoSnapToPivot;
+                        return trk.isAutoSnapToPivot;
+                    },
+                    CycleLines = CycleLinesDomain,
+                    CycleLinesBack = CycleLinesBackDomain,
+
+                    // --- Bottom panel ---
+                    // btnYouSkipEnable_Click: cycle skip mode Normal -> Alternative -> IgnoreWorkedTracks -> Normal.
+                    YouSkipEnable = () =>
+                    {
+                        yt.rowSkipsWidth = Properties.Settings.Default.set_youSkipWidth;
+                        switch (yt.skipMode)
+                        {
+                            case SkipMode.Normal:
+                                yt.skipMode = SkipMode.Alternative;
+                                if (yt.rowSkipsWidth < 2) yt.rowSkipsWidth = 2;
+                                yt.Set_Alternate_skips();
+                                break;
+                            case SkipMode.Alternative:
+                                yt.skipMode = SkipMode.IgnoreWorkedTracks;
+                                if (yt.rowSkipsWidth < 2) yt.rowSkipsWidth = 2;
+                                break;
+                            case SkipMode.IgnoreWorkedTracks:
+                                yt.skipMode = SkipMode.Normal;
+                                break;
+                        }
+                        yt.ResetCreatedYouTurn();
+                        return (int)yt.skipMode;
+                    },
+                    // btnTramDisplayMode_Click: cycle tram display mode.
+                    CycleTramDisplay = () =>
+                    {
+                        tram.isLeftManualOn = false;
+                        tram.isRightManualOn = false;
+                        if (tram.tramList.Count > 0 && tram.tramBndOuterArr.Count == 0)
+                        {
+                            tram.displayMode = tram.displayMode != 0 ? 0 : 2;
+                        }
+                        else
+                        {
+                            tram.displayMode++;
+                            if (tram.displayMode > 3) tram.displayMode = 0;
+                        }
+                        return tram.displayMode;
+                    },
+                    // btnHeadlandOnOff_Click.
+                    ToggleHeadland = () =>
+                    {
+                        bnd.isHeadlandOn = !bnd.isHeadlandOn;
+                        if (vehicle.isHydLiftOn && !bnd.isHeadlandOn) vehicle.isHydLiftOn = false;
+                        if (!bnd.isHeadlandOn) pgn.p_239.pgn[pgn.p_239.hydLift] = 0;
+                        return bnd.isHeadlandOn;
+                    },
+                    // cboxIsSectionControlled_Click — persist headland section-control flag.
+                    ToggleHeadlandSectionControl = on =>
+                    {
+                        bnd.isSectionControlledByHeadland = on;
+                        Properties.ToolSettings.Default.setHeadland_isSectionControlled = on;
+                        Properties.ToolSettings.Default.Save();
+                    },
+                    // btnHydLift_Click.
+                    ToggleHydLift = () =>
+                    {
+                        if (bnd.isHeadlandOn)
+                        {
+                            vehicle.isHydLiftOn = !vehicle.isHydLiftOn;
+                            if (!vehicle.isHydLiftOn) pgn.p_239.pgn[pgn.p_239.hydLift] = 0;
+                        }
+                        else
+                        {
+                            pgn.p_239.pgn[pgn.p_239.hydLift] = 0;
+                            vehicle.isHydLiftOn = false;
+                        }
+                        return vehicle.isHydLiftOn;
+                    },
+
+                    // --- Track / nudge / flags ---
+                    ResetToolHeading = () => position.ResetToolHeading(),
+                    AddFlag = () =>
+                    {
+                        int nextFlag = flagPts.Count + 1;
+                        CFlag flag = new CFlag(
+                            appModel.CurrentLatLon.Latitude,
+                            appModel.CurrentLatLon.Longitude,
+                            pn.fix.easting,
+                            pn.fix.northing,
+                            appModel.FixHeading.AngleInRadians,
+                            flagColorIndex,
+                            nextFlag,
+                            nextFlag.ToString());
+                        flagPts.Add(flag);
+
+                        // De-duplicate in place so the rooted list reference RenderCoordinator holds stays valid.
+                        var deduped = AgOpenGPS.IO.FlagsFiles.DeduplicateFlags(flagPts);
+                        flagPts.Clear();
+                        flagPts.AddRange(deduped);
+
+                        fieldIo.FileSaveFlags();
+                    },
+                    NudgeLeft = () => trk.NudgeTrack(-Properties.ToolSettings.Default.setAS_snapDistance * 0.01),
+                    NudgeRight = () => trk.NudgeTrack(Properties.ToolSettings.Default.setAS_snapDistance * 0.01),
+                    SnapToPivot = () => trk.SnapToPivot(),
+                    // btnTrack_Click domain — turn contour off if on, then select a visible track if none active.
+                    TrackButton = () =>
+                    {
+                        if (ct.isContourBtnOn) ToggleContourDomain();
+                        if (trk.gArr.Count > 0 && trk.idx == -1)
+                        {
+                            trk.idx = trk.gArr.FindIndex(t => t.isVisible);
+                            if (trk.idx == -1) trk.idx = 0;
+                        }
+                    },
+                    TracksOff = () => trk.idx = -1,
+
+                    // --- Two-program hub ---
+                    StartAgIO = () => Program.StartAgIO(),
+
+                    // --- Status windows (non-modal; second press closes) ---
+                    ShowGpsData = () =>
+                    {
+                        if (gpsDataWindow != null)
+                        {
+                            try { gpsDataWindow.Close(); } catch { /* already closing */ }
+                            gpsDataWindow = null;
+                            return;
+                        }
+                        gpsDataWindow = new FormGPSDataView(pn, ahrs, position, pgn, appCore);
+                        gpsDataWindow.Closed += (_, __) => gpsDataWindow = null;
+                        gpsDataWindow.Show(mainView);
+                    },
+                    ShowFieldStats = () =>
+                    {
+                        if (!appModel.isJobStarted) return;
+                        if (fieldStatsWindow != null)
+                        {
+                            try { fieldStatsWindow.Close(); } catch { /* already closing */ }
+                            fieldStatsWindow = null;
+                            return;
+                        }
+                        fieldStatsWindow = new FormFieldDataView(fd, bnd, appViewModel.IsMetric);
+                        fieldStatsWindow.Closed += (_, __) => fieldStatsWindow = null;
+                        fieldStatsWindow.Show(mainView);
+                    },
+
+                    // --- Display brightness (routed through IPlatformServices; -1 == not controllable). ---
+                    BrightnessUp = () =>
+                    {
+                        int b = platform.GetBrightness();
+                        if (b < 0) return null;
+                        b = Math.Min(100, b + 10);
+                        platform.SetBrightness(b);
+                        Properties.Settings.Default.setDisplay_brightness = b;
+                        Properties.Settings.Default.Save();
+                        return b.ToString() + "%";
+                    },
+                    BrightnessDown = () =>
+                    {
+                        int b = platform.GetBrightness();
+                        if (b < 0) return null;
+                        b = Math.Max(10, b - 10);
+                        platform.SetBrightness(b);
+                        Properties.Settings.Default.setDisplay_brightness = b;
+                        Properties.Settings.Default.Save();
+                        return b.ToString() + "%";
+                    },
+
+                    // --- Simulator controls (verbatim from the WinForms btnSim* handlers). ---
+                    SimSpeedUp = () =>
+                    {
+                        if (sim.stepDistance < 0) { sim.stepDistance = 0; return; }
+                        if (sim.stepDistance < 0.2) sim.stepDistance += 0.02; else sim.stepDistance *= 1.15;
+                        if (sim.stepDistance > 7.5) sim.stepDistance = 7.5;
+                    },
+                    SimSpeedDown = () =>
+                    {
+                        if (sim.stepDistance < 0.2 && sim.stepDistance > -0.51) sim.stepDistance -= 0.02; else sim.stepDistance *= 0.8;
+                        if (sim.stepDistance < -0.5) sim.stepDistance = -0.5;
+                    },
+                    SimSetSpeedToZero = () => sim.stepDistance = 0,
+                    SimReverseDirection = () =>
+                    {
+                        sim.headingTrue += Math.PI;
+                        ABLine.isABValid = false;
+                        curve.isCurveValid = false;
+                        if (appModel.isBtnAutoSteerOn)
+                        {
+                            ToggleAutoSteerDomain();
+                            ShowTimed(2000, gStr.gsGuidanceStopped, "Sim Reverse Touched");
+                            Log.EventWriter("Steer Off, Sim Reverse Activated");
+                        }
+                    },
+                    SimReset = () => sim.CurrentLatLon = new Wgs84(
+                        Properties.Settings.Default.setGPS_SimLatitude,
+                        Properties.Settings.Default.setGPS_SimLongitude),
+                    SimResetSteerAngle = () => sim.steerAngleScrollBar = 0,
+                    // [XPLAT] WinForms slider was 0..800 (centre 400) and mapped (val-400)*0.1 -> +-40 deg. The
+                    // Avalonia slider is -100..100 (centre 0); *0.4 preserves the identical +-40 deg authority.
+                    SimSteerAngleScroll = value => sim.steerAngleScrollBar = value * 0.4,
+
+                    // --- Recorded path ---
+                    PathGoStop = PathGoStopDomain,
+                    // btnPathRecordStop_Click: stop+save (default name) or start a fresh recording. The WinForms
+                    // FormRecordName save-as prompt is wired in the dialog-navigation phase; here the path is
+                    // persisted to the default RecPath.Txt so record/stop is functional end-to-end.
+                    PathRecordStop = () =>
+                    {
+                        if (recPath.isRecordOn)
+                        {
+                            recPath.isRecordOn = false;
+                            fieldIo.FileSaveRecPath();
+                        }
+                        else if (appModel.isJobStarted)
+                        {
+                            recPath.recList.Clear();
+                            recPath.isRecordOn = true;
+                        }
+                        return recPath.isRecordOn;
+                    },
+                    // btnResumePath_Click: cycle resume style 0 -> 1 -> 2 -> 0.
+                    ResumePath = () =>
+                    {
+                        if (recPath.resumeState == 0) { recPath.resumeState++; ShowTimed(1500, "Resume Style", "Last Stopped Position"); }
+                        else if (recPath.resumeState == 1) { recPath.resumeState++; ShowTimed(1500, "Resume Style", "Closest Point"); }
+                        else { recPath.resumeState = 0; ShowTimed(1500, "Resume Style", "Start At Beginning"); }
+                        return recPath.resumeState;
+                    },
+                    // btnSwapABRecordedPath_Click: reverse the path, rotating each point's heading by PI.
+                    SwapABRecordedPath = () =>
+                    {
+                        int cnt = recPath.recList.Count;
+                        var reversed = new List<CRecPathPt>();
+                        for (int i = cnt - 1; i > -1; i--)
+                        {
+                            recPath.recList[i].heading += glm.PIBy2 + glm.PIBy2;
+                            if (recPath.recList[i].heading < -glm.twoPI) recPath.recList[i].heading += glm.twoPI;
+                            reversed.Add(recPath.recList[i]);
+                        }
+                        recPath.recList.Clear();
+                        for (int i = 0; i < cnt; i++) recPath.recList.Add(reversed[i]);
+                    },
+
+                    // cboxpRowWidth_SelectedIndexChanged — apply a new skip width.
+                    SetRowSkipWidth = value =>
+                    {
+                        yt.rowSkipsWidth = value;
+                        yt.Set_Alternate_skips();
+                        if (!yt.isYouTurnTriggered) yt.ResetCreatedYouTurn();
+                        Properties.Settings.Default.set_youSkipWidth = yt.rowSkipsWidth;
+                        Properties.Settings.Default.Save();
+                    },
+
+                    // =====================================================================================
+                    // [XPLAT] Dialog navigation (finding MVC-1/MVC-2/MVC-3, APP-3, BND-1/BNDY-1/BBT-1, ABD-1,
+                    // GRID-1/HA-1/HL-1/TL-1). Each closure reconstructs a former FormGPS open-site: it applies
+                    // the SAME enable/guard gating the WinForms button had, constructs the migrated editor with
+                    // the shared DI delegates, and shows it modally via ShowEditorDialog (which repaints the
+                    // shell on close — the parity stand-in for PanelUpdateRightAndBottom()/SetZoom()).
+                    // =====================================================================================
+
+                    // btnAutoSteerConfig -> FormSteer. The adapters bind the dialog's ISteerSettings* seams onto
+                    // the live domain objects (CVehicle / PgnDispatcher / CModuleComm / CSmartWAS).
+                    OpenSteerConfig = () => ShowEditorDialog(new FormSteerView(
+                        new SteerSettingsVehicleAdapter(vehicle),
+                        new SteerSettingsConfigServiceAdapter(pgn, ABLine, vehicle),
+                        new SteerSettingsTelemetryAdapter(mc, appModel, render, position),
+                        new SteerSettingsSmartWASAdapter(smartWAS),
+                        mainView)),
+
+                    // Steer/WAS calibration wizard (finding MVC-1/MVC-2, F-020). Fully migrated; the ISteerWiz*
+                    // adapters bind the wizard to the live PGN/vehicle/AHRS state. NOTE: sideHillCompFactor is
+                    // backed by the persisted setting because no live CGuidance peer is wired (latent gap is
+                    // documented in PARITY_REPORT.md), so calibration round-trips through settings, not a NRE.
+                    OpenSteerWizard = () => ShowEditorDialog(new FormSteerWizView(
+                        new SteerWizVehicleAdapter(vehicle, tram),
+                        new SteerWizConfigServiceAdapter(pgn),
+                        new SteerWizTelemetryAdapter(mc, appModel, render, pgn, ahrs),
+                        new SteerWizAhrsAdapter(ahrs),
+                        new SteerWizGuidanceAdapter(),
+                        mainView)),
+
+                    // btnABLine "+" / quick AB add (FormQuickAB). isEasyDriveMode is false in the migrated shell.
+                    OpenQuickAB = () => ShowEditorDialog(new FormQuickABView(
+                        curve, ABLine, trk, tool, getPivotAxlePos, isKeyboardOn, () => false,
+                        isBtnAutoSteerOnFn, isYouTurnBtnOnFn, performAutoSteerClick, performAutoYouTurnClick,
+                        setTwoSecondCounter, panelUpdateRightAndBottom, saveTracks, activateMainView)),
+
+                    // btnBuildTracks -> FormBuildTracks. resetYouTurn -> yt.ResetYouTurn(); disableYouTurnButtons
+                    // is reproduced by RefreshAfterDialog (re-evaluates the YouTurn button face from live state).
+                    OpenBuildTracks = () => ShowEditorDialog(new FormBuildTracksView(
+                        trk, curve, ABLine, tool, appModel, getPivotAxlePos, () => fieldIo.currentFieldDirectory,
+                        isKeyboardOn, isBtnAutoSteerOnFn, isYouTurnBtnOnFn, performAutoSteerClick,
+                        performAutoYouTurnClick, () => yt.ResetYouTurn(), () => mainView.RefreshAfterDialog(),
+                        setTwoSecondCounter, panelUpdateRightAndBottom, saveTracks, activateMainView,
+                        timedMessageBox, RegistrySettings.fieldsDirectory)),
+
+                    // btnABDraw -> FormABDraw (finding ABD-1). turnAutoSteerOff/turnYouTurnOff toggle OFF only
+                    // when currently on (performAuto*Click is a toggle, so it is gated to an off-action here).
+                    OpenABDraw = () => ShowEditorDialog(new FormABDrawView(
+                        trk, curve, ABLine, bnd, render.FieldBoundingBox, triStrip, getPivotAxlePos,
+                        getMaxFieldDistance, getFieldCenterX, getFieldCenterY, calculateMinMax, saveTracks,
+                        isKeyboardOn, isBtnAutoSteerOnFn, () => { if (appModel.isBtnAutoSteerOn) performAutoSteerClick(); },
+                        isYouTurnBtnOnFn, () => { if (yt.isYouTurnBtnOn) performAutoYouTurnClick(); },
+                        setTwoSecondCounter, timedMessageBox)),
+
+                    // Grid editor (finding GRID-1) -> FormGrid.
+                    OpenGrid = () => ShowEditorDialog(new FormGridView(
+                        render.FieldBoundingBox, calculateMinMax, triStrip, bnd, getPivotAxlePos, worldGrid,
+                        curve, ABLine, trk, setTwoSecondCounter)),
+
+                    // btnNudge -> FormNudge (track nudge). Unit conversions resolve metric/imperial at open time.
+                    OpenNudge = () => ShowEditorDialog(new FormNudgeView(
+                        trk, tool, render.IsMetric, M2InchOrCmVal(), InchOrCm2mVal(), Cm2CmOrIn(), UnitsInCm(),
+                        saveTracks, activateMainView)),
+
+                    // btnRefNudge -> FormRefNudge (reference-line nudge); onClosed repaints the shell.
+                    OpenRefNudge = () => ShowEditorDialog(new FormRefNudgeView(
+                        trk, tool, ABLine, curve, render.IsMetric, M2InchOrCmVal(), InchOrCm2mVal(), Cm2CmOrIn(),
+                        UnitsInCm(), saveTracks, activateMainView, () => mainView.RefreshAfterDialog())),
+
+                    // Field-tools menu: Boundaries (finding BNDY-1). WinForms gated on a started job; FormBoundary
+                    // can in turn open FormBuildBoundaryFromTracks (finding BBT-1) — reachable once this is.
+                    OpenBoundary = () =>
+                    {
+                        if (!appModel.isJobStarted) { ShowTimed(2000, gStr.gsFieldNotOpen, gStr.gsStartNewField); return; }
+                        ShowEditorDialog(new FormBoundaryView(
+                            bnd, boundaryFieldData, appModel, () => fieldIo.FileSaveBoundary(),
+                            w => fieldIo.FileMakeKMLFromCurrentPosition(w), trk, () => fieldIo.FileLoadTracks(),
+                            tool.width, render.IsMetric, fieldIo.currentFieldDirectory,
+                            () => { }, () => mainView.RefreshAfterDialog(), mainView));
+                    },
+
+                    // Field-tools menu: Headland editor (finding HL-1) -> FormHeadLine. Requires a boundary first.
+                    OpenHeadland = () =>
+                    {
+                        if (bnd.bndList.Count == 0) { ShowTimed(2000, gStr.gsNoBoundary, gStr.gsCreateABoundaryFirst); return; }
+                        ShowEditorDialog(new FormHeadLineView(
+                            hdl, bnd, curve, tool, mainView.Viewport, getPivotAxlePos, getMaxFieldDistance,
+                            getFieldCenterX, getFieldCenterY, M2FtOrM, FtOrMtoM, UnitsFtM, calculateMinMax,
+                            () => fieldIo.FileSaveHeadland(), on => { vehicle.isHydLiftOn = on; }));
+                    },
+
+                    // Field-tools menu: Headland-build (finding HA-1) -> FormHeadAche. Requires a boundary first.
+                    OpenHeadlandBuild = () =>
+                    {
+                        if (bnd.bndList.Count == 0) { ShowTimed(2000, gStr.gsNoBoundary, gStr.gsCreateABoundaryFirst); return; }
+                        ShowEditorDialog(new FormHeadAcheView(
+                            hdl, bnd, curve, tool, mainView.Viewport, getMaxFieldDistance, getFieldCenterX,
+                            getFieldCenterY, UnitsFtM, M2FtOrM, FtOrMtoM, calculateMinMax,
+                            () => fieldIo.FileLoadHeadLines(), () => fieldIo.FileSaveHeadLines(),
+                            () => fieldIo.FileSaveHeadland(), on => { vehicle.isHydLiftOn = on; }));
+                    },
+
+                    // Field-tools menu: TramLines (finding TL-1) -> FormTramLine. WinForms required an active AB
+                    // track and turned contour off first; showYesMessage is the advisory (was mf.YesMessageBox).
+                    OpenTramLines = () =>
+                    {
+                        if (trk.idx == -1) { ShowTimed(2000, gStr.gsNoABLineActive, gStr.gsPleaseEnterABLine); return; }
+                        if (ct.isContourBtnOn) ct.StopContourLine();
+                        ShowEditorDialog(new FormTramLineView(
+                            tram, trk, tool, bnd, ABLine, vehicle, mainView.Viewport, () => render.FieldBoundingBox,
+                            getMaxFieldDistance, M2FtOrM, UnitsFtM, calculateMinMax, () => fieldIo.FileSaveTram(),
+                            panelUpdateRightAndBottom, () => mainView.RefreshAfterDialog(),
+                            msg => { ShowTimed(3000, gStr.gsTramLines, msg); return Task.CompletedTask; }));
+                    },
+
+                    // Field-tools menu: Boundary-tool (finding BND-1) -> FormBndTool. WinForms opened it only with
+                    // a started job; the dialog builds its own viewport from the field bounding box.
+                    OpenBoundaryTool = () =>
+                    {
+                        if (!appModel.isJobStarted) { ShowTimed(2000, gStr.gsFieldNotOpen, gStr.gsStartNewField); return; }
+                        ShowEditorDialog(new FormBndToolView(
+                            bnd, render.FieldBoundingBox, triStrip, boundaryFieldData, () => fieldIo.FileSaveBoundary(),
+                            () => fieldIo.FileSaveHeadland(), msg => ShowTimed(2500, string.Empty, msg)));
+                    },
+
+                    // btnChangeMappingColor -> FormColorPicker. Seed with the persisted day section colour
+                    // (System.Drawing.Color), persist + repaint on OK. The picker returns through ShowDialog<Color?>,
+                    // so the show is an async-void inner function (fire-and-forget is correct for a void command).
+                    OpenMappingColor = () =>
+                    {
+                        System.Drawing.Color cur = Properties.Settings.Default.setDisplay_colorSectionsDay;
+                        var picker = new FormColorPickerView(
+                            Avalonia.Media.Color.FromRgb(cur.R, cur.G, cur.B), Array.Empty<int>());
+                        async void ShowPicker()
+                        {
+                            Avalonia.Media.Color? chosen = await picker.ShowDialog<Avalonia.Media.Color?>(mainView);
+                            if (chosen.HasValue)
+                            {
+                                Properties.Settings.Default.setDisplay_colorSectionsDay =
+                                    System.Drawing.Color.FromArgb(chosen.Value.R, chosen.Value.G, chosen.Value.B);
+                                Properties.Settings.Default.Save();
+                                mainView.RefreshAfterDialog();
+                            }
+                        }
+                        ShowPicker();
+                    },
+
+                    // btnPickRecordedPath -> FormRecordPicker. hidePanelDrag has no migrated panel (no-op);
+                    // saveRecPath persists the recorded path.
+                    OpenPickPath = () => ShowEditorDialog(new FormRecordPickerView(
+                        fieldIo.currentFieldDirectory, recPath, () => { }, () => fieldIo.FileSaveRecPath())),
+
+                    // AgShare API settings -> FormAgShareSettings (AgShare disabled by default; this only edits keys).
+                    OpenAgShareApi = () => ShowEditorDialog(new FormAgShareSettingsView(agShareClient)),
+
+                    // btnSimulatorOnOff: cannot toggle the simulator while a field job is open. Persists the
+                    // setting and reflects it on the shell's simulator panel.
+                    ToggleSimulator = () =>
+                    {
+                        if (appModel.isJobStarted) { ShowTimed(2000, gStr.gsFieldIsOpen, gStr.gsCloseFieldFirst); return; }
+                        bool on = !Properties.Settings.Default.setMenu_isSimulatorOn;
+                        Properties.Settings.Default.setMenu_isSimulatorOn = on;
+                        Properties.Settings.Default.Save();
+                        mainView.IsSimulatorActive = on;
+                    },
+
+                    // Enter simulator coordinates -> FormSimCoords (uses the live NMEA/job/sim state + error presenter).
+                    EnterSimCoords = () => ShowEditorDialog(new FormSimCoordsView(
+                        pn, appModel.isJobStarted, mainView.IsSimulatorActive, errorPresenter)),
+
+                    // Language selection. No migrated language dialog exists (creating one is out of AAP scope —
+                    // new architecture). The delegate stays non-null (fail-fast contract) and faithfully informs
+                    // the operator that the UI language is set in configuration and applies after a restart.
+                    OpenLanguage = () => ShowTimed(4000, gStr.gsLanguage,
+                        System.Globalization.CultureInfo.CurrentUICulture.NativeName + "\r\n\r\n" +
+                        gStr.gsProgramWillExitPleaseRestart),
+
+                    // resetAllToolStripMenuItem: blocked while a job is open; otherwise confirm, reset the settings
+                    // store and close so the reset takes effect on the next launch (WinForms parity: Reset()+Close()).
+                    ResetAll = () =>
+                    {
+                        if (appModel.isJobStarted) { ShowTimed(2000, gStr.gsFieldIsOpen, gStr.gsCloseFieldFirst); return; }
+                        if (FormDialogView.ShowQuestionBlocking(gStr.gsResetAll, gStr.gsReallyResetEverything,
+                            DialogSeverity.Warning, mainView))
+                        {
+                            RegistrySettings.Reset();
+                            mainView.Close();
+                        }
+                    },
+
+                    // AOG updater menu: blocked while a job is open; otherwise launch the sibling updater process
+                    // (OS-specific name, located beside the GPS executable). Gracefully degrades when not published.
+                    CheckForUpdates = () =>
+                    {
+                        if (appModel.isJobStarted) { ShowTimed(3000, gStr.gsFieldIsOpen, gStr.gsCloseFieldFirst); return; }
+                        string updaterName = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                            System.Runtime.InteropServices.OSPlatform.Windows) ? "AgOpenGPS.Updater.exe" : "AgOpenGPS.Updater";
+                        string updaterPath = Path.Combine(AppContext.BaseDirectory, updaterName);
+                        if (File.Exists(updaterPath))
+                        {
+                            try
+                            {
+                                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                                {
+                                    FileName = updaterPath,
+                                    WorkingDirectory = AppContext.BaseDirectory,
+                                    UseShellExecute = false,
+                                });
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.EventWriter("[XPLAT] CheckForUpdates: failed to launch updater: " + ex.Message);
+                                ShowTimed(3000, "AgOpenGPS Updater", "Could not start the updater.");
+                            }
+                        }
+                        else
+                        {
+                            ShowTimed(3000, "AgOpenGPS Updater", "Updater is not available on this platform.");
+                        }
+                    },
+
+                    // Help -> FormHelp (non-modal, parented on the shell; no post-close shell repaint needed).
+                    ShowHelp = () => new FormHelpView().Show(mainView),
+
+                    // --- Status readers (the view paints labels / picks button faces from these). ---
+                    TrackCountText = () => trk.idx > -1 ? $"{trk.idx + 1}/{trk.gArr.Count}" : string.Empty,
+                    FlagCountText = () => flagPts.Count.ToString(),
+                    IsHydLiftOn = () => vehicle.isHydLiftOn,
+                    TrackVisibleCount = () => trk.gArr.Count(t => t.isVisible),
+                    HasBoundary = () => bnd.bndList.Count > 0,
+                    IsContourOn = () => ct.isContourBtnOn,
+                    IsContourLocked = () => ct.isLocked,
+                    IsAutoTrackOn = () => trk.isAutoTrack,
+                    IsAutoSteerOn = () => appModel.isBtnAutoSteerOn,
+                    IsYouTurnOn = () => yt.isYouTurnBtnOn,
+                    HasActiveTrack = () => trk.idx > -1,
+                    IsAutoSnapToPivotOn = () => trk.isAutoSnapToPivot,
+                    IsHeadlandOn = () => bnd.isHeadlandOn,
+                    IsDrivingRecordedPath = () => recPath.isDrivingRecordedPath,
+                    IsRecordingPath = () => recPath.isRecordOn,
+                    YouSkipMode = () => (int)yt.skipMode,
+                    TramDisplayMode = () => tram.displayMode,
+                    ResumeState = () => recPath.resumeState,
+                };
+
+                mainView.Commands = shellCommands;
+
+                // [XPLAT] Coverage gate (findings MV-1, MVC-3, APP-3). After the dialog-navigation phase EVERY
+                // operator action — immediate commands, status readers, AND every dialog-navigation delegate —
+                // must be populated, so that every migrated dialog is reachable from the shell. A non-empty
+                // result now signals a real wiring regression (not expected deferral) and is logged as an error.
+                IReadOnlyList<string> unwiredCommands = shellCommands.GetUnpopulatedCommands();
+                if (unwiredCommands.Count > 0)
+                {
+                    Log.EventWriter($"[XPLAT] ERROR: ShellCommands wiring incomplete — {unwiredCommands.Count}/{ShellCommands.CommandCount} unpopulated: {string.Join(", ", unwiredCommands)}");
+                }
+                else
+                {
+                    Log.EventWriter($"[XPLAT] ShellCommands fully wired: {ShellCommands.CommandCount}/{ShellCommands.CommandCount} operator actions populated.");
+                }
+
+                // ----------------------------------------------------------------------------------------
                 // 13. Start the loopback UDP server (frozen transport: receive on 127.0.0.1:15555, peer
                 //     127.255.255.255:17777, <=70 ms throttle). FormGPS started this at load; nothing else does.
                 // ----------------------------------------------------------------------------------------
                 pgn.StartLoopbackServer();
+
+                // ----------------------------------------------------------------------------------------
+                // 13b. Two-program model — auto-start the AgIO hub (AAP R4 / F-003). FormGPS started AgIO in its
+                //      Load handler, gated on a vehicle profile being selected AND setDisplay_isAutoStartAgIO.
+                //      That exact gate is preserved here; the launch primitive itself (process probe + locate beside
+                //      GPS + Process.Start) lives in Program.StartAgIO so the manual "Start AgIO" button reuses it.
+                //      Done after StartLoopbackServer so GPS's 127.0.0.1:15555 receiver is already listening when
+                //      AgIO comes up and begins forwarding PGN traffic over the loopback fabric.
+                // ----------------------------------------------------------------------------------------
+                if (!string.IsNullOrEmpty(RegistrySettings.vehicleProfileName) &&
+                    Properties.Settings.Default.setDisplay_isAutoStartAgIO)
+                {
+                    Program.StartAgIO();
+                }
 
                 // ----------------------------------------------------------------------------------------
                 // 14. Shutdown teardown. The single-instance lock is owned and released exactly once by
@@ -390,8 +1389,19 @@ namespace AgOpenGPS
                 //     it. PgnDispatcher exposes no Dispose/Stop — its loopback socket is reclaimed by the OS at
                 //     process exit — so the only action is to drop the rooted reference. MainView.OnViewClosing
                 //     already persists camera pitch/zoom and saves Settings.
+                //     [XPLAT] Two-program auto-off (AAP R4 / F-003): when setDisplay_isAutoOffAgIO is enabled,
+                //     stop the AgIO hub GPS started, mirroring FormGPS's FormClosing CloseMainWindow() call
+                //     (Program.StopAgIO adds the cross-platform bounded-wait + Kill fallback). Gated exactly as the
+                //     WinForms build, and run before dropping the dispatcher reference.
                 // ----------------------------------------------------------------------------------------
-                desktop.ShutdownRequested += (_, __) => { _pgnDispatcher = null; };
+                desktop.ShutdownRequested += (_, __) =>
+                {
+                    if (Properties.Settings.Default.setDisplay_isAutoOffAgIO)
+                    {
+                        Program.StopAgIO();
+                    }
+                    _pgnDispatcher = null;
+                };
 
                 // ----------------------------------------------------------------------------------------
                 //  Local render delegates — ported verbatim (behaviour) from the FormGPS paint regions and
