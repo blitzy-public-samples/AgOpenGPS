@@ -54,6 +54,74 @@ than semantic-version releases), each using `Added` / `Changed` / `Removed` grou
 
 _Single-phase migration within the one solution; converged at the final code-review remediation pass._
 
+> **[XPLAT] QA Checkpoint F4 remediation — UDP loopback fabric / two-program model / simulators (5
+> findings: 2 Critical, 2 Major, 1 Minor; all resolved + runtime-verified on Linux).** This pass closes
+> the F4 integration checkpoint, which found the cross-platform two-program spine non-functional on
+> Linux even though every comm service reproduced its WinForms behavior at the source level. Each fix
+> was verified by driving the **real** production code (via `AssemblyLoadContext` reflection harnesses
+> over actual UDP loopback, and a live headless AgIO launch), not just by re-building. Ports
+> **15555/17777** and the PGN frame/CRC remain byte-frozen; no new architectural surface was added
+> (plain CLR event + `DispatcherTimer` + ordered path probe). Changes by group, each detailed under its
+> migration area below:
+>
+> - **F4-C1 (Critical) — Loopback fabric did not deliver on Linux.** Both programs sent to the 127/8
+>   **directed broadcast** `127.255.255.255` while binding receivers to the **specific** address
+>   `127.0.0.1`. Windows delivers a subnet-directed broadcast to a specifically-bound socket; Linux and
+>   macOS do not — so the frozen WinForms idiom silently failed cross-platform. The loopback peer is now
+>   resolved to the **unicast loopback host `IPAddress.Loopback`** on both sides
+>   (`AgIO/Source/Services/UdpLoopbackService.cs` `epAgOpen` → `127.0.0.1:15555`;
+>   `GPS/Services/PgnDispatcher.cs` `epAgIO` → `127.0.0.1:17777`). The `eth_loop` settings schema and the
+>   frozen ports are preserved; the module subnet-broadcast endpoint (port 8888, real LAN hardware) is
+>   **untouched**. _Verified:_ real-service harness — unicast/loopback delivery lossless both directions
+>   (`epAgOpen=127.0.0.1:15555`, `epAgIO=127.0.0.1:17777`), with the original broadcast→specific-bind
+>   still dropped as the control. _At parity (adapted for cross-platform)._
+> - **F4-C2 (Critical) — AgIO crashed on startup before binding its socket.** ~22 AgIO Avalonia views
+>   carried a hand-written `private void InitializeComponent() => AvaloniaXamlLoader.Load(this);` that
+>   **shadowed** the source-generated `InitializeComponent(bool)` overload, so `x:Name` fields (e.g.
+>   `lblIP`) were never assigned → `NullReferenceException` on first access (`MainWindow.axaml.cs:196`),
+>   before `LoadLoopback()`. The manual method (and its now-orphaned `using Avalonia.Markup.Xaml;`) was
+>   removed from every Load-only view so the generator wires the named controls; the four genuinely
+>   logic-bearing keyboard/numeric views (which use `FindControl` into locals, referencing no generated
+>   fields) were left as-is. _Verified:_ live `xvfb-run dotnet AgIO.dll` — process stays alive, empty
+>   error log, `127.0.0.1:17777` bound. _At parity._
+> - **F4-C3 (Major) — GPS could not locate AgIO in the shipped layout.** `Program.StartAgIO()` probed
+>   only **beside** the GPS executable, but `release.yml` publishes GPS → `publish/${rid}/AgOpenGPS/` and
+>   AgIO → `publish/${rid}/AgIO/` as **siblings**, so AgIO was never found and never auto-started on any
+>   published OS. `StartAgIO()` now probes an **ordered candidate list** — beside-GPS
+>   (`AppContext.BaseDirectory`) first, then the published sibling `../AgIO/` — launching the first that
+>   exists, preserving the existing single-instance guard and graceful "Can't Find AgIO" degradation.
+>   _Verified:_ reflection harness drove the real `Program.StartAgIO()` (graceful, no spurious spawn) and
+>   the real candidate resolver across published-sibling (resolves), co-located (resolves), and missing
+>   (−1) layouts. _At parity (packaging adapted)._
+> - **F4-C4 (Major) — In-app simulator (CSim) produced no fix stream.** The Avalonia composition root
+>   built `CSim` + `CNMEA` but dropped the three implicit links the WinForms shell had: it never called
+>   `sim.SetNmea(pn)` (→ `NullReferenceException` at `_pn.vtgSpeed`), never subscribed the scan loop to
+>   `CSim.FixGenerated`, and had no periodic `DoSimTick` driver; the real-GPS hook
+>   `PgnDispatcher.OnGpsFixReady` was wired **render-only**. `App.axaml.cs` now injects the fix sink
+>   (`sim.SetNmea(pn)`), subscribes `sim.FixGenerated += position.UpdateFixPosition`, and drives a 93 ms
+>   `DispatcherTimer` whose `Tick` is a behavior-frozen copy of `FormGPS.timerSim_Tick`; a single
+>   `Action<bool>` keeps `CSim.IsActive` + the timer + `MainView.IsSimulatorActive` in lock-step from both
+>   startup and the operator toggle; and `MainView` `OnGpsFixReady` is now a composite
+>   (`UpdateFixPosition()` then `RequestRender()`) so both the simulator and real-GPS paths drive the
+>   receive→fuse→steer→section loop. _Verified:_ real-`CSim` harness — unwired `DoSimTick` reproduced the
+>   `NullReferenceException`; after wiring, 5 ticks fired `FixGenerated` 5 times and produced a real fix.
+>   _At parity._
+> - **F4-C5 (Minor) — One malformed UDP frame killed the AgDiag receive loop.** `ReceiveLoopAsync` ran
+>   the `while` loop inside a single outer `try/catch`, so any exception from `HandleMessage` exited the
+>   loop and disposed the socket; `HandleMessage` indexed `data[0..3]` with no length guard, and
+>   `Pgns.SetBytesFromMessage` copied `data.Length - 5` bytes (underflow on short frames, overflow on
+>   oversized). Added a **per-iteration `try/catch`** (log + continue — matching the production AgIO
+>   hub's per-callback resilience), a `data.Length >= 5` guard, and a clamped copy length
+>   (`Math.Min(data.Length, Bytes.Length) - 5`, guarded `> 0`); the happy-path copy is byte-identical.
+>   _Verified:_ harness — valid PGN 253 decoded (Heading=10000); 0-byte/short/oversized frames did not
+>   raise `ErrorOccurred` nor kill the loop; a subsequent valid PGN 253 was still decoded (Heading=20000).
+>   _At parity (graceful-degradation hardening, AAP §0.7.2)._
+>
+> _Static gate after this pass: AgDiag, AgIO (`net8.0`), GPS (`net8.0` + `net8.0-windows`), ModSim,
+> GPS_Out all build **0 W / 0 E** under `TreatWarningsAsErrors`; tests **115 passed / 1 skipped / 0
+> failed** (Core 33, AgLibrary 3, AgOpenGPS.Tests 79). Fabric binds remain loopback-only (`127.0.0.1`,
+> no stray `0.0.0.0`)._
+
 > **[XPLAT] Final code-review remediation pass — 31 findings resolved.** This pass closes the final
 > checkpoint review (10 Critical, 13 Major, 6 Minor, 2 Info) and reconciles all five MIGRATION_DOCS with
 > the integrated on-disk state. Changes by group, each detailed under its migration area below:

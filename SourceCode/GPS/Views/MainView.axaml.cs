@@ -279,7 +279,19 @@ public partial class MainView : Window
         _position.getIsSimActive = () => _isSimulatorActive;
 
         // ---- PgnDispatcher: transport-driven view callbacks ----
-        _pgn.OnGpsFixReady = () => _viewport?.RequestRender();
+        // [XPLAT] QA F4-C4: a ready GPS fix must drive the position scan loop, not merely request a redraw.
+        // The WinForms ReceiveFromAgIO path called UpdateFixPosition() directly; the migration replaced that
+        // with this render-only lambda, so for live GPS UpdateFixPosition() had ZERO call sites (and the
+        // simulator path was likewise unwired — fixed separately in App.axaml.cs). UpdateFixPosition() runs the
+        // receive->fuse->steer->section pipeline and itself requests the main render via the wired
+        // RequestMainRender; the explicit RequestRender below is retained as a harmless, idempotent frame
+        // request. OnGpsFixReady is invoked on the UI thread (PgnDispatcher marshals ReceiveFromAgIO through
+        // postToUi), matching the WinForms BeginInvoke marshal, so this is thread-safe. — see TRANSITION_MAP.md
+        _pgn.OnGpsFixReady = () =>
+        {
+            _position.UpdateFixPosition();
+            _viewport?.RequestRender();
+        };
         _pgn.OnRemoteSwitchChanged = () => _viewport?.RequestRender();
         _pgn.OnHardwareMessage += OnHardwareMessage;                            // -> lblHardwareMessage
         _pgn.OnError += OnTransportError;                                       // -> timed message

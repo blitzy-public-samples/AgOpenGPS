@@ -1,7 +1,6 @@
 // [XPLAT] migrated from net48/WinForms FormEthernet.cs + FormEthernet.designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml;
 using AgIO.Controls;
 using AgIO.Services;
 
@@ -133,14 +132,11 @@ namespace AgIO.Views
             WireKeypad();
         }
 
-        /// <summary>
-        /// [XPLAT] Loads the compiled XAML for this window. Declared explicitly (rather than relying on a
-        /// generated method) to match the convention used by every sibling AgIO Avalonia view.
-        /// </summary>
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+        // [XPLAT] QA F4-C2: the hand-written no-arg InitializeComponent() (which only called
+        // AvaloniaXamlLoader.Load(this)) was removed so the constructor's InitializeComponent() binds to
+        // the Avalonia source generator's InitializeComponent(bool loadXaml = true) overload, which loads
+        // the XAML AND wires every x:Name control field. The manual no-arg overload shadowed the generated
+        // one, leaving named-control fields null (the FormLoop/MainWindow lblIP NRE). — see TRANSITION_MAP.md
 
         /// <summary>
         /// [XPLAT] Attaches the on-screen numeric keypad to the four loopback-octet editors. The WinForms

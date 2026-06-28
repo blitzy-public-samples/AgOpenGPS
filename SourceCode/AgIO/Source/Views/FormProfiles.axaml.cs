@@ -3,7 +3,6 @@ using System;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml;
 using AgIO.Controls;
 using AgOpenGPS.Core.Interfaces;
 
@@ -222,14 +221,10 @@ namespace AgIO.Views
             }
         }
 
-        /// <summary>
-        /// Loads the compiled XAML for this window. The explicit <see cref="AvaloniaXamlLoader"/> call
-        /// matches the convention used by the sibling AgIO views (<c>FormSource</c>, <c>FormYes</c>,
-        /// <c>FormKeyboard</c>, <c>FormRadioChannel</c>, <c>FormTimedMessage</c>).
-        /// </summary>
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+        // [XPLAT] QA F4-C2: the hand-written no-arg InitializeComponent() (which only called
+        // AvaloniaXamlLoader.Load(this)) was removed so the constructor's InitializeComponent() binds to
+        // the Avalonia source generator's InitializeComponent(bool loadXaml = true) overload, which loads
+        // the XAML AND wires every x:Name control field. The manual no-arg overload shadowed the generated
+        // one, leaving named-control fields null (the FormLoop/MainWindow lblIP NRE). — see TRANSITION_MAP.md
     }
 }

@@ -215,9 +215,11 @@ namespace AgOpenGPS
         /// root) so this stays a pure, reusable launch primitive that the manual "Start AgIO" button can also call.
         /// </summary>
         /// <remarks>
-        /// The AgIO executable is located beside the running GPS executable via <see cref="AppContext.BaseDirectory"/>
-        /// (reliable for both framework-dependent and self-contained publishes, unlike <c>Environment.ProcessPath</c>,
-        /// which under <c>dotnet App.dll</c> points at the shared host). The launch is guarded by a
+        /// The AgIO executable is located by probing, in order, (1) beside the running GPS executable and (2) the
+        /// sibling <c>AgIO</c> folder next to the GPS application folder, both anchored at
+        /// <see cref="AppContext.BaseDirectory"/> (reliable for both framework-dependent and self-contained publishes,
+        /// unlike <c>Environment.ProcessPath</c>, which under <c>dotnet App.dll</c> points at the shared host). Candidate
+        /// (2) covers the self-contained published layout where GPS and AgIO ship as sibling folders. The launch is guarded by a
         /// <see cref="Process.GetProcessesByName(string)"/> probe so a second AgIO is never spawned, exactly as the
         /// WinForms build did. All failures are swallowed-and-logged: a missing or unstartable AgIO must never crash
         /// GPS or block guidance (graceful-degradation rule, AAP §0.7.2).
@@ -232,8 +234,34 @@ namespace AgOpenGPS
                     return;
                 }
 
-                string exePath = Path.Combine(AppContext.BaseDirectory, AgIOExecutableName);
-                if (!File.Exists(exePath))
+                // [XPLAT] QA F4-C3: resolve the AgIO launcher across BOTH supported on-disk layouts, not just
+                // beside the GPS executable. The WinForms Windows installer co-located AgIO.exe in the SAME folder
+                // as the GPS exe, so a "beside-GPS" probe always worked. The cross-platform release.yml instead
+                // publishes self-contained apps as SIBLING folders (publish/<rid>/AgOpenGPS and publish/<rid>/AgIO),
+                // so the shipped AgIO sits one directory up and over — never beside GPS — and the old single-path
+                // probe hit "Can't Find AgIO" on every published OS. Probe candidates in order and launch the first
+                // that exists: (1) beside the GPS executable (dev / single-folder co-located install — WinForms
+                // parity), then (2) the sibling "AgIO" folder (the published self-contained artifact layout). This
+                // same primitive backs the manual "Start AgIO" button, so that path is fixed too. — see TRANSITION_MAP.md
+                string[] agIoCandidates =
+                {
+                    // (1) co-located beside the running GPS executable (AppContext.BaseDirectory)
+                    Path.Combine(AppContext.BaseDirectory, AgIOExecutableName),
+                    // (2) sibling "AgIO" folder next to the GPS application folder (self-contained publish)
+                    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "AgIO", AgIOExecutableName)),
+                };
+
+                string exePath = null;
+                foreach (string candidate in agIoCandidates)
+                {
+                    if (File.Exists(candidate))
+                    {
+                        exePath = candidate;
+                        break;
+                    }
+                }
+
+                if (exePath == null)
                 {
                     // Match the WinForms "Can't Find AgIO" diagnostic. The UI-facing TimedMessageBox the
                     // WinForms build also showed is intentionally omitted here (auto-start runs before/independently

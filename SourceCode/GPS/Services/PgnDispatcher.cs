@@ -526,9 +526,16 @@ namespace AgOpenGPS.Services
         private Socket loopBackSocket;
 
         // [XPLAT] Endpoints of modules. Declared as EndPoint (not IPEndPoint) because endPointLoopBack is
-        // passed by `ref` to BeginReceiveFrom/EndReceiveFrom, whose signature is `ref EndPoint`. The frozen
-        // wire targets are unchanged: AgIO peer 127.255.255.255:17777, loopback receive on 127.0.0.1:15555.
-        private EndPoint epAgIO = new IPEndPoint(IPAddress.Parse("127.255.255.255"), 17777);
+        // passed by `ref` to BeginReceiveFrom/EndReceiveFrom, whose signature is `ref EndPoint`.
+        // [XPLAT] AgIO loopback peer resolved to the UNICAST loopback host 127.0.0.1 instead of the 127/8
+        // directed broadcast 127.255.255.255 that the net48/WinForms build sent to. On Windows a datagram
+        // addressed to 127.255.255.255 is delivered to a socket bound to the specific address 127.0.0.1,
+        // but Linux and macOS do NOT deliver a 127/8 directed broadcast to a specifically-bound loopback
+        // socket, so the frozen WinForms idiom silently failed to reach the AgIO peer cross-platform
+        // (QA F4-C1). The loopback fabric is always a same-machine two-program model, so unicast 127.0.0.1
+        // is the loopback-faithful send target on every OS and reaches AgIO's receiver bound to
+        // 127.0.0.1:17777. The frozen loopback port 17777 is unchanged. — see TRANSITION_MAP.md
+        private EndPoint epAgIO = new IPEndPoint(IPAddress.Loopback, 17777);
         private EndPoint endPointLoopBack = new IPEndPoint(IPAddress.Loopback, 0);
 
         // Data stream (1024-byte receive buffer is part of the frozen transport).

@@ -1,6 +1,5 @@
 // [XPLAT] migrated from net48/WinForms FormCommSetGPS.cs + FormCommSetGPS.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
 using AgIO.Services;
 
 namespace AgIO.Views
@@ -145,15 +144,10 @@ namespace AgIO.Views
             base.OnClosing(e);
         }
 
-        /// <summary>
-        /// [XPLAT] Loads the compiled XAML for this window. The explicit <see cref="AvaloniaXamlLoader"/> call
-        /// matches the convention used by the sibling AgIO views (<c>FormISOBUS</c>, <c>FormSource</c>,
-        /// <c>FormYes</c>, <c>FormRadioChannel</c>): the name generator emits the typed <c>x:Name</c> fields in
-        /// a separate partial but no <c>InitializeComponent</c>, so the code-behind supplies it here.
-        /// </summary>
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+        // [XPLAT] QA F4-C2: the hand-written no-arg InitializeComponent() (which only called
+        // AvaloniaXamlLoader.Load(this)) was removed so the constructor's InitializeComponent() binds to
+        // the Avalonia source generator's InitializeComponent(bool loadXaml = true) overload, which loads
+        // the XAML AND wires every x:Name control field. The manual no-arg overload shadowed the generated
+        // one, leaving named-control fields null (the FormLoop/MainWindow lblIP NRE). — see TRANSITION_MAP.md
     }
 }

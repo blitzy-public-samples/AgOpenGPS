@@ -50,7 +50,23 @@ namespace AgDiag.Protocol
                     {
                         var result = await udpClient.ReceiveAsync().ConfigureAwait(false);
 
-                        HandleMessage(result.Buffer);
+                        // [XPLAT] QA F4-C5: process each datagram inside its own try/catch so a single
+                        // malformed frame can never tear down the receive loop. The migrated async/while loop
+                        // sat inside ONE outer try/catch, so any exception from HandleMessage (e.g. an
+                        // IndexOutOfRange on a truncated frame) propagated out, disposed the UdpClient via the
+                        // using-block, and silently stopped the passive monitor until restart. A per-iteration
+                        // catch restores the per-callback resilience the production AgIO.UdpLoopbackService has
+                        // (it re-arms its receive before processing), letting AgDiag log the bad frame and keep
+                        // receiving. The OUTER catch is retained for genuine socket-level failures (e.g. the
+                        // 17777 bind failing). — see TRANSITION_MAP.md
+                        try
+                        {
+                            HandleMessage(result.Buffer);
+                        }
+                        catch (Exception ex)
+                        {
+                            Trace.WriteLine($"UDP malformed-frame ignored: {ex.Message}");
+                        }
                     }
                 }
             }
@@ -67,6 +83,17 @@ namespace AgDiag.Protocol
 
         private void HandleMessage(byte[] data)
         {
+            // [XPLAT] QA F4-C5: guard against malformed/truncated datagrams before indexing. The dispatch
+            // reads data[0], data[1] and data[3], and every PGN handler copies a payload starting at data[5],
+            // so a valid AgOpenGPS PGN is at least 5 bytes (header 0x80 0x81, source, pgn id, length). A
+            // shorter frame — including an empty 0-byte datagram — is not a decodable PGN, so it is ignored
+            // rather than allowed to throw IndexOutOfRange. This pairs with the per-iteration catch in
+            // ReceiveLoopAsync so the passive monitor degrades gracefully. — see TRANSITION_MAP.md
+            if (data == null || data.Length < 5)
+            {
+                return;
+            }
+
             if (data[0] == 0x80 && data[1] == 0x81)
             {
                 switch (data[3])

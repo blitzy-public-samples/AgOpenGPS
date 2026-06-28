@@ -12,7 +12,6 @@ using AgLibrary.Logging;
 using AgLibrary.Settings;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Threading;
 
@@ -118,10 +117,15 @@ namespace AgIO.Views
             Closing += OnClosing;
         }
 
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+        // [XPLAT] The hand-written no-arg InitializeComponent() (whose body only called
+        // AvaloniaXamlLoader.Load(this)) was REMOVED. With AvaloniaUseCompiledBindingsByDefault the
+        // Avalonia source generator emits `public void InitializeComponent(bool loadXaml = true)` that
+        // loads the XAML AND wires every x:Name field (lblIP, lblGPS1Comm, borderGPS, ...). The manual
+        // no-arg overload shadowed the generated one at the constructor's InitializeComponent() call
+        // (C# binds the exact-arity overload), so the named-control fields were never assigned and the
+        // first access (lblIP.Text in OnOpened) threw NullReferenceException at startup BEFORE
+        // _udp.LoadLoopback() bound the 127.0.0.1:17777 socket (QA F4-C2). The constructor call above now
+        // binds to the generated overload, so the fields are wired. — see TRANSITION_MAP.md
 
         // ===========================================================================================
         //  Window activation — cross-platform reimplementation of FormLoop.ShowAgIO (user32 P/Invoke)

@@ -1,6 +1,5 @@
 // [XPLAT] migrated from net48/WinForms FormEventViewer.cs + FormEventViewer.Designer.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
 
 namespace AgIO.Views
 {
@@ -82,13 +81,10 @@ namespace AgIO.Views
             _vm.RequestClose += () => Close();
         }
 
-        /// <summary>
-        /// Loads the compiled XAML for this window. Defined explicitly (rather than relying on a generated
-        /// method) to match the convention used by the sibling Avalonia views in this folder.
-        /// </summary>
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+        // [XPLAT] QA F4-C2: the hand-written no-arg InitializeComponent() (which only called
+        // AvaloniaXamlLoader.Load(this)) was removed so the constructor's InitializeComponent() binds to
+        // the Avalonia source generator's InitializeComponent(bool loadXaml = true) overload, which loads
+        // the XAML AND wires every x:Name control field. The manual no-arg overload shadowed the generated
+        // one, leaving named-control fields null (the FormLoop/MainWindow lblIP NRE). — see TRANSITION_MAP.md
     }
 }

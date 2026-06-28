@@ -305,6 +305,19 @@ namespace AgOpenGPS
                     pn, ahrs, vehicle, tool, section, trk, ABLine, curve, ct, bnd, yt, recPath,
                     triStrip, fd, mc, sounds, isobus, smartWAS, appCore, pgn, sections);
 
+                // [XPLAT] QA F4-C4: wire the in-app simulator (CSim) into the fix pipeline — two of the three
+                // composition-root links the migration dropped (the periodic DoSimTick driver is added after the
+                // MainView is built, so it can be gated on simulator-active state). (1) Give CSim its CNMEA fix
+                // sink: the WinForms build shared mf.pn implicitly, so the migrated CSim must have it injected or
+                // DoSimTick() dereferences a null _pn (NRE at _pn.vtgSpeed). (2) Subscribe the position scan loop to
+                // the simulator's per-tick fix, reproducing the WinForms sim.DoSimTick() -> mf.UpdateFixPosition()
+                // call; PositionService.UpdateFixPosition is parameterless (matches the Action FixGenerated
+                // signature) and itself requests the redraw through the already-wired RequestMainRender. Without
+                // these, launching GPS without hardware (setMenu_isSimulatorOn defaults true) produced no fix
+                // stream consumable by PositionService at all (QA F4-C4). — see TRANSITION_MAP.md
+                sim.SetNmea(pn);
+                sim.FixGenerated += position.UpdateFixPosition;
+
                 // ----------------------------------------------------------------------------------------
                 // [XPLAT] Field-close lifecycle hooks (AAP G2/G5, review App.axaml.cs CRITICAL "FieldIoService
                 //   close lifecycle hooks are null"). FieldIoService deliberately owns only the field-SAVE batch;
@@ -503,7 +516,10 @@ namespace AgOpenGPS
                 MainView mainView = new MainView(position, pgn, sections, fieldIo, render)
                 {
                     Camera = camera,
-                    IsSimulatorActive = Properties.Settings.Default.setMenu_isSimulatorOn,
+                    // [XPLAT] QA F4-C4: IsSimulatorActive is no longer set here. It is driven — together with the
+                    // simulator tick-timer and CSim.IsActive — through the single applySimActive sink declared just
+                    // below, so the three pieces of simulator state can never diverge. applySimActive is invoked
+                    // immediately with the persisted setMenu_isSimulatorOn to establish the initial state.
                     DataContext = appCore.AppViewModel,
                 };
 
@@ -516,6 +532,58 @@ namespace AgOpenGPS
                 errorPresenter.Owner = mainView;
 
                 desktop.MainWindow = mainView;
+
+                // [XPLAT] QA F4-C4: the in-app simulator's periodic driver — the third missing composition-root
+                // link. The WinForms shell drove the simulator from a 93 ms System.Windows.Forms.Timer (timerSim,
+                // Interval = 93) whose Tick called sim.DoSimTick(...); here a DispatcherTimer on the Avalonia UI
+                // thread reproduces that cadence exactly (and on the same thread the real-GPS fix path uses, so
+                // UpdateFixPosition is never re-entered across threads). The Tick body is a behaviour-frozen copy
+                // of FormGPS.timerSim_Tick (Controls.Designer.cs): when autosteer is engaged on a valid line — or a
+                // recorded path is being driven — it feeds the guidance steer angle, frozen on the last value while
+                // the vehicle is in the look-ahead dead zone; otherwise it feeds the manual steer-angle slider
+                // (steerAngleScrollBar). Each DoSimTick fires CSim.FixGenerated -> PositionService.UpdateFixPosition
+                // (wired above), driving the full receive->fuse->steer->section path once per tick. — see TRANSITION_MAP.md
+                double lastSimGuidanceAngle = 0;
+                DispatcherTimer simTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(93) };
+                simTimer.Tick += (s, e) =>
+                {
+                    if (recPath.isDrivingRecordedPath || appModel.isBtnAutoSteerOn && (appModel.guidanceLineDistanceOff != 32000))
+                    {
+                        if (vehicle.isInDeadZone)
+                        {
+                            sim.DoSimTick((double)lastSimGuidanceAngle);
+                        }
+                        else
+                        {
+                            lastSimGuidanceAngle = (double)appModel.guidanceLineSteerAngle * 0.01 * 0.9;
+                            sim.DoSimTick(lastSimGuidanceAngle);
+                        }
+                    }
+                    else
+                    {
+                        sim.DoSimTick(sim.steerAngleScrollBar);
+                    }
+                };
+
+                // [XPLAT] QA F4-C4: single authority that keeps the three pieces of simulator state in lock-step —
+                // CSim.IsActive (consumed by the domain math, e.g. CTool/CVehicle steer-angle source), the sim
+                // tick-timer (Start/Stop reproduces the WinForms timerSim.Enabled gate) and MainView.IsSimulatorActive
+                // (drives PositionService.getIsSimActive and the panelSim visibility). Both the initial state and the
+                // operator's simulator toggle route through here, so they can never diverge.
+                Action<bool> applySimActive = on =>
+                {
+                    sim.IsActive = on;
+                    mainView.IsSimulatorActive = on;
+                    if (on)
+                    {
+                        simTimer.Start();
+                    }
+                    else
+                    {
+                        simTimer.Stop();
+                    }
+                };
+                applySimActive(Properties.Settings.Default.setMenu_isSimulatorOn);
 
                 // ----------------------------------------------------------------------------------------
                 // 12. Day/night theming. The Core view-model's IsDay/IsMetric seed from Settings, and the
@@ -1265,7 +1333,10 @@ namespace AgOpenGPS
                         bool on = !Properties.Settings.Default.setMenu_isSimulatorOn;
                         Properties.Settings.Default.setMenu_isSimulatorOn = on;
                         Properties.Settings.Default.Save();
-                        mainView.IsSimulatorActive = on;
+                        // [XPLAT] QA F4-C4: route through applySimActive so toggling also starts/stops the sim
+                        // tick-timer and updates CSim.IsActive — not just MainView.IsSimulatorActive, which alone
+                        // left the simulator with no driver even after the migration's other wiring.
+                        applySimActive(on);
                     },
 
                     // Enter simulator coordinates -> FormSimCoords (uses the live NMEA/job/sim state + error presenter).

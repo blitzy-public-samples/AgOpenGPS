@@ -24,7 +24,18 @@ namespace AgDiag.Protocol
 
         public void SetBytesFromMessage(byte[] data)
         {
-            Buffer.BlockCopy(data, 5, Bytes, 5, data.Length - 5);
+            // [XPLAT] QA F4-C5: clamp the payload copy length so a malformed datagram cannot throw and tear
+            // down the AgDiag receive loop. The original net48 idiom copied `data.Length - 5` bytes blindly,
+            // which (a) underflows to a negative count on a short (<5-byte) frame and (b) overruns the fixed
+            // `Bytes` buffer on an oversized frame — both raise ArgumentException. Clamping to the smaller of
+            // the incoming frame and the destination buffer (minus the 5-byte header) and guarding `> 0`
+            // preserves the exact happy-path copy (a valid frame has data.Length == Bytes.Length, so the
+            // count is unchanged) while turning malformed input into a safe no-op. — see TRANSITION_MAP.md
+            int count = Math.Min(data.Length, Bytes.Length) - 5;
+            if (count > 0)
+            {
+                Buffer.BlockCopy(data, 5, Bytes, 5, count);
+            }
         }
 
         public string ToHexString()

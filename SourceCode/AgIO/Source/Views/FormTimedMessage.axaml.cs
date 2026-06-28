@@ -1,7 +1,6 @@
 // [XPLAT] migrated from net48/WinForms FormTimedMessage.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
 using System;
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 
 namespace AgIO.Views
@@ -94,14 +93,11 @@ namespace AgIO.Views
         {
         }
 
-        /// <summary>
-        /// Loads the compiled XAML for this window. The explicit <see cref="AvaloniaXamlLoader"/> call
-        /// matches the convention used by the sibling AgIO views (e.g. <c>FormYes</c>, <c>MainWindow</c>).
-        /// </summary>
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+        // [XPLAT] QA F4-C2: the hand-written no-arg InitializeComponent() (which only called
+        // AvaloniaXamlLoader.Load(this)) was removed so the constructor's InitializeComponent() binds to
+        // the Avalonia source generator's InitializeComponent(bool loadXaml = true) overload, which loads
+        // the XAML AND wires every x:Name control field. The manual no-arg overload shadowed the generated
+        // one, leaving named-control fields null (the FormLoop/MainWindow lblIP NRE). — see TRANSITION_MAP.md
 
         /// <summary>
         /// First (and only) timer tick: stop and detach the timer so it neither fires again nor keeps this

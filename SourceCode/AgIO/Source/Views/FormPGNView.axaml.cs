@@ -1,7 +1,6 @@
 // [XPLAT] migrated from net48/WinForms Forms/FormPGN.cs — see MIGRATION_DOCS/TRANSITION_MAP.md
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
 
 namespace AgIO.Views
 {
@@ -34,10 +33,11 @@ namespace AgIO.Views
             DataContext = viewModel;
         }
 
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
+        // [XPLAT] QA F4-C2: the hand-written no-arg InitializeComponent() (which only called
+        // AvaloniaXamlLoader.Load(this)) was removed so the constructor's InitializeComponent() binds to
+        // the Avalonia source generator's InitializeComponent(bool loadXaml = true) overload, which loads
+        // the XAML AND wires every x:Name control field. The manual no-arg overload shadowed the generated
+        // one, leaving named-control fields null (the FormLoop/MainWindow lblIP NRE). — see TRANSITION_MAP.md
 
         // [XPLAT] WinForms btnSerialOK_Click -> Close(); the guide carries no result.
         private void OnOkClick(object sender, RoutedEventArgs e)

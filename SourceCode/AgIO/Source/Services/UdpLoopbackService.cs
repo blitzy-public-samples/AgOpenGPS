@@ -95,14 +95,19 @@ namespace AgIO.Services
         public bool isUDPNetworkConnected;
 
         // 2 endpoints for the local loopback (AgOpenGPS) and the module UDP broadcast.
-        // [XPLAT] The Settings byte->string conversion uses InvariantCulture so that a comma-decimal
-        // locale on Linux/macOS can never corrupt the dotted-quad address (AAP §0.6.5 culture safety).
-        // The addresses, the ".255" subnet-broadcast suffix and the ports (15555 / 8888) are FROZEN.
-        private readonly IPEndPoint epAgOpen = new IPEndPoint(IPAddress.Parse(
-            Properties.Settings.Default.eth_loopOne.ToString(CultureInfo.InvariantCulture) + "." +
-            Properties.Settings.Default.eth_loopTwo.ToString(CultureInfo.InvariantCulture) + "." +
-            Properties.Settings.Default.eth_loopThree.ToString(CultureInfo.InvariantCulture) + "." +
-            Properties.Settings.Default.eth_loopFour.ToString(CultureInfo.InvariantCulture)), 15555);
+        // [XPLAT] Loopback peer resolved to the UNICAST loopback host 127.0.0.1 instead of the 127/8
+        // directed broadcast 127.255.255.255 that the eth_loop settings default to. On Windows a datagram
+        // addressed to 127.255.255.255 is delivered to a socket bound to the specific address 127.0.0.1,
+        // but Linux and macOS do NOT deliver a 127/8 directed broadcast to a specifically-bound loopback
+        // socket, so the frozen WinForms idiom silently failed to reach the GPS peer cross-platform
+        // (QA F4-C1). The loopback fabric is always a same-machine two-program model, so unicast 127.0.0.1
+        // is the loopback-faithful send target on every OS and reaches GPS's receiver bound to
+        // 127.0.0.1:15555. The eth_loop settings schema (eth_loopOne..eth_loopFour) and the frozen port
+        // 15555 are preserved — the Ethernet config dialog (FormEthernetViewModel) still reads/persists
+        // those keys. The module endpoint below retains the InvariantCulture dotted-quad conversion and the
+        // ".255" subnet-broadcast suffix (those reach real hardware on the LAN, not loopback). — see
+        // TRANSITION_MAP.md
+        private readonly IPEndPoint epAgOpen = new IPEndPoint(IPAddress.Loopback, 15555);
 
         // [XPLAT] Not readonly: the UDP dialog (FormUDPViewModel.SendSubnet) rebuilds this endpoint to the
         // new ".255" broadcast address when the operator changes the module subnet, matching the original
