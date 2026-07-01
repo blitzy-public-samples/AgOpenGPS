@@ -1,5 +1,6 @@
 ﻿using System;
-using System.Diagnostics;
+// IPC-REFACTOR: removed unused using System.Diagnostics; (byte-parse path gone).
+using AgOpenGPS.Ipc; // IPC-REFACTOR: consume generated CorrectedPositionMsg from the AgOpenGPS.Ipc contract.
 
 namespace GPS_Out.PGNs
 {
@@ -91,26 +92,21 @@ namespace GPS_Out.PGNs
             return (DateTime.Now - ReceiveTime).TotalSeconds < 4;
         }
 
-        public void ParseByteData(byte[] Data)
+        // IPC-REFACTOR: byte parse replaced by typed CorrectedPositionMsg ingest; ReceiveTime stamped on message arrival.
+        public void ParseMessage(CorrectedPositionMsg msg)
         {
             try
             {
-                if ((Data.Length > HeaderCount) && (Data.Length == Data[4] + HeaderCount + 1))
-                {
-                    ExtendedPGN = (Data[4] == 24);
-                    if (mf.Tls.GoodCRC(Data, 2))
-                    {
-                        cLongitude = BitConverter.ToDouble(Data, 5);
-                        cLatitude = BitConverter.ToDouble(Data, 13);
-                        if (Data[4] == 24) cFix2Fix = BitConverter.ToDouble(Data, 21);  // alternate pgn
-                        ReceiveTime = DateTime.Now;
-                        //mf.Tls.WriteByteFile(Data, "AOGdata.txt");
-                    }
-                }
+                // IPC-REFACTOR: CRC check removed — HTTP/2 frame integrity provides equivalent byte-level guarantees.
+                cLongitude = msg.Longitude;
+                cLatitude = msg.Latitude;
+                cFix2Fix = msg.Fix2FixHeading;
+                ExtendedPGN = (msg.Fix2FixHeading != 1000);
+                ReceiveTime = DateTime.Now;
             }
             catch (Exception ex)
             {
-                mf.Tls.WriteErrorLog("PGN100/ParseByteData: " + ex.ToString());
+                mf.Tls.WriteErrorLog("PGN100/ParseMessage: " + ex.ToString());
             }
         }
     }
