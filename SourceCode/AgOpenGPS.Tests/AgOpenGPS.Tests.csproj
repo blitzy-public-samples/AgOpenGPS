@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GPS\AgOpenGPS.csproj" />
+    <ProjectReference Include="..\AgOpenGPS.Ipc\AgOpenGPS.Ipc.csproj" />
   </ItemGroup>
 
 </Project>

@@ -32,12 +32,14 @@
   <ItemGroup>
     <ProjectReference Include="..\AgLibrary\AgLibrary.csproj" />
     <ProjectReference Include="..\AgOpenGPS.Core\AgOpenGPS.Core.csproj" />
+    <ProjectReference Include="..\AgOpenGPS.Ipc\AgOpenGPS.Ipc.csproj" />
     <ProjectReference Include="..\Keypad\Keypad.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Dev4Agriculture.ISO11783.ISOXML" Version="0.23.1.1" />
     <PackageReference Include="GMap.NET.WinForms" Version="2.1.7" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
     <PackageReference Include="MechanikaDesign.WinForms.UI.ColorPicker" Version="2.0.0" />
     <PackageReference Include="OpenTK.GLControl" Version="3.3.3" />
     <PackageReference Include="SourceGear.sqlite3" Version="3.50.3"/>
