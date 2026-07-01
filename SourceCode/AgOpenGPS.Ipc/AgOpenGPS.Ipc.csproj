@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- IMPORTANT: explicitly OVERRIDE the inherited SourceCode/Directory.Build.props default
+         <TargetFramework>net48</TargetFramework>. gRPC/proto3 tooling + Grpc.Net.Client require net6.0+. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Single canonical schema. Path is relative from SourceCode/AgOpenGPS.Ipc/ up two levels
+         to the repo root, then docs/proto/. GrpcServices="Both" => generates client AND server stubs. -->
+    <Protobuf Include="../../docs/proto/agopengps_ipc.proto" GrpcServices="Both" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.35.1" />
+    <PackageReference Include="Grpc.Tools" Version="2.81.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
+  </ItemGroup>
+
+</Project>
