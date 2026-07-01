@@ -1,5 +1,10 @@
 # PGN Protocol Specification
 
+> **Note — IPC transport migration (gRPC / Protocol Buffers).**
+> The **AgIO ↔ AgOpenGPS software inter-process transport** is migrating from the custom UDP + binary-frame protocol described in this document to a typed, versioned **gRPC / Protocol Buffers (proto3)** transport. The single canonical schema lives at [`proto/agopengps_ipc.proto`](proto/agopengps_ipc.proto); the schema-version governance rules are in [`proto/SCHEMA_VERSIONING.md`](proto/SCHEMA_VERSIONING.md).
+>
+> **The byte-level PGN vocabulary documented below remains the unchanged on-the-wire contract** between AgIO and hardware/firmware (serial / CAN / NTRIP) and community modules. These byte tables are the source of truth from which the proto schema is derived — each of the 23 PGN messages and every field below maps to a typed message inside `PgnEnvelope`. Only the AgIO↔AOG software loopback transport changes; nothing in the tables, CRC rule, UDP configuration, or PGN definitions below is altered.
+
 ## Overview
 
 AgOpenGPS uses a custom PGN (Parameter Group Number) protocol for UDP communication between AgIO and the main application. The protocol wraps data in a specific format with headers, PGN identifier, length, data payload, and CRC checksum.
