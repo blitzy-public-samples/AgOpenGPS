@@ -1,0 +1,292 @@
+// =============================================================================
+// AgOpenGPS <-> AgIO IPC contract (proto3) — SINGLE CANONICAL SCHEMA
+//
+// This schema replaces the legacy UDP + custom binary frame
+//   [0x80, 0x81, 0x7F, PGN, Length, Data..., CRC]
+// with a typed, versioned gRPC / Protocol Buffers transport.
+//
+// Every message and field below is derived field-by-field from the byte tables
+// in docs/pgn-protocol.md (the firmware-facing byte-PGN contract source of
+// truth). The PGN hex/decimal id is retained as a per-message comment for
+// byte-table traceability. Payload semantics are preserved 1:1 (zero loss).
+// =============================================================================
+
+syntax = "proto3";
+
+package agopengps.ipc;
+
+option csharp_namespace = "AgOpenGPS.Ipc";
+
+import "google/protobuf/empty.proto";
+
+// -----------------------------------------------------------------------------
+// Envelope + acknowledgement
+// -----------------------------------------------------------------------------
+
+// Wraps every IPC payload. Producers set schema_version = IpcConstants.SchemaVersion
+// (initial value 1); consumers dispatch via switch (envelope.PayloadCase).
+message PgnEnvelope {
+  uint32 schema_version = 1;
+  oneof payload {
+    // INBOUND telemetry (AgIO -> AOG), envelope fields 2..10
+    GpsPositionMsg            gps_position             = 2;
+    ExternalImuMsg            external_imu             = 3;
+    ImuDisconnectMsg          imu_disconnect           = 4;
+    SteerModuleResponseMsg    steer_module_response    = 5;
+    SensorDataMsg             sensor_data              = 6;
+    RemoteSwitchMsg           remote_switch            = 7;
+    DisplayHardwareMsg        display_hardware         = 8;
+    RemoteCommandMsg          remote_command           = 9;
+    IsoBusHeartbeatMsg        iso_bus_heartbeat        = 10;
+    // OUTBOUND commands (AOG -> AgIO / AOG -> TC via AgIO), envelope fields 11..24
+    AutoSteerDataMsg          auto_steer_data          = 11;
+    AutoSteerSettingsMsg      auto_steer_settings      = 12;
+    AutoSteerConfigMsg        auto_steer_config        = 13;
+    MachineDataMsg            machine_data             = 14;
+    MachineConfigMsg          machine_config           = 15;
+    RelayConfigMsg            relay_config             = 16;
+    SectionDimensionsMsg      section_dimensions       = 17;
+    ExtendedSectionControlMsg extended_section_control = 18;
+    RateControlMsg            rate_control             = 19;
+    SectionControlEnableMsg   section_control_enable   = 20;
+    ProcessDataMsg            process_data             = 21;
+    FieldNameMsg              field_name               = 22;
+    LatLonMsg                 lat_lon                  = 23;
+    CorrectedPositionMsg      corrected_position       = 24;
+  }
+}
+
+// Returned by every unary CommandService RPC.
+message CommandAck {
+  bool received = 1;
+  string error_message = 2;
+}
+
+// =============================================================================
+// INBOUND messages (AgIO -> AOG) — carried by TelemetryService.StreamTelemetry
+// =============================================================================
+
+// PGN 0xD6 (214) - GPS Position Data, 52 bytes.
+// Sentinels: double/float MaxValue = data N/A; ushort/short MaxValue = sensor not connected.
+message GpsPositionMsg {
+  double longitude    = 1;   // bytes 5-12
+  double latitude     = 2;   // bytes 13-20
+  float  heading_dual = 3;   // bytes 21-24 (dual-antenna heading; MaxValue = N/A)
+  float  heading_true = 4;   // bytes 25-28 (single-antenna heading)
+  float  speed        = 5;   // bytes 29-32 (ground speed)
+  float  roll         = 6;   // bytes 33-36 (IMU roll)
+  float  altitude     = 7;   // bytes 37-40
+  uint32 satellites   = 8;   // bytes 41-42 (ushort)
+  uint32 fix_quality  = 9;   // byte 43
+  uint32 hdop         = 10;  // bytes 44-45 (ushort)
+  uint32 age          = 11;  // bytes 46-47 (ushort)
+  uint32 imu_heading  = 12;  // bytes 48-49 (ushort)
+  sint32 imu_roll     = 13;  // bytes 50-51 (short)
+  sint32 imu_pitch    = 14;  // bytes 52-53 (short)
+  sint32 imu_yaw_rate = 15;  // bytes 54-55 (short; angular velocity)
+}
+
+// PGN 0xD3 (211) - External IMU Data, 8 bytes.
+message ExternalImuMsg {
+  sint32 heading          = 1;  // bytes 5-6  (Int16, /10 for degrees)
+  sint32 roll             = 2;  // bytes 7-8  (Int16, /10 for degrees)
+  sint32 angular_velocity = 3;  // bytes 9-10 (Int16, /-2)
+}
+
+// PGN 0xD4 (212) - IMU Disconnect, 6 bytes.
+message ImuDisconnectMsg {
+  bool is_disconnected     = 1;  // byte 5: 1 = IMU disconnected
+  optional uint32 raw_value = 2; // raw disconnect byte, retained for traceability
+}
+
+// PGN 0xFD (253) - Steer Module Response, 14 bytes.
+message SteerModuleResponseMsg {
+  sint32 actual_steer_angle = 1;  // bytes 5-6  (Int16, /100 for degrees)
+  sint32 heading            = 2;  // bytes 7-8  (Int16, 9999 = N/A)
+  sint32 roll               = 3;  // bytes 9-10 (Int16, 8888 = N/A)
+  uint32 switch_status      = 4;  // byte 11 (bit0 = work switch, bit1 = steer switch)
+  uint32 pwm                = 5;  // byte 12 (actual PWM output)
+}
+
+// PGN 0xFA (250) - Sensor Data, 6 bytes.
+message SensorDataMsg {
+  uint32 sensor_data = 1;  // byte 5 (raw sensor value)
+}
+
+// PGN 0xEA (234) - Remote Switches, 14 bytes.
+message RemoteSwitchMsg {
+  bytes switch_data = 1;  // bytes 5-12 (byte[8]; section switch states, order preserved)
+}
+
+// PGN 0xDD (221) - Display Message, variable length.
+message DisplayHardwareMsg {
+  uint32 display_time = 1;  // byte 5 (seconds to display)
+  uint32 color        = 2;  // byte 6 (0 = Salmon, other = Bisque)
+  string message      = 3;  // bytes 7+ (UTF-8 text)
+}
+
+// PGN 0xDE (222) - Remote Commands, 7 bytes.
+message RemoteCommandMsg {
+  uint32 mask    = 1;  // byte 5 (command mask)
+  uint32 command = 2;  // byte 6 (bit0 nudge 0=left/1=right; bit1 cycle 0=fwd/1=back)
+}
+
+// PGN 0xF0 (240) - ISOBUS Heartbeat (TC -> AgIO -> AOG), variable length.
+message IsoBusHeartbeatMsg {
+  uint32 status         = 1;  // byte 5 (bit0 = section control enabled, bits1-3 = client count 0-7)
+  uint32 num_sections   = 2;  // byte 6 (0 = no implement)
+  bytes  section_states = 3;  // bytes 7+ (bitmask per section, 1 bit per section)
+}
+
+// =============================================================================
+// OUTBOUND messages (AOG -> AgIO / AOG -> TC via AgIO) — CommandService payloads
+// =============================================================================
+
+// PGN 0xFE (254) - AutoSteer Data, 14 bytes.
+message AutoSteerDataMsg {
+  uint32 speed                 = 1;  // bytes 5-6 (lo/hi combined)
+  uint32 status                = 2;  // byte 7 (AutoSteer status)
+  sint32 commanded_steer_angle = 3;  // bytes 8-9 (lo/hi combined)
+  sint32 line_distance         = 4;  // byte 10 (distance from guidance line)
+  uint32 section_control_1_8   = 5;  // byte 11 (bitmask sections 1-8)
+  uint32 section_control_9_16  = 6;  // byte 12 (bitmask sections 9-16)
+}
+
+// PGN 0xFC (252) - AutoSteer Settings, 14 bytes.
+message AutoSteerSettingsMsg {
+  uint32 gain_proportional_kp = 1;  // byte 5 (Kp)
+  uint32 high_pwm             = 2;  // byte 6 (max PWM)
+  uint32 low_pwm              = 3;  // byte 7 (min PWM when driving)
+  uint32 min_pwm              = 4;  // byte 8 (absolute min PWM)
+  uint32 counts_per_degree    = 5;  // byte 9 (WAS sensor counts)
+  uint32 was_offset           = 6;  // bytes 10-11 (lo/hi combined)
+  uint32 ackerman             = 7;  // byte 12 (Ackermann compensation)
+}
+
+// PGN 0xFB (251) - AutoSteer Config, 14 bytes.
+message AutoSteerConfigMsg {
+  uint32 set0             = 1;  // byte 5 (config byte 0)
+  uint32 max_pulse        = 2;  // byte 6 (max pulse count)
+  uint32 min_speed        = 3;  // byte 7 (min speed for steering)
+  uint32 ackerman_fix     = 4;  // byte 8 (Ackermann fix value)
+  uint32 angular_velocity = 5;  // byte 9 (max angular velocity)
+}
+
+// PGN 0xEF (239) - Machine Data, 14 bytes.
+message MachineDataMsg {
+  uint32 u_turn               = 1;  // byte 5 (U-turn state)
+  uint32 speed                = 2;  // byte 6 (vehicle speed)
+  uint32 hyd_lift             = 3;  // byte 7 (hydraulic lift state)
+  uint32 tram                 = 4;  // byte 8 (tramline state)
+  uint32 geo_stop             = 5;  // byte 9 (geofence stop)
+  uint32 section_control_1_8  = 6;  // byte 11 (section states 1-8)
+  uint32 section_control_9_16 = 7;  // byte 12 (section states 9-16)
+}
+
+// PGN 0xEE (238) - Machine Config, 14 bytes.
+message MachineConfigMsg {
+  uint32 raise_time = 1;  // byte 5 (hydraulic raise time)
+  uint32 lower_time = 2;  // byte 6 (hydraulic lower time)
+  uint32 enable_hyd = 3;  // byte 7 (hydraulics enabled)
+  uint32 set0       = 4;  // byte 8 (user setting 0)
+  uint32 user1      = 5;  // byte 9
+  uint32 user2      = 6;  // byte 10
+  uint32 user3      = 7;  // byte 11
+  uint32 user4      = 8;  // byte 12
+}
+
+// PGN 0xEC (236) - Relay Config, 29 bytes.
+// Legacy pin map is a comma-separated string "1,2,3,0,..." for 24 relays (bytes 5-28).
+message RelayConfigMsg {
+  repeated uint32 pin_config = 1;  // 24 relay pin values, order preserved
+}
+
+// PGN 0xEB (235) - Section Dimensions, 38 bytes.
+message SectionDimensionsMsg {
+  repeated uint32 section_widths = 1;  // bytes 5-36 (up to 16 sections; lo/hi pairs combined)
+  uint32 num_sections            = 2;  // byte 37
+}
+
+// PGN 0xE5 (229) - Section Control (Extended), 16 bytes.
+message ExtendedSectionControlMsg {
+  uint64 sections         = 1;  // bytes 5-12 (8 bitmask bytes = up to 64 sections)
+  uint32 tool_left_speed  = 2;  // byte 13
+  uint32 tool_right_speed = 3;  // byte 14
+}
+
+// PGN 0xE4 (228) - Rate Control, 14 bytes.
+message RateControlMsg {
+  uint32 rate0 = 1;  // byte 5
+  uint32 rate1 = 2;  // byte 6
+  uint32 rate2 = 3;  // byte 7
+}
+
+// PGN 0xF1 (241) - Section Control Enable Request (AOG -> TC), 7 bytes.
+message SectionControlEnableMsg {
+  bool enabled = 1;  // byte 5 (0x01 = enable, 0x00 = disable)
+}
+
+// PGN 0xF2 (242) - Process Data (AOG -> TC), 12 bytes.
+message ProcessDataMsg {
+  uint32 identifier = 1;  // bytes 5-6 (513 = guidance deviation, 397 = speed, 597 = total distance)
+  sint32 value      = 2;  // bytes 7-10 (int32; signed process-data value)
+}
+
+// PGN 0xF3 (243) - Field Name (AOG -> TC), variable length.
+message FieldNameMsg {
+  string name = 1;  // bytes 5+ (UTF-8, <= 248 bytes; empty = field closed)
+}
+
+// PGN 0xD0 (208) - Latitude/Longitude, 14 bytes.
+// Encoding: lat_encoded = (int)(lat * (0x7FFFFFFF / 90.0));
+//           lon_encoded = (int)(lon * (0x7FFFFFFF / 180.0))
+message LatLonMsg {
+  sint32 latitude_encoded  = 1;  // encoded latitude
+  sint32 longitude_encoded = 2;  // encoded longitude
+}
+
+// PGN 0x64 (100) - Corrected Position (AOG -> AgIO).
+// NOTE: This PGN is NOT documented in docs/pgn-protocol.md byte tables.
+// Fields derived from AAP section 0.3.3 and cross-referenced against
+// SourceCode/GPS_Out/Source/PGNs/PGN100.cs:
+//   standard layout = 16 data bytes  -> longitude (offset 5-12), latitude (offset 13-20)
+//   extended layout = 24 data bytes  -> adds fix2fix_heading (offset 21-28)
+message CorrectedPositionMsg {
+  double longitude       = 1;  // offset 5-12
+  double latitude        = 2;  // offset 13-20
+  double fix2fix_heading = 3;  // offset 21-28 (extended layout only; sentinel 1000 = invalid)
+}
+
+// =============================================================================
+// Services — GrpcServices="Both" generates BOTH client and server stubs
+// =============================================================================
+
+// Server-streaming fan-out of all AgIO -> AOG (and TC -> AgIO -> AOG) telemetry.
+// Replaces the UDP broadcast to 127.255.255.255:17777.
+service TelemetryService {
+  rpc StreamTelemetry(google.protobuf.Empty) returns (stream PgnEnvelope);
+}
+
+// 14 unary Send* RPCs (one per AOG-originated message, envelope fields 11..24),
+// each returning CommandAck. Replaces fire-and-forget UDP sends.
+service CommandService {
+  rpc SendAutoSteerData(AutoSteerDataMsg) returns (CommandAck);
+  rpc SendAutoSteerSettings(AutoSteerSettingsMsg) returns (CommandAck);
+  rpc SendAutoSteerConfig(AutoSteerConfigMsg) returns (CommandAck);
+  rpc SendMachineData(MachineDataMsg) returns (CommandAck);
+  rpc SendMachineConfig(MachineConfigMsg) returns (CommandAck);
+  rpc SendRelayConfig(RelayConfigMsg) returns (CommandAck);
+  rpc SendSectionDimensions(SectionDimensionsMsg) returns (CommandAck);
+  rpc SendExtendedSectionControl(ExtendedSectionControlMsg) returns (CommandAck);
+  rpc SendRateControl(RateControlMsg) returns (CommandAck);
+  rpc SendSectionControlEnable(SectionControlEnableMsg) returns (CommandAck);
+  rpc SendProcessData(ProcessDataMsg) returns (CommandAck);
+  rpc SendFieldName(FieldNameMsg) returns (CommandAck);
+  rpc SendLatLon(LatLonMsg) returns (CommandAck);
+  rpc SendCorrectedPosition(CorrectedPositionMsg) returns (CommandAck);
+
+  // OPTIONAL (AAP section 0.6.3): ModSim simulated-INBOUND injection path.
+  // Lets ModSim act as a client that injects inbound frames the AgIO bridge
+  // fans out. Not one of the 14 mandatory Send* RPCs.
+  rpc InjectTelemetry(PgnEnvelope) returns (CommandAck);
+}
