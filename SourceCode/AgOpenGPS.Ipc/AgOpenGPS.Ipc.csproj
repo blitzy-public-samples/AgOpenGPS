@@ -5,14 +5,20 @@
          <TargetFramework>net48</TargetFramework>. gRPC/proto3 tooling + Grpc.Net.Client require net6.0+.
 
          This shared contract library MULTI-TARGETS:
-           * net8.0         -> consumed by the AgIO gRPC server host (net8.0-windows) and the
-                               net8.0 IPC unit-test harness.
-           * netstandard2.0 -> consumed by the net48 desktop clients (GPS, GPS_Out, ModSim, AgDiag,
-                               AgOpenGPS.Tests). net48 can reference a netstandard2.0 library, which
-                               resolves the NU1201 "net48 is not compatible with net8.0" restore
-                               failure while keeping the clients on net48 (no client retarget). All
-                               pinned deps support netstandard2.0 (Grpc.Net.Client 2.80.0 -> net462/
-                               netstandard2.0, Google.Protobuf 3.35.1, Grpc.Tools build-time only).
+           * net8.0         -> consumed by the AgIO gRPC server host — the ONLY project retargeted to
+                               net8.0-windows (AAP 0.4.1 / 0.1.3: the accepted #1 host-retarget deviation,
+                               required because ASP.NET Core / Kestrel gRPC hosting needs .NET 6+).
+           * netstandard2.0 -> consumed by every net48 project that references this library: all four IPC
+                               CLIENTS (GPS, GPS_Out, ModSim, AgDiag) plus the AgOpenGPS.Tests harness — each
+                               inherits net48 from Directory.Build.props. net48 can reference a netstandard2.0
+                               library, which resolves the NU1201 "net48 is not compatible with net8.0" restore
+                               failure while keeping the clients on net48 — i.e. NO client is retargeted (AAP
+                               0.5.2: clients add only Grpc.Net.Client + the ProjectReference). All pinned deps
+                               support netstandard2.0 (Grpc.Net.Client 2.80.0 -> net462/netstandard2.0,
+                               Google.Protobuf 3.35.1, Grpc.Tools build-time only). NOTE: the loopback
+                               UDS/named-pipe HTTP/2 transport is .NET 6+ only, so on this netstandard2.0 facet
+                               it is non-functional — the DOCUMENTED, SURFACED host-retarget prerequisite (see
+                               IpcChannelFactory.cs #else), not silently worked around.
 
          The inherited singular <TargetFramework> is cleared to empty so that <TargetFrameworks>
          (plural) takes effect; otherwise MSBuild honours the inherited net48 single-target value. -->

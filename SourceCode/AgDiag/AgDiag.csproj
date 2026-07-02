@@ -1,13 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- IPC-REFACTOR: retargeted net48 -> net8.0-windows (consequence of the AAP 0.1.3 / 0.6.4 #1 host-retarget
-         deviation). AgDiag is a passive-observer gRPC CLIENT; on netstandard2.0 (net48) the loopback UDS/named-pipe
-         HTTP/2 transport cannot be built (SocketsHttpHandler.ConnectCallback is .NET 6+ only), so the migrated IPC
-         subscription could not connect at runtime. Retargeting to net8.0-windows makes AgDiag consume the .NET 8
-         AgOpenGPS.Ipc target and its fully functional ConnectCallback transport. AgDiag is a leaf WinExe (nothing
-         references it) and references only AgOpenGPS.Ipc, so the retarget is isolated. WinForms UI is preserved. -->
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- IPC-REFACTOR: AgDiag stays on net48 (inherits the SourceCode/Directory.Build.props default TFM). Per the AAP
+         0.4.1 file-by-file plan the ONLY project that retargets is AgIO — the gRPC SERVER host, which requires ASP.NET
+         Core / .NET 6+ — and that single retarget is the accepted #1 deviation (AAP 0.1.3 / 0.6.4). AgDiag is a
+         passive-observer gRPC CLIENT and, like the other net48 clients (GPS, GPS_Out, ModSim), consumes the
+         netstandard2.0 facet of AgOpenGPS.Ipc (AAP 0.5.2: clients add only Grpc.Net.Client + the ProjectReference).
+         The loopback UDS/named-pipe HTTP/2 transport (SocketsHttpHandler.ConnectCallback, .NET 6+ only) is therefore
+         non-functional on net48 — that limitation is the DOCUMENTED, SURFACED host-retarget prerequisite (see
+         AgOpenGPS.Ipc/IpcChannelFactory.cs #else), deliberately NOT worked around by silently retargeting this client
+         (Authority-Hierarchy Case 3: surface deviations, do not silently implement). -->
     <OutputType>WinExe</OutputType>
     <PublishDir>..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>AgDiag.ico</ApplicationIcon>
@@ -23,17 +25,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- IPC-REFACTOR: explicit net48 <Reference Include="System.Configuration" /> removed — on net8.0-windows the
-         System.Configuration namespace (Properties\Settings.Designer.cs uses ApplicationSettingsBase) is supplied
-         by the Windows Desktop shared framework; keeping the explicit net48 reference assembly caused an MSB3243
-         duplicate-assembly conflict warning. -->
+    <Reference Include="System.Configuration" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.6.0" />
     <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
-    <!-- IPC-REFACTOR: gRPC client runtime for AgDiag passive-observer subscription to TelemetryService. -->
+    <!-- IPC-REFACTOR: gRPC client runtime for AgDiag's passive-observer TelemetryService subscription. Grpc.Net.Client
+         2.80.0 ships a netstandard2.0/net462 target, so it references cleanly on net48 (no client retarget). -->
     <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
   </ItemGroup>
 
-  <!-- IPC-REFACTOR: shared proto/gRPC contract + generated client stubs + IpcConstants. -->
+  <!-- IPC-REFACTOR: shared proto/gRPC contract + generated client stubs + IpcConstants
+       (net48 consumes the netstandard2.0 facet of AgOpenGPS.Ipc). -->
   <ItemGroup>
     <ProjectReference Include="..\AgOpenGPS.Ipc\AgOpenGPS.Ipc.csproj" />
   </ItemGroup>
