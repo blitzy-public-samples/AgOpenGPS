@@ -1014,6 +1014,12 @@ namespace AgOpenGPS
                 catch { }
             }
 
+            // IPC-REFACTOR: in gRPC mode loopBackSocket is intentionally null (above no-op), so tear down the
+            // gRPC IPC client here instead: StopLoopbackServer cancels/disposes the TelemetryService stream
+            // subscription's CancellationTokenSource and disposes the GrpcChannel. It is null-guarded, so this is
+            // a safe no-op when the legacy UDP path (non-gRPC build) was used or the client never started.
+            StopLoopbackServer();
+
             // Auto close AgIO process if enabled
             if (Settings.Default.setDisplay_isAutoOffAgIO)
             {

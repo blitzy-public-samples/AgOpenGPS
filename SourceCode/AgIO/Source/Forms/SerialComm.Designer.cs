@@ -77,6 +77,7 @@ namespace AgIO
         #region IMUSerialPort //--------------------------------------------------------------------
         private void ReceiveIMUPort(byte[] Data)
         {
+            // IPC-REFACTOR: hardware IMU telemetry now fans out to AOG via the gRPC TelemetryService stream (SendToLoopBackMessageAOG body swap in UDP.designer.cs).
             SendToLoopBackMessageAOG(Data);
             traffic.helloFromIMU = 0;
         }
@@ -151,6 +152,7 @@ namespace AgIO
                     byte[] imuClose = new byte[] { 0x80, 0x81, 0x7C, 0xD4, 2, 1, 0, 0xCC };
 
                     //tell AOG IMU is disconnected
+                    // IPC-REFACTOR: IMU-disconnect notice now fans out to AOG via the gRPC TelemetryService stream (SendToLoopBackMessageAOG body swap in UDP.designer.cs).
                     SendToLoopBackMessageAOG(imuClose);
                 }
 
@@ -172,6 +174,7 @@ namespace AgIO
                 byte[] imuClose = new byte[] { 0x80, 0x81, 0x7C, 0xD4, 2, 1, 0, 0xCC };
 
                 //tell AOG IMU is disconnected
+                // IPC-REFACTOR: IMU-disconnect notice now fans out to AOG via the gRPC TelemetryService stream (SendToLoopBackMessageAOG body swap in UDP.designer.cs).
                 SendToLoopBackMessageAOG(imuClose);
                 wasIMUConnectedLastRun = false;
             }
@@ -296,6 +299,7 @@ namespace AgIO
         #region SteerModuleSerialPort //--------------------------------------------------------------------
         private void ReceiveSteerModulePort(byte[] Data)
         {
+            // IPC-REFACTOR: steer-module telemetry now fans out to AOG via the gRPC TelemetryService stream (SendToLoopBackMessageAOG body swap in UDP.designer.cs).
             SendToLoopBackMessageAOG(Data);
             traffic.helloFromAutoSteer = 0;
         }
@@ -504,6 +508,7 @@ namespace AgIO
         {
             try
             {
+                // IPC-REFACTOR: machine-module telemetry now fans out to AOG via the gRPC TelemetryService stream (SendToLoopBackMessageAOG body swap in UDP.designer.cs).
                 SendToLoopBackMessageAOG(Data);
                 traffic.helloFromMachine = 0;
             }

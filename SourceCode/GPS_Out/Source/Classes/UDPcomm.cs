@@ -1,25 +1,42 @@
 ﻿using System;
-using System.Net;
-using System.Net.Sockets;
+using System.Net; // IPAddress — retained for NetworkEP / SetEP / SetSourceIP (endpoint config surface kept for Form1 API compatibility).
+// IPC-REFACTOR: the gRPC loopback channel build + connect retry/backoff now live in the shared AgOpenGPS.Ipc helpers
+// (IpcChannelFactory + IpcTelemetrySubscriber), so the net48-incompatible transport usings (System.IO, System.IO.Pipes,
+// System.Net.Http, System.Net.Sockets, System.Runtime.InteropServices) and Google.Protobuf.WellKnownTypes / Grpc.Core
+// are no longer referenced in this file and have been removed.
+using System.Threading;
+using System.Threading.Tasks;
+using AgOpenGPS.Ipc;
+using Grpc.Net.Client;
 
 namespace GPS_Out
 {
     public class UDPComm
     {
         private readonly frmStart mf;
-        private byte[] buffer = new byte[1024];
+
+        // IPC-REFACTOR: 1024-byte UDP receive buffer removed — gRPC HTTP/2 framing owns buffering now.
         private string cConnectionName;
         private bool cIsUDPSendConnected;
         private string cLog;
         private IPAddress cNetworkEP;
-        private int cReceivePort;   // local ports must be unique for each app on same pc and each class instance
-        private int cSendFromPort;
-        private int cSendToPort;
-        private IPAddress cSourceIP;
+        private int cReceivePort;   // IPC-REFACTOR: retained for API compatibility with Form1 (no longer used for UDP binding).
+        private int cSendFromPort;  // IPC-REFACTOR: retained for API compatibility with Form1 (no longer used for UDP binding).
+        private int cSendToPort;    // IPC-REFACTOR: retained for API compatibility with Form1 (no longer used for UDP binding).
+        private IPAddress cSourceIP; // IPC-REFACTOR: still assigned by SetSourceIP; no longer used for UDP binding.
         private string cSubNet;
-        private HandleDataDelegateObj HandleDataDelegate = null;
-        private Socket recvSocket;
-        private Socket sendSocket;
+
+        // IPC-REFACTOR: gRPC channel + cancellation for the background StreamTelemetry subscriber (replaces recvSocket/sendSocket).
+        private GrpcChannel _channel;
+        private CancellationTokenSource _cts;
+
+        // IPC-REFACTOR (QA F1 Issue 2): the single telemetry payload this comm instance owns. The
+        // TelemetryService fan-out delivers EVERY envelope to EVERY subscriber, whereas each legacy
+        // per-port UDP listener saw only its own SubPGN. Restricting each of the two instances
+        // (AGIOcomm / AOGcomm) to its owned payload restores the legacy single-parse-per-frame behaviour,
+        // so a frame is no longer parsed once per instance, while preserving the two-instance model
+        // (both instances still subscribe and hold their own channel + connection flag).
+        private readonly PgnEnvelope.PayloadOneofCase _observedPayload;
 
         public UDPComm(frmStart CallingForm, int ReceivePort, int SendToPort, int SendFromPort,
             string ConnectionName, string SourceIPaddress, string DestinationEndPoint = "")
@@ -29,12 +46,18 @@ namespace GPS_Out
             cSendToPort = SendToPort;
             cSendFromPort = SendFromPort;
             cConnectionName = ConnectionName;
+            // IPC-REFACTOR (QA F1 Issue 2): map this instance to the one payload its legacy UDP port received —
+            // AGIOcomm observes GpsPosition (-> AGIOdata / PGN54908); AOGcomm observes CorrectedPosition
+            // (-> AOGdata / PGN100). This is a bijection over the two observed payloads, so each frame the
+            // fan-out broadcasts is parsed by exactly one instance (no double-parse) and both payloads stay covered.
+            _observedPayload = string.Equals(ConnectionName, "AGIO", StringComparison.Ordinal)
+                ? PgnEnvelope.PayloadOneofCase.GpsPosition
+                : PgnEnvelope.PayloadOneofCase.CorrectedPosition;
             SetEP(DestinationEndPoint);
             SetSourceIP(SourceIPaddress);
         }
 
-        // Status delegate
-        private delegate void HandleDataDelegateObj(int port, byte[] msg);
+        // IPC-REFACTOR: HandleDataDelegate field and its HandleDataDelegateObj delegate type removed — the stream-reader task calls HandleData directly (no UI marshaling needed).
 
         public bool IsUDPSendConnected { get => cIsUDPSendConnected; set => cIsUDPSendConnected = value; }
 
@@ -58,31 +81,23 @@ namespace GPS_Out
         {
             try
             {
-                // initialize the delegate which updates the message received
-                HandleDataDelegate = HandleData;
-
-                // initialize the receive socket
-                recvSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                recvSocket.Bind(new IPEndPoint(cSourceIP, cReceivePort));
-
-                // initialize the send socket
-                sendSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-
-                // Initialise the IPEndPoint for the server to send on port
-                IPEndPoint server = new IPEndPoint(IPAddress.Any, cSendFromPort);
-                sendSocket.Bind(server);
-
-                // Initialise the IPEndPoint for the client - async listner client only!
-                EndPoint client = new IPEndPoint(IPAddress.Any, 0);
-
-                // Start listening for incoming data
-                recvSocket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref client, new AsyncCallback(ReceiveData), recvSocket);
-                IsUDPSendConnected = true;
+                // IPC-REFACTOR: UDP loopback receive socket + BeginReceiveFrom replaced by a background TelemetryService.StreamTelemetry gRPC subscriber.
+                _cts = new CancellationTokenSource();
+                Task.Factory.StartNew(() => SubscribeLoopAsync(_cts.Token),
+                    _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
             catch (Exception e)
             {
                 mf.Tls.WriteErrorLog("UDPcomm/StartUDPServer: \n" + e.Message);
             }
+        }
+
+        // IPC-REFACTOR: cancellation-based teardown replaces implicit socket disposal (additive public method; not part of the legacy contract).
+        public void Stop()
+        {
+            _cts?.Cancel();
+            _channel?.Dispose();
+            _channel = null;
         }
 
         private void AddToLog(string NewData)
@@ -95,79 +110,57 @@ namespace GPS_Out
             cLog = cLog.Replace("\0", string.Empty);
         }
 
-        private void HandleData(int Port, byte[] Data)
+        // IPC-REFACTOR: connect + subscribe delegated to the shared AgOpenGPS.Ipc.IpcTelemetrySubscriber. This removes
+        // the net48-incompatible SocketsHttpHandler channel build (now guarded in IpcChannelFactory) and the C# 7.3-
+        // incompatible async-stream (await foreach / ReadAllAsync) loop, and makes the canonical 5-attempt /
+        // 500-1000-2000-4000-8000 ms (total 15500 ms) connect retry-backoff identical across every IPC client. The
+        // endpoint is derived from IpcConstants.AgIoSocketPath inside the shared factory (no hard-coded pipe name here).
+        // IsUDPSendConnected still means "IPC connected": set true when the stream opens, false on any disconnect.
+        private Task SubscribeLoopAsync(CancellationToken token)
+        {
+            return IpcTelemetrySubscriber.RunAsync(
+                onChannel: channel => _channel = channel,
+                onConnected: () => IsUDPSendConnected = true,
+                onEnvelope: HandleData,
+                onError: ex => mf.Tls.WriteErrorLog("UDPcomm/SubscribeLoop: " + ex.Message),
+                token: token,
+                onDisconnected: () => IsUDPSendConnected = false);
+        }
+
+        // IPC-REFACTOR: byte-keyed switch(PGN)/switch(SubPGN) dispatch replaced by typed switch(envelope.PayloadCase); observes exactly the two payloads the legacy listener handled.
+        private void HandleData(PgnEnvelope envelope)
         {
             try
             {
-                if (Data.Length > 1)
+                // IPC-REFACTOR (QA F1 Issue 2): observe only this instance's owned payload. The TelemetryService
+                // fan-out broadcasts every envelope to every subscriber, so without this guard BOTH the AGIOcomm
+                // and AOGcomm instances would parse BOTH payloads (each frame handled twice). Gating to the owned
+                // payload restores the legacy per-port single-parse semantics; any other payload (including
+                // PayloadOneofCase.None) is ignored here exactly as the legacy per-port listener ignored it.
+                if (envelope.PayloadCase != _observedPayload)
                 {
-                    int PGN = Data[1] << 8 | Data[0];
-                    AddToLog("< " + PGN.ToString());
+                    return;
+                }
 
-                    switch (PGN)
-                    {
-                        case 33152: // AOG, 0x8180
-                            int SubPGN = Data[3] << 8 | Data[2];
-                            switch (SubPGN)
-                            {
-                                case 54908: // 0xD67C, AGIO NEMA translation
-                                    mf.AGIOdata.ParseByteData(Data);
-                                    break;
+                switch (envelope.PayloadCase)
+                {
+                    case PgnEnvelope.PayloadOneofCase.GpsPosition:       // IPC-REFACTOR: was SubPGN 54908 / 0xD67C -> mf.AGIOdata.ParseByteData(Data).
+                        AddToLog("< " + envelope.PayloadCase);
+                        mf.AGIOdata.ParseMessage(envelope.GpsPosition);
+                        break;
 
-                                case 25727: // 0x647F, AOG roll corrected lat,lon
-                                    mf.AOGdata.ParseByteData(Data);
-                                    break;
-                            }
-                            break;
-                    }
+                    case PgnEnvelope.PayloadOneofCase.CorrectedPosition: // IPC-REFACTOR: was SubPGN 25727 / 0x647F -> mf.AOGdata.ParseByteData(Data).
+                        AddToLog("< " + envelope.PayloadCase);
+                        mf.AOGdata.ParseMessage(envelope.CorrectedPosition);
+                        break;
+
+                    default:
+                        break; // IPC-REFACTOR: ignore all other payloads (parity with the legacy two-SubPGN behavior); tolerate PayloadOneofCase.None gracefully.
                 }
             }
             catch (Exception ex)
             {
                 mf.Tls.WriteErrorLog("UDPcomm/HandleData " + ex.Message);
-            }
-        }
-
-        private void ReceiveData(IAsyncResult asyncResult)
-        {
-            try
-            {
-                // Initialise the IPEndPoint for the client
-                EndPoint epSender = new IPEndPoint(IPAddress.Any, 0);
-
-                // Receive all data
-                int msgLen = recvSocket.EndReceiveFrom(asyncResult, ref epSender);
-
-                byte[] localMsg = new byte[msgLen];
-                Array.Copy(buffer, localMsg, msgLen);
-
-                // Listen for more connections again...
-                recvSocket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref epSender, new AsyncCallback(ReceiveData), epSender);
-
-                int port = ((IPEndPoint)epSender).Port;
-                // Update status through a delegate
-                mf.Invoke(HandleDataDelegate, new object[] { port, localMsg });
-            }
-            catch (ObjectDisposedException)
-            {
-                // do nothing
-            }
-            catch (Exception ex)
-            {
-                //mf.Tls.ShowHelp("ReceiveData Error \n" + e.Message, "Comm", 3000, true);
-                mf.Tls.WriteErrorLog("UDPcomm/ReceiveData " + ex.Message);
-            }
-        }
-
-        private void SendData(IAsyncResult asyncResult)
-        {
-            try
-            {
-                sendSocket.EndSend(asyncResult);
-            }
-            catch (Exception ex)
-            {
-                mf.Tls.WriteErrorLog(" UDP Send Data" + ex.ToString());
             }
         }
 

@@ -1,5 +1,10 @@
 # PGN Protocol Specification
 
+> **Note — IPC transport migration (gRPC / Protocol Buffers).**
+> The **AgIO ↔ AgOpenGPS software inter-process transport** is migrating from the custom UDP + binary-frame protocol described in this document to a typed, versioned **gRPC / Protocol Buffers (proto3)** transport. The single canonical schema lives at [`proto/agopengps_ipc.proto`](proto/agopengps_ipc.proto); the schema-version governance rules are in [`proto/SCHEMA_VERSIONING.md`](proto/SCHEMA_VERSIONING.md).
+>
+> **The byte-level PGN vocabulary documented below remains the unchanged on-the-wire contract** between AgIO and hardware/firmware (serial / CAN / NTRIP) and community modules. These byte tables are the source of truth from which the proto schema is derived — each of the 23 PGN messages and every field below maps to a typed message inside `PgnEnvelope`. Only the AgIO↔AOG software loopback transport changes; nothing in the tables, CRC rule, UDP configuration, or PGN definitions below is altered.
+
 ## Overview
 
 AgOpenGPS uses a custom PGN (Parameter Group Number) protocol for UDP communication between AgIO and the main application. The protocol wraps data in a specific format with headers, PGN identifier, length, data payload, and CRC checksum.
@@ -42,11 +47,21 @@ pgn[pgn.Length - 1] = (byte)crc;
 | **AgIO Endpoint** | 127.255.255.255:17777 |
 | **Protocol** | UDP |
 | **Subnet** | 127.x.x.x (loopback) |
+| **Receive Buffer Size** | 1024 bytes |
+
+The AOG loopback receive buffer is **1024 bytes**, which comfortably accommodates the largest
+PGN frame (the variable-length `0xF3` field-name and `0xDD` display messages remain well under
+this size). This buffer size is a legacy property of the UDP loopback transport and is preserved
+here for reference; it does not apply to the gRPC / Protocol Buffers transport described in the
+migration note at the top of this document (HTTP/2 handles framing and flow control natively).
 
 **Connection setup:**
 ```csharp
 // AOG binds to loopback port 15555
 loopBackSocket.Bind(new IPEndPoint(IPAddress.Loopback, 15555));
+
+// AOG loopback receive buffer size (bytes)
+byte[] buffer = new byte[1024];
 
 // Send to AgIO on 127.255.255.255:17777
 EndPoint epAgIO = new IPEndPoint(IPAddress.Parse("127.255.255.255"), 17777);

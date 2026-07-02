@@ -1,5 +1,11 @@
 ﻿using AgIO.Properties;
 using AgLibrary.Logging;
+using AgOpenGPS.Ipc;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Win32;
 using System;
 using System.Diagnostics;
@@ -9,6 +15,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
@@ -70,6 +77,9 @@ namespace AgIO
         public bool isAppInFocus = true, isLostFocus;
 
         public int focusSkipCounter = 310;
+
+        // IPC-REFACTOR: gRPC host replaces the UDP loopback socket for AgIO<->AOG IPC.
+        private WebApplication _grpcHost;
 
         public FormLoop()
         {
@@ -136,7 +146,85 @@ namespace AgIO
             //small view
             this.Width = 420;
 
-            LoadLoopback();
+            // IPC-REFACTOR: LoadLoopback() (UDP bind 127.0.0.1:17777) replaced by an in-process gRPC host
+            // (Kestrel, loopback-only, HTTP/2, no TLS/auth) hosting TelemetryService + CommandService. Built and
+            // started here, early in FormLoop_Load, so AgIO is listening as soon as possible for AOG clients.
+            try
+            {
+                var builder = WebApplication.CreateBuilder();
+                builder.Services.AddGrpc();
+
+                // IPC-REFACTOR: register THIS FormLoop as a DI singleton so CommandServiceImpl(FormLoop) can
+                // reach ForwardCommandToHardware (defined in UDP.designer.cs) for outbound command frames.
+                builder.Services.AddSingleton(this);
+
+                // IPC-REFACTOR: on Windows, EXPLICITLY restrict the loopback named pipe to the current user
+                // only (local-user ACL) — explicit hardening of the loopback-only / no-external-bind / no-TLS /
+                // no-auth security posture (AAP §0.6.2 "local pipe ACL on Windows"; §5.3.5), instead of relying
+                // on transport defaults. No-op on Linux/macOS, where a Unix domain socket is used and its
+                // owner-only 0600 file mode is set right after the host starts (see below).
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    builder.WebHost.UseNamedPipes(options => options.CurrentUserOnly = true);
+                }
+
+                builder.WebHost.ConfigureKestrel(options =>
+                {
+                    // IPC-REFACTOR: loopback-only bind (parity with the legacy UDP loopback posture) - Unix
+                    // domain socket on Linux/macOS, named pipe on Windows; HTTP/2 plaintext, no external bind.
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {
+                        // Kestrel's ListenNamedPipe expects the pipe NAME only, so strip the \\.\pipe\ prefix.
+                        string pipeName = IpcConstants.AgIoSocketPath.Replace(@"\\.\pipe\", string.Empty);
+                        options.ListenNamedPipe(pipeName, o => o.Protocols = HttpProtocols.Http2);
+                    }
+                    else
+                    {
+                        // Remove any stale socket file left by a previous run before binding.
+                        if (File.Exists(IpcConstants.AgIoSocketPath))
+                        {
+                            File.Delete(IpcConstants.AgIoSocketPath);
+                        }
+                        options.ListenUnixSocket(IpcConstants.AgIoSocketPath, o => o.Protocols = HttpProtocols.Http2);
+                    }
+                });
+
+                var app = builder.Build();
+                app.MapGrpcService<TelemetryServiceImpl>();
+                app.MapGrpcService<CommandServiceImpl>();
+                _grpcHost = app;
+
+                // IPC-REFACTOR: start on a background thread to escape the WinForms sync context (avoids a
+                // sync-over-async deadlock); clients tolerate the brief startup race via retry/backoff (5x, 500ms base, 2x).
+                System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _grpcHost.StartAsync();
+
+                        // IPC-REFACTOR: harden the loopback Unix domain socket to owner-only (0600) so no
+                        // other local user can connect — explicit parity with the loopback-only, local-user
+                        // security posture (AAP §0.6.2 "Unix-domain-socket file permissions"; §5.3.5). The
+                        // socket file exists only after StartAsync has bound it. No-op on Windows, where the
+                        // named-pipe ACL is applied at host-build time via UseNamedPipes CurrentUserOnly=true.
+                        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                            && File.Exists(IpcConstants.AgIoSocketPath))
+                        {
+                            File.SetUnixFileMode(
+                                IpcConstants.AgIoSocketPath,
+                                UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.EventWriter("gRPC host start failed: " + ex.Message);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.EventWriter("gRPC host build failed: " + ex.Message);
+            }
 
             isSendNMEAToUDP = Properties.Settings.Default.setUDP_isSendNMEAToUDP;
 
@@ -331,13 +419,26 @@ namespace AgIO
 
             isobusForm.StopAogTaskControllerProcess();
 
-            if (loopBackSocket != null)
+            // IPC-REFACTOR: graceful gRPC host stop replaces the loopBackSocket shutdown/close.
+            try
             {
-                try
+                if (_grpcHost != null)
                 {
-                    loopBackSocket.Shutdown(SocketShutdown.Both);
+                    // Sync-safe: run the async stop/dispose off the UI thread and bound the wait so app exit
+                    // stays responsive (mirrors the startup Task.Run pattern; avoids a UI sync-over-async deadlock).
+                    System.Threading.Tasks.Task.Run(async () =>
+                    {
+                        await _grpcHost.StopAsync(TimeSpan.FromSeconds(2));
+                        await _grpcHost.DisposeAsync();
+                    }).Wait(TimeSpan.FromSeconds(3));
                 }
-                finally { loopBackSocket.Close(); }
+            }
+            catch (Exception ex)
+            {
+                // IPC-REFACTOR: log (never swallow) gRPC host StopAsync/DisposeAsync failures. Report the
+                // innermost cause with a sanitized message only (no full stack trace to the UI-facing log).
+                Exception root = (ex as AggregateException)?.Flatten().InnerException ?? ex;
+                Log.EventWriter("AgIO gRPC host shutdown failed: " + root.Message);
             }
 
             if (UDPSocket != null)
@@ -569,6 +670,7 @@ namespace AgIO
                         byte[] imuClose = new byte[] { 0x80, 0x81, 0x7C, 0xD4, 2, 1, 0, 83 };
 
                         //tell AOG IMU is disconnected
+                        // IPC-REFACTOR: now fans out via TelemetryService stream (SendToLoopBackMessageAOG body swap).
                         SendToLoopBackMessageAOG(imuClose);
                         wasIMUConnectedLastRun = false;
                         lblIMUComm.Text = "";

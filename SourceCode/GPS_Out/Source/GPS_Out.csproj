@@ -1,6 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- IPC-REFACTOR: GPS_Out stays on net48 (inherits the SourceCode/Directory.Build.props default TFM). Per the AAP
+         0.4.1 file-by-file plan the ONLY project that retargets is AgIO — the gRPC SERVER host, which requires ASP.NET
+         Core / .NET 6+ — the accepted #1 deviation (AAP 0.1.3 / 0.6.4). GPS_Out is a passive-observer gRPC CLIENT and,
+         like the other net48 clients (GPS, ModSim, AgDiag), consumes the netstandard2.0 facet of AgOpenGPS.Ipc (AAP
+         0.5.2: clients add only Grpc.Net.Client + the ProjectReference). The loopback UDS/named-pipe HTTP/2 transport
+         (SocketsHttpHandler.ConnectCallback, .NET 6+ only) is therefore non-functional on net48 — that limitation is
+         the DOCUMENTED, SURFACED host-retarget prerequisite (see AgOpenGPS.Ipc/IpcChannelFactory.cs #else),
+         deliberately NOT worked around by silently retargeting this client (Authority-Hierarchy Case 3). Staying on
+         net48 also means the GPS_Out serial-output path (Source\Classes\SerialSend.cs, Source\Form1.cs) keeps using the
+         built-in net48 System.IO.Ports.SerialPort surface, so NO System.IO.Ports package is needed here — that package
+         is required only by AgIO, the single net8-retargeted host where SerialPort moved out-of-band. -->
     <OutputType>WinExe</OutputType>
     <PublishDir>..\..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>satellite.ico</ApplicationIcon>
@@ -14,6 +25,15 @@
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.6.0" />
     <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
+    <!-- IPC-REFACTOR: gRPC client runtime for GPS_Out's passive-observer TelemetryService subscription. Grpc.Net.Client
+         2.80.0 ships a netstandard2.0/net462 target, so it references cleanly on net48 (no client retarget). -->
+    <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
+  </ItemGroup>
+
+  <!-- IPC-REFACTOR: shared proto/gRPC contract + generated client stubs + IpcConstants
+       (net48 consumes the netstandard2.0 facet of AgOpenGPS.Ipc). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\AgOpenGPS.Ipc\AgOpenGPS.Ipc.csproj" />
   </ItemGroup>
 
   <ItemGroup>

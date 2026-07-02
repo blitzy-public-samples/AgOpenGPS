@@ -1,4 +1,5 @@
 ﻿using System;
+using AgOpenGPS.Ipc; // IPC-REFACTOR: consume generated GpsPositionMsg from the AgOpenGPS.Ipc contract.
 
 namespace GPS_Out
 {
@@ -313,31 +314,36 @@ namespace GPS_Out
             return (DateTime.Now - ReceiveTime).TotalSeconds < 4;
         }
 
-        public bool ParseByteData(byte[] Data)
+        // IPC-REFACTOR: byte parse replaced by typed GpsPositionMsg ingest; ReceiveTime stamped on message arrival.
+        public bool ParseMessage(GpsPositionMsg msg)
         {
-            bool Result = false;
-            if (mf.Tls.GoodCRC(Data, 2))
+            // IPC-REFACTOR: CRC check removed — HTTP/2 frame integrity provides equivalent byte-level guarantees.
+            // IPC-REFACTOR: typed-path error handling via mf (was mf.Tls.GoodCRC in the removed byte parser).
+            try
             {
-                cLongitude = BitConverter.ToDouble(Data, 5);
-                cLatitude = BitConverter.ToDouble(Data, 13);
-                cHeadingDual = BitConverter.ToSingle(Data, 21);
-                cTrueHeading = BitConverter.ToSingle(Data, 25);
-                cSpeed = BitConverter.ToSingle(Data, 29);
-                cRoll = BitConverter.ToSingle(Data, 33);
-                cAltitude = BitConverter.ToSingle(Data, 37);
-                cSatellites = BitConverter.ToUInt16(Data, 41);
-                cFixQuality = Data[43];
-                cHdopX100 = BitConverter.ToUInt16(Data, 44);
-                cAgeX100 = BitConverter.ToUInt16(Data, 46);
-                cImuHeading = (float)(BitConverter.ToUInt16(Data, 48) / 10.0);
-                cImuRoll = (short)BitConverter.ToInt16(Data, 50);
-                cImuPitch = (short)BitConverter.ToInt16(Data, 52);
-                cImuYaw = BitConverter.ToUInt16(Data, 54);
-
+                cLongitude = msg.Longitude;
+                cLatitude = msg.Latitude;
+                cHeadingDual = msg.HeadingDual;
+                cTrueHeading = msg.HeadingTrue;
+                cSpeed = msg.Speed;
+                cRoll = msg.Roll;
+                cAltitude = msg.Altitude;
+                cSatellites = (ushort)msg.Satellites;
+                cFixQuality = (byte)msg.FixQuality;
+                cHdopX100 = (ushort)msg.Hdop;
+                cAgeX100 = (ushort)msg.Age;
+                cImuHeading = (float)(msg.ImuHeading / 10.0);
+                cImuRoll = (short)msg.ImuRoll;
+                cImuPitch = (short)msg.ImuPitch;
+                cImuYaw = (ushort)msg.ImuYawRate;
                 ReceiveTime = DateTime.Now;
-                Result = true;
+                return true;
             }
-            return Result;
+            catch (Exception ex)
+            {
+                mf.Tls.WriteErrorLog("PGN54908/ParseMessage: " + ex.ToString());
+                return false;
+            }
         }
     }
 }
