@@ -28,7 +28,7 @@ namespace GPS_Out.PGNs
         // 21-28    Fix2Fix         double
         // 29       CRC
 
-        private const byte HeaderCount = 5;
+        // IPC-REFACTOR: removed stale HeaderCount const (only used by the deleted byte parser).
         private double cFix2Fix;
         private double cLatitude;
         private double cLongitude;

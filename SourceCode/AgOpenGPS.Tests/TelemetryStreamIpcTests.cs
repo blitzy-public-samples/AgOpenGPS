@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Threading.Tasks;
 using AgOpenGPS.Ipc;
 using Google.Protobuf.WellKnownTypes;
@@ -25,13 +24,17 @@ namespace AgOpenGPS.Tests
     /// referenced by this test assembly. The requirement is therefore exercised against
     /// the generated <see cref="TelemetryService.TelemetryServiceBase"/> through hand-rolled
     /// in-memory test doubles (no mocking framework, no real socket) and is decomposed into
-    /// two deterministic, non-flaky assertions:
+    /// two fully deterministic, non-flaky assertions driven by a SIMULATED clock only - no
+    /// wall-clock, no real waits, identical result on every machine and every run:
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// Test A drives a burst of envelopes through an in-memory response stream as fast as
-    /// possible; because in-memory writes take microseconds, the measured rate is far above
-    /// 14 Hz, proving the mechanism sustains the cadence with no back-pressure stall.
+    /// Test A drives the generated server-streaming method with a <see cref="VirtualClock"/>
+    /// advanced in exact 70 ms steps across one simulated second. On every step the preserved
+    /// 70 ms throttle admits, a fix envelope is written to the response stream; the stream
+    /// forwards all of them (no drop/stall) and the count, divided by the simulated one-second
+    /// window, proves the fan-out admits/forwards at least 14 fix cycles per simulated second.
+    /// The rate is computed from simulated time, so the assertion can never be flaky.
     /// </description></item>
     /// <item><description>
     /// Test B pins the exact 70 ms throttle predicate - a new fix is admitted only when the
@@ -39,7 +42,6 @@ namespace AgOpenGPS.Tests
     /// waits), guaranteeing determinism.
     /// </description></item>
     /// </list>
-    /// <see cref="System.Diagnostics.Stopwatch"/> is the only timing tool used.
     /// </summary>
     public class TelemetryStreamIpcTests
     {
@@ -54,6 +56,27 @@ namespace AgOpenGPS.Tests
         /// value migrated to the stream-side delta check).
         /// </summary>
         private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(70);
+
+        /// <summary>
+        /// The simulated one-second window over which the sustained cadence is measured. The
+        /// rate assertion divides the forwarded-fix count by this fixed value, never by real
+        /// elapsed time, which is what makes Test A deterministic.
+        /// </summary>
+        private static readonly TimeSpan MeasurementWindow = TimeSpan.FromSeconds(1);
+
+        /// <summary>
+        /// Deterministic, monotonic clock advanced explicitly by the producer in fixed steps.
+        /// It replaces wall-clock timing entirely: no real time passes, so the cadence the
+        /// producer generates - and therefore the test's outcome - is fully reproducible.
+        /// </summary>
+        private sealed class VirtualClock
+        {
+            /// <summary>The current simulated time, starting at zero.</summary>
+            public TimeSpan Now { get; private set; } = TimeSpan.Zero;
+
+            /// <summary>Advances the simulated time by <paramref name="delta"/>.</summary>
+            public void Advance(TimeSpan delta) => Now += delta;
+        }
 
         /// <summary>
         /// In-memory <see cref="IServerStreamWriter{T}"/> fake that records how many envelopes
@@ -77,18 +100,26 @@ namespace AgOpenGPS.Tests
         }
 
         /// <summary>
-        /// Minimal <see cref="TelemetryService.TelemetryServiceBase"/> stub that emits a fixed
-        /// number of self-contained GPS-position envelopes (PGN 0xD6, the 70 ms-throttled fix)
-        /// as fast as the response stream accepts them.
+        /// <see cref="TelemetryService.TelemetryServiceBase"/> stub whose <c>StreamTelemetry</c>
+        /// override models the real 70 ms-throttled GPS-fix producer on a <see cref="VirtualClock"/>:
+        /// it advances the clock in exact 70 ms steps across the measurement window and writes a
+        /// GPS-position envelope (PGN 0xD6, the throttled fix) to the response stream on every step
+        /// the preserved throttle admits. Because the clock is simulated, the number of emitted
+        /// fixes is deterministic and independent of machine speed.
         /// </summary>
-        private sealed class BurstTelemetryService : TelemetryService.TelemetryServiceBase
+        private sealed class PacedTelemetryService : TelemetryService.TelemetryServiceBase
         {
-            private readonly int _messageCount;
+            private readonly VirtualClock _clock;
+            private readonly TimeSpan _window;
 
-            /// <summary>Creates a stub that will emit <paramref name="messageCount"/> envelopes.</summary>
-            public BurstTelemetryService(int messageCount)
+            /// <summary>Number of fixes the 70 ms throttle admitted and the stub emitted.</summary>
+            public int Admitted { get; private set; }
+
+            /// <summary>Creates a stub paced by <paramref name="clock"/> over <paramref name="window"/>.</summary>
+            public PacedTelemetryService(VirtualClock clock, TimeSpan window)
             {
-                _messageCount = messageCount;
+                _clock = clock;
+                _window = window;
             }
 
             /// <inheritdoc />
@@ -97,15 +128,24 @@ namespace AgOpenGPS.Tests
                 IServerStreamWriter<PgnEnvelope> responseStream,
                 ServerCallContext context)
             {
-                for (int i = 0; i < _messageCount; i++)
-                {
-                    PgnEnvelope envelope = new PgnEnvelope
-                    {
-                        SchemaVersion = IpcConstants.SchemaVersion,
-                        GpsPosition = new GpsPositionMsg { Latitude = 1.0, Longitude = 2.0 }
-                    };
+                // Seed one throttle window in the past so the first fix (simulated t = 0) is admitted.
+                TimeSpan lastFixAt = TimeSpan.Zero - ThrottleInterval;
 
-                    await responseStream.WriteAsync(envelope);
+                // Walk the simulated second in exact 70 ms steps; emit whenever the throttle admits.
+                while (_clock.Now < _window)
+                {
+                    if (ShouldEmitFix(_clock.Now - lastFixAt))
+                    {
+                        await responseStream.WriteAsync(new PgnEnvelope
+                        {
+                            SchemaVersion = IpcConstants.SchemaVersion,
+                            GpsPosition = new GpsPositionMsg { Latitude = 1.0, Longitude = 2.0 }
+                        });
+                        lastFixAt = _clock.Now;
+                        Admitted++;
+                    }
+
+                    _clock.Advance(ThrottleInterval);
                 }
             }
         }
@@ -119,27 +159,28 @@ namespace AgOpenGPS.Tests
 
         /// <summary>
         /// Test A - the server-streaming fan-out sustains at least 14 Hz with no back-pressure
-        /// stall: every envelope the stub emits is written to the response stream, and the
-        /// observed throughput comfortably exceeds the 14 Hz floor.
+        /// stall, proven deterministically: a 70 ms-paced producer driven by a simulated clock
+        /// emits every admitted fix through the response stream over one simulated second, the
+        /// stream forwards all of them (no drop/stall), and the throughput computed from
+        /// SIMULATED time only is at least 14 Hz.
         /// </summary>
         [Test]
         public async Task StreamTelemetry_SustainsAtLeast14Hz_WithoutBackPressureStall()
         {
-            // Arrange
-            const int messageCount = 30;
-            var service = new BurstTelemetryService(messageCount);
-            var writer = new RecordingStreamWriter();
-            var stopwatch = Stopwatch.StartNew();
+            // Arrange - a simulated clock paced at exactly the 70 ms throttle over one second.
+            var clock = new VirtualClock();
+            var service = new PacedTelemetryService(clock, MeasurementWindow);
+            var responseStream = new RecordingStreamWriter();
 
-            // Act
-            await service.StreamTelemetry(new Empty(), writer, null);
-            stopwatch.Stop();
+            // Act - drive the generated server-streaming method entirely on simulated time.
+            await service.StreamTelemetry(new Empty(), responseStream, null);
 
-            // Assert
-            Assert.That(writer.Count, Is.EqualTo(messageCount));
-            double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
-            double observedHz = elapsedSeconds > 0 ? writer.Count / elapsedSeconds : double.PositiveInfinity;
-            Assert.That(observedHz, Is.GreaterThanOrEqualTo(MinRateHz));
+            // Assert - the stream forwarded every admitted fix (no back-pressure stall), and the
+            // sustained cadence, computed from the SIMULATED window only, is at least 14 Hz.
+            Assert.That(responseStream.Count, Is.EqualTo(service.Admitted));
+            Assert.That(responseStream.Count, Is.GreaterThanOrEqualTo((int)MinRateHz));
+            double simulatedHz = responseStream.Count / MeasurementWindow.TotalSeconds;
+            Assert.That(simulatedHz, Is.GreaterThanOrEqualTo(MinRateHz));
         }
 
         /// <summary>

@@ -55,11 +55,22 @@ namespace AgOpenGPS.Tests
                 .SetName("RoundTrip_03_ImuDisconnect_D4");
 
             // 04) PGN 0xFD - Steer Module Response (AgIO -> AOG)
+            // Heading/Roll carry raw values with the typed validity flags set true (i.e. NOT the
+            // legacy 9999/8888 "N/A" sentinels), proving the bool+value sentinel fields round-trip.
             yield return new TestCaseData(
                 new PgnEnvelope
                 {
                     SchemaVersion = IpcConstants.SchemaVersion,
-                    SteerModuleResponse = new SteerModuleResponseMsg { ActualSteerAngle = -125, SwitchStatus = 3, Pwm = 180 }
+                    SteerModuleResponse = new SteerModuleResponseMsg
+                    {
+                        ActualSteerAngle = -125,
+                        Heading = 1234,
+                        Roll = -567,
+                        SwitchStatus = 3,
+                        Pwm = 180,
+                        HeadingValid = true,
+                        RollValid = true
+                    }
                 },
                 PgnEnvelope.PayloadOneofCase.SteerModuleResponse)
                 .SetName("RoundTrip_04_SteerModuleResponse_FD");

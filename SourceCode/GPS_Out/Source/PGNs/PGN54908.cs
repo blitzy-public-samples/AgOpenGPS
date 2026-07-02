@@ -318,23 +318,32 @@ namespace GPS_Out
         public bool ParseMessage(GpsPositionMsg msg)
         {
             // IPC-REFACTOR: CRC check removed — HTTP/2 frame integrity provides equivalent byte-level guarantees.
-            cLongitude = msg.Longitude;
-            cLatitude = msg.Latitude;
-            cHeadingDual = msg.HeadingDual;
-            cTrueHeading = msg.HeadingTrue;
-            cSpeed = msg.Speed;
-            cRoll = msg.Roll;
-            cAltitude = msg.Altitude;
-            cSatellites = (ushort)msg.Satellites;
-            cFixQuality = (byte)msg.FixQuality;
-            cHdopX100 = (ushort)msg.Hdop;
-            cAgeX100 = (ushort)msg.Age;
-            cImuHeading = (float)(msg.ImuHeading / 10.0);
-            cImuRoll = (short)msg.ImuRoll;
-            cImuPitch = (short)msg.ImuPitch;
-            cImuYaw = (ushort)msg.ImuYawRate;
-            ReceiveTime = DateTime.Now;
-            return true;
+            // IPC-REFACTOR: typed-path error handling via mf (was mf.Tls.GoodCRC in the removed byte parser).
+            try
+            {
+                cLongitude = msg.Longitude;
+                cLatitude = msg.Latitude;
+                cHeadingDual = msg.HeadingDual;
+                cTrueHeading = msg.HeadingTrue;
+                cSpeed = msg.Speed;
+                cRoll = msg.Roll;
+                cAltitude = msg.Altitude;
+                cSatellites = (ushort)msg.Satellites;
+                cFixQuality = (byte)msg.FixQuality;
+                cHdopX100 = (ushort)msg.Hdop;
+                cAgeX100 = (ushort)msg.Age;
+                cImuHeading = (float)(msg.ImuHeading / 10.0);
+                cImuRoll = (short)msg.ImuRoll;
+                cImuPitch = (short)msg.ImuPitch;
+                cImuYaw = (ushort)msg.ImuYawRate;
+                ReceiveTime = DateTime.Now;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                mf.Tls.WriteErrorLog("PGN54908/ParseMessage: " + ex.ToString());
+                return false;
+            }
         }
     }
 }

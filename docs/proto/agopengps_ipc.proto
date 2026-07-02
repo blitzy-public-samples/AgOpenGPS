@@ -100,12 +100,20 @@ message ImuDisconnectMsg {
 }
 
 // PGN 0xFD (253) - Steer Module Response, 14 bytes.
+// Sentinel modeling (AAP 0.3.3): the legacy 9999 (heading) and 8888 (roll) "N/A"
+// markers are preserved as typed bool+value semantics — heading_valid/roll_valid
+// are the availability flags and heading/roll carry the raw values — so consumers
+// detect "not available" via a typed flag instead of re-embedding the 9999/8888
+// magic numbers. Mirrors the bool+value pattern used by ImuDisconnectMsg above.
+// Producers set heading_valid = (raw != 9999) and roll_valid = (raw != 8888).
 message SteerModuleResponseMsg {
   sint32 actual_steer_angle = 1;  // bytes 5-6  (Int16, /100 for degrees)
-  sint32 heading            = 2;  // bytes 7-8  (Int16, 9999 = N/A)
-  sint32 roll               = 3;  // bytes 9-10 (Int16, 8888 = N/A)
+  sint32 heading            = 2;  // bytes 7-8  (Int16; raw value, valid only when heading_valid = true)
+  sint32 roll               = 3;  // bytes 9-10 (Int16; raw value, valid only when roll_valid = true)
   uint32 switch_status      = 4;  // byte 11 (bit0 = work switch, bit1 = steer switch)
   uint32 pwm                = 5;  // byte 12 (actual PWM output)
+  bool   heading_valid      = 6;  // false => heading carried the legacy 9999 "N/A" sentinel
+  bool   roll_valid         = 7;  // false => roll carried the legacy 8888 "N/A" sentinel
 }
 
 // PGN 0xFA (250) - Sensor Data, 6 bytes.
