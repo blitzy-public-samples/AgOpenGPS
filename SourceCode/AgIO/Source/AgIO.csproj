@@ -8,6 +8,10 @@
     <PublishDir>..\..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>AgIO_ico.ico</ApplicationIcon>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- IPC-REFACTOR: net8.0-windows retarget completion - enable WPF so System.Windows.Threading.Dispatcher
+         (used by FormSerialMonitor) resolves via the Windows Desktop framework reference; on net48 it came
+         from the implicit WindowsBase assembly. -->
+    <UseWPF>true</UseWPF>
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EmbeddedResourceUseDependentUponConvention>true</EmbeddedResourceUseDependentUponConvention>
@@ -20,7 +24,8 @@
 
   <ItemGroup>
     <Reference Include="System.Configuration" />
-    <Reference Include="WindowsBase" />
+    <!-- IPC-REFACTOR: explicit WindowsBase reference removed - it is now supplied by <UseWPF>true</UseWPF>
+         on net8.0-windows; keeping both caused an MSB3243 duplicate-assembly conflict. -->
   </ItemGroup>
 
   <ItemGroup>
@@ -33,6 +38,10 @@
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.6.0" />
     <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
+    <!-- IPC-REFACTOR: net8.0-windows retarget completion - SerialPort/SerialDataReceivedEventArgs left the
+         shared framework in .NET Core+, so the hardware serial path (SerialComm/NTRIPComm/FormSerialMonitor)
+         requires the out-of-band System.IO.Ports package. Not an IPC dependency; restores parity with net48. -->
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <!-- IPC-REFACTOR: gRPC server-hosting runtime (Grpc.AspNetCore) + build-time proto/gRPC codegen (Grpc.Tools). -->
     <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
     <PackageReference Include="Grpc.Tools" Version="2.81.1">
