@@ -383,6 +383,33 @@ namespace AgOpenGPS
                 token: _ipcCts.Token);
         }
 
+        // IPC-REFACTOR: gRPC-mode teardown counterpart to StartLoopbackServer. FormGPS.FinishShutdown previously only
+        // closed the legacy loopBackSocket, which is intentionally null in gRPC mode, so the TelemetryService stream
+        // subscription (the IpcTelemetrySubscriber background reader), its GrpcChannel, and the CancellationTokenSource
+        // were never cancelled or disposed on form close — leaving the subscription/channel running during shutdown.
+        // Cancel first (this signals the shared reader loop to stop), then dispose the channel and the CTS. The method
+        // is fully null-guarded and safe to call more than once and when the IPC client was never started.
+        public void StopLoopbackServer()
+        {
+            // Signal the background subscriber (started with _ipcCts.Token) to stop. Guard against a CTS that has
+            // already been disposed by a prior StopLoopbackServer call.
+            try
+            {
+                _ipcCts?.Cancel();
+            }
+            catch (ObjectDisposedException) { /* already disposed by a previous shutdown; nothing to cancel */ }
+
+            // Capture-then-null-then-dispose so a concurrent onChannel assignment or a repeat call cannot double-dispose.
+            CancellationTokenSource cts = _ipcCts;
+            _ipcCts = null;
+            cts?.Dispose();
+
+            GrpcChannel channel = _ipcChannel;
+            _ipcChannel = null;
+            _commandClient = null;
+            channel?.Dispose();
+        }
+
         private void DisableSim()
         {
             isFirstFixPositionSet = false;

@@ -255,14 +255,21 @@ message LatLonMsg {
 
 // PGN 0x64 (100) - Corrected Position (AOG -> AgIO).
 // NOTE: This PGN is NOT documented in docs/pgn-protocol.md byte tables.
-// Fields derived from AAP section 0.3.3 and cross-referenced against
-// SourceCode/GPS_Out/Source/PGNs/PGN100.cs:
-//   standard layout = 16 data bytes  -> longitude (offset 5-12), latitude (offset 13-20)
-//   extended layout = 24 data bytes  -> adds fix2fix_heading (offset 21-28)
+// Fields derived from AAP section 0.3.3 and cross-referenced against the
+// authoritative legacy producer SourceCode/GPS/Forms/Position.designer.cs and
+// the consumer SourceCode/GPS_Out/Source/PGNs/PGN100.cs.
+// The emitted frame is ALWAYS 30 bytes carrying 24 data bytes (length byte = 24):
+//   longitude       (offset 5-12),
+//   latitude        (offset 13-20),
+//   fix2fix_heading (offset 21-28).
+// All three doubles are always written, including when fix2fix_heading holds the
+// sentinel value 1000 (invalid heading). The heading and the length byte are part
+// of the firmware-facing byte contract and must not be dropped for the sentinel
+// case; the consumer treats 1000 as "invalid heading", it is never a shorter frame.
 message CorrectedPositionMsg {
-  double longitude       = 1;  // offset 5-12
-  double latitude        = 2;  // offset 13-20
-  double fix2fix_heading = 3;  // offset 21-28 (extended layout only; sentinel 1000 = invalid)
+  double longitude       = 1;  // offset 5-12 (always present)
+  double latitude        = 2;  // offset 13-20 (always present)
+  double fix2fix_heading = 3;  // offset 21-28 (always present; sentinel 1000 = invalid heading)
 }
 
 // =============================================================================

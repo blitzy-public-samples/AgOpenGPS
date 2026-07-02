@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using AgOpenGPS.Ipc;
 using NUnit.Framework;
 
 namespace AgOpenGPS.Tests
@@ -16,21 +17,34 @@ namespace AgOpenGPS.Tests
     /// 500 / 1000 / 2000 / 4000 / 8000 ms (base 500 ms, &#215;2 multiplier), computed as
     /// delay(n) = 500 * 2^(n-1) for n = 1..5, which sums to 15500 ms of accumulated wait.
     ///
-    /// There is no shared backoff helper type to exercise: the production loop is inline in the
-    /// WinForms FormGPS partial (UDPComm.Designer.cs) and is not a cleanly invokable unit. This
-    /// fixture therefore locks the arithmetic and the attempt count of the preserved schedule so
-    /// that any future drift in the client's backoff progression is caught immediately, without
-    /// incurring flaky multi-second real-time waits.
+    /// The production retry/backoff loop now lives in the shared
+    /// <see cref="AgOpenGPS.Ipc.IpcTelemetrySubscriber"/> (its <c>RunAsync</c> connect loop), which every
+    /// IPC client (GPS, AgDiag, GPS_Out, ModSim) delegates to. Its public
+    /// <see cref="AgOpenGPS.Ipc.IpcTelemetrySubscriber.MaxAttempts"/> and
+    /// <see cref="AgOpenGPS.Ipc.IpcTelemetrySubscriber.BaseDelayMs"/> constants are the single source of
+    /// truth for the schedule (the production loop applies the doubling as <c>BaseDelayMs * (1 &lt;&lt; attempt)</c>).
+    /// This fixture binds its own constants to those shared production values and locks the arithmetic and
+    /// attempt count of the preserved schedule so that any future drift in the client's backoff progression
+    /// is caught immediately, without incurring flaky multi-second real-time waits.
     /// </summary>
     public class RetryBackoffIpcTests
     {
-        /// <summary>Maximum number of connection attempts before the error is surfaced.</summary>
-        private const int MaxAttempts = 5;
+        /// <summary>
+        /// Maximum number of connection attempts before the error is surfaced, bound to the shared
+        /// production constant so this guard tracks the real schedule instead of a duplicated literal.
+        /// </summary>
+        private const int MaxAttempts = IpcTelemetrySubscriber.MaxAttempts;
 
-        /// <summary>Base (first-attempt) backoff delay, in milliseconds.</summary>
-        private const int BaseDelayMs = 500;
+        /// <summary>
+        /// Base (first-attempt) backoff delay in milliseconds, bound to the shared production constant.
+        /// </summary>
+        private const int BaseDelayMs = IpcTelemetrySubscriber.BaseDelayMs;
 
-        /// <summary>Exponential growth factor applied to the delay after each attempt.</summary>
+        /// <summary>
+        /// Exponential growth factor applied after each attempt. The shared production loop expresses this
+        /// as <c>BaseDelayMs * (1 &lt;&lt; attempt)</c> — an inherent doubling; this constant makes the
+        /// &#215;2 progression explicit for the schedule reconstruction below.
+        /// </summary>
         private const int Multiplier = 2;
 
         /// <summary>

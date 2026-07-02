@@ -1,6 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- IPC-REFACTOR: retargeted net48 -> net8.0-windows (consequence of the AAP 0.1.3 / 0.6.4 #1 host-retarget
+         deviation). GPS_Out is a passive-observer gRPC CLIENT; on netstandard2.0 (net48) the loopback UDS/named-pipe
+         HTTP/2 transport cannot be built (SocketsHttpHandler.ConnectCallback is .NET 6+ only), so the migrated IPC
+         subscription could not connect at runtime. Retargeting to net8.0-windows makes GPS_Out consume the .NET 8
+         AgOpenGPS.Ipc target and its fully functional ConnectCallback transport. GPS_Out is a leaf WinExe (nothing
+         references it) and references only AgOpenGPS.Ipc, so the retarget is isolated. WinForms UI is preserved. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
     <PublishDir>..\..\..\AgOpenGPS\</PublishDir>
     <ApplicationIcon>satellite.ico</ApplicationIcon>
@@ -14,6 +21,15 @@
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.6.0" />
     <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
+    <!-- IPC-REFACTOR: System.IO.Ports 8.0.0 is a FRAMEWORK-PARITY SHIM, NOT a new IPC/feature dependency, and is a
+         direct, unavoidable consequence of the net48 -> net8.0-windows retarget above (itself the AAP 0.1.3 / 0.6.4
+         #1 deviation). On net48 the GPS_Out serial-output path (Source\Classes\SerialSend.cs, Source\Form1.cs) bound
+         System.IO.Ports.SerialPort from the built-in System.IO.Ports.dll; in .NET Core+ that type was removed from
+         the shared framework and ships ONLY via this out-of-band package. It adds no new capability — it restores the
+         exact net48 SerialPort surface the existing hardware serial-output path already depends on. No in-framework
+         alternative exists on net8.0. Version 8.0.0 matches the .NET 8 retarget line and the AgIO host's pin; ADR-006
+         pinning is preserved. -->
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <!-- IPC-REFACTOR: gRPC client runtime for GPS_Out passive-observer subscription to TelemetryService. -->
     <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
   </ItemGroup>

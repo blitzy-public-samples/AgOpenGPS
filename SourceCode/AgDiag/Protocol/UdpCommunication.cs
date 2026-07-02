@@ -32,13 +32,27 @@ namespace AgDiag.Protocol
         public void LoadLoopback()
         {
             // IPC-REFACTOR: UDP loopback listener replaced by TelemetryService.StreamTelemetry subscription (same LongRunning background-task model).
+            // IPC-REFACTOR: recreate the CancellationTokenSource when a prior CloseLoopback disposed+nulled it, so a
+            // LoadLoopback -> CloseLoopback -> LoadLoopback cycle remains safe (no use of a disposed CTS).
+            if (_cancellationTokenSource == null)
+            {
+                _cancellationTokenSource = new CancellationTokenSource();
+            }
             var cancellationToken = _cancellationTokenSource.Token;
             Task.Factory.StartNew(() => SubscribeLoopAsync(cancellationToken), cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
 
         public void CloseLoopback()
         {
-            _cancellationTokenSource.Cancel();
+            // IPC-REFACTOR: cancel, then dispose AND null the CancellationTokenSource (previously it was cancelled but
+            // never disposed/nulled, leaking the CTS). LoadLoopback recreates it when null, so repeated Load/Close
+            // cycles remain safe. Guarded so CloseLoopback is idempotent.
+            if (_cancellationTokenSource != null)
+            {
+                _cancellationTokenSource.Cancel();
+                _cancellationTokenSource.Dispose();
+                _cancellationTokenSource = null;
+            }
             // IPC-REFACTOR: also dispose the gRPC channel on shutdown (replaces the UdpClient using-block disposal).
             _channel?.Dispose();
             _channel = null;

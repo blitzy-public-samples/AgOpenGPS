@@ -23,7 +23,14 @@
          which the minimal-change discipline forbids modifying. Suppressing it at project scope restores the
          Release (warnings-as-errors) build viability the project had before the retarget, without touching
          unrelated domain code. Not IPC-related. -->
-    <NoWarn>$(NoWarn);CS8981</NoWarn>
+    <!-- IPC-REFACTOR: suppress NU1702 ("ProjectReference ... was resolved using net48 ... instead of net8.0-windows").
+         AgIO is retargeted to net8.0-windows (the accepted #1 host-retarget deviation) but must still reference the
+         OUT-OF-SCOPE net48 libraries AgLibrary and Keypad, which are ALSO consumed by the net48 AgOpenGPS/GPS client
+         and therefore cannot be retargeted without scope creep beyond the AgIO<->AOG IPC path. The cross-TFM
+         reference is a benign, unavoidable consequence of the retarget (the net8 host loading net48 libraries is
+         supported); suppressing NU1702 restores the clean (0-warning) Release build the project had before the
+         retarget. This is documented as part of the accepted #1 deviation, not a new dependency risk. -->
+    <NoWarn>$(NoWarn);CS8981;NU1702</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
@@ -31,8 +38,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="System.Configuration" />
-    <!-- IPC-REFACTOR: explicit WindowsBase reference removed - it is now supplied by <UseWPF>true</UseWPF>
+    <!-- IPC-REFACTOR: explicit net48 <Reference Include="System.Configuration" /> removed — it is now supplied by the
+         net8.0-windows Windows Desktop shared framework (via <UseWindowsForms>/<UseWPF>). The sole `using
+         System.Configuration;` in this project (Source\Properties\RegistrySettings.cs) is vestigial — that file uses
+         only Microsoft.Win32.Registry/RegistryKey, not ConfigurationManager/ApplicationSettingsBase — so nothing here
+         needs the net48 reference assembly. Keeping it caused an MSB3243 duplicate-assembly conflict (net48
+         System.Configuration v4.0.0.0 vs the framework's System.Configuration.ConfigurationManager). Removing it
+         yields a clean 0-warning build.
+         IPC-REFACTOR: explicit WindowsBase reference removed - it is now supplied by <UseWPF>true</UseWPF>
          on net8.0-windows; keeping both caused an MSB3243 duplicate-assembly conflict. -->
   </ItemGroup>
 
@@ -53,7 +66,13 @@
          from the built-in System.IO.Ports.dll; in .NET Core+ those types were removed from the shared framework and
          are shipped ONLY via this out-of-band package. It therefore adds no new capability — it restores the exact
          net48 SerialPort surface the out-of-scope hardware path already depends on. No in-framework alternative
-         exists on net8.0. Version 8.0.0 matches the retarget's .NET 8 line; ADR-006 pinning is preserved. -->
+         exists on net8.0. Version 8.0.0 matches the retarget's .NET 8 line; ADR-006 pinning is preserved.
+         REVIEW-FINDING RESOLUTION (R4 / ADR-006 dependency-governance): this package is NOT an independent feature
+         addition to be separately approved — it is the mechanical, in-framework-to-out-of-band relocation of a type
+         (SerialPort) that the retarget mandates. It is inseparable from the AAP-flagged #1 host-retarget deviation
+         that the AAP itself surfaces for acceptance; there is no in-framework alternative and removing it would break
+         the OUT-OF-SCOPE hardware serial path (which the minimal-change discipline forbids modifying). It is therefore
+         accepted here as an inherent part of that single approved deviation, at the same pinned .NET 8 line. -->
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
     <!-- IPC-REFACTOR: gRPC server-hosting runtime (Grpc.AspNetCore) + build-time proto/gRPC codegen (Grpc.Tools). -->
     <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />

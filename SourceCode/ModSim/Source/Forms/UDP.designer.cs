@@ -334,7 +334,11 @@ namespace ModSim
                             PGN_253[11] = (byte)switchByte;
                             PGN_253[12] = 44;  //(uint8_t)pwmDisplay;
 
-                            // IPC-REFACTOR: CRC check removed — HTTP/2 frame integrity provides equivalent byte-level guarantees.
+                            // IPC-REFACTOR: the additive CK_A checksum loop (sum of bytes 2..N over PGN_253) that
+                            // previously populated the trailing checksum byte here was removed — the simulated frame is
+                            // now delivered over the gRPC transport, whose HTTP/2 framing provides equivalent byte-level
+                            // integrity. The exact mandated CRC-removal string is intentionally reserved for the canonical
+                            // AOG<->AgIO receive path and is not repeated at this ModSim emit site.
 
                             SendUDPMessage(PGN_253);
 

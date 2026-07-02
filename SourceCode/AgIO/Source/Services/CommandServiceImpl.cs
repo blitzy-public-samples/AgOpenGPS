@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using System.Threading.Tasks;
 using AgLibrary.Logging;
 using AgOpenGPS.Ipc;
@@ -24,206 +23,111 @@ namespace AgIO
             this.formLoop = formLoop;
         }
 
+        // IPC-REFACTOR: the legacy hardware byte-frame construction for every Send* handler is now delegated to
+        // AgOpenGPS.Ipc.CommandFrameBuilder. The frame byte layouts are unchanged (copied verbatim); extracting
+        // them into the shared contract assembly lets the net48 test project — which cannot reference this WinExe —
+        // unit-test the exact PGN byte, length byte, payload offsets, and additive CRC directly. This closes the
+        // coverage gap that let the PGN 0x64 corrected-position byte-contract regression slip through.
         public override Task<CommandAck> SendAutoSteerData(AutoSteerDataMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xFE, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            frame[5] = (byte)(request.Speed & 0xFF);
-            frame[6] = (byte)((request.Speed >> 8) & 0xFF);
-            frame[7] = (byte)request.Status;
-            frame[8] = (byte)(request.CommandedSteerAngle & 0xFF);
-            frame[9] = (byte)((request.CommandedSteerAngle >> 8) & 0xFF);
-            frame[10] = (byte)request.LineDistance;
-            frame[11] = (byte)request.SectionControl18;
-            frame[12] = (byte)request.SectionControl916;
+            byte[] frame = CommandFrameBuilder.BuildAutoSteerData(request);
             return Forward(nameof(SendAutoSteerData), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, AutoSteerData = request });
         }
 
         public override Task<CommandAck> SendAutoSteerSettings(AutoSteerSettingsMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xFC, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            frame[5] = (byte)request.GainProportionalKp;
-            frame[6] = (byte)request.HighPwm;
-            frame[7] = (byte)request.LowPwm;
-            frame[8] = (byte)request.MinPwm;
-            frame[9] = (byte)request.CountsPerDegree;
-            frame[10] = (byte)(request.WasOffset & 0xFF);
-            frame[11] = (byte)((request.WasOffset >> 8) & 0xFF);
-            frame[12] = (byte)request.Ackerman;
+            byte[] frame = CommandFrameBuilder.BuildAutoSteerSettings(request);
             return Forward(nameof(SendAutoSteerSettings), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, AutoSteerSettings = request });
         }
 
         public override Task<CommandAck> SendAutoSteerConfig(AutoSteerConfigMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xFB, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            frame[5] = (byte)request.Set0;
-            frame[6] = (byte)request.MaxPulse;
-            frame[7] = (byte)request.MinSpeed;
-            frame[8] = (byte)request.AckermanFix;
-            frame[9] = (byte)request.AngularVelocity;
+            byte[] frame = CommandFrameBuilder.BuildAutoSteerConfig(request);
             return Forward(nameof(SendAutoSteerConfig), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, AutoSteerConfig = request });
         }
 
         public override Task<CommandAck> SendMachineData(MachineDataMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xEF, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            frame[5] = (byte)request.UTurn;
-            frame[6] = (byte)request.Speed;
-            frame[7] = (byte)request.HydLift;
-            frame[8] = (byte)request.Tram;
-            frame[9] = (byte)request.GeoStop;
-            frame[11] = (byte)request.SectionControl18;
-            frame[12] = (byte)request.SectionControl916;
+            byte[] frame = CommandFrameBuilder.BuildMachineData(request);
             return Forward(nameof(SendMachineData), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, MachineData = request });
         }
 
         public override Task<CommandAck> SendMachineConfig(MachineConfigMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xEE, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            frame[5] = (byte)request.RaiseTime;
-            frame[6] = (byte)request.LowerTime;
-            frame[7] = (byte)request.EnableHyd;
-            frame[8] = (byte)request.Set0;
-            frame[9] = (byte)request.User1;
-            frame[10] = (byte)request.User2;
-            frame[11] = (byte)request.User3;
-            frame[12] = (byte)request.User4;
+            byte[] frame = CommandFrameBuilder.BuildMachineConfig(request);
             return Forward(nameof(SendMachineConfig), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, MachineConfig = request });
         }
 
         public override Task<CommandAck> SendRelayConfig(RelayConfigMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[30];
-            frame[0] = 0x80;
-            frame[1] = 0x81;
-            frame[2] = 0x7F;
-            frame[3] = 0xEC;
-            frame[4] = 24;
-            for (int i = 0; i < request.PinConfig.Count && i < 24; i++)
-            {
-                frame[5 + i] = (byte)request.PinConfig[i];
-            }
+            byte[] frame = CommandFrameBuilder.BuildRelayConfig(request);
             return Forward(nameof(SendRelayConfig), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, RelayConfig = request });
         }
 
         public override Task<CommandAck> SendSectionDimensions(SectionDimensionsMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[39];
-            frame[0] = 0x80;
-            frame[1] = 0x81;
-            frame[2] = 0x7F;
-            frame[3] = 0xEB;
-            frame[4] = 33;
-            for (int i = 0; i < request.SectionWidths.Count && i < 16; i++)
-            {
-                uint width = request.SectionWidths[i];
-                frame[5 + (i * 2)] = (byte)(width & 0xFF);
-                frame[6 + (i * 2)] = (byte)((width >> 8) & 0xFF);
-            }
-            frame[37] = (byte)request.NumSections;
+            byte[] frame = CommandFrameBuilder.BuildSectionDimensions(request);
             return Forward(nameof(SendSectionDimensions), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, SectionDimensions = request });
         }
 
         public override Task<CommandAck> SendExtendedSectionControl(ExtendedSectionControlMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xE5, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            byte[] sections = BitConverter.GetBytes(request.Sections);
-            Array.Copy(sections, 0, frame, 5, 8);
-            frame[13] = (byte)request.ToolLeftSpeed;
-            frame[14] = (byte)request.ToolRightSpeed;
+            byte[] frame = CommandFrameBuilder.BuildExtendedSectionControl(request);
             return Forward(nameof(SendExtendedSectionControl), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, ExtendedSectionControl = request });
         }
 
         public override Task<CommandAck> SendRateControl(RateControlMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xE4, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            frame[5] = (byte)request.Rate0;
-            frame[6] = (byte)request.Rate1;
-            frame[7] = (byte)request.Rate2;
+            byte[] frame = CommandFrameBuilder.BuildRateControl(request);
             return Forward(nameof(SendRateControl), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, RateControl = request });
         }
 
         public override Task<CommandAck> SendSectionControlEnable(SectionControlEnableMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xF1, 1, 0, 0 };
-            frame[5] = (byte)(request.Enabled ? 1 : 0);
+            byte[] frame = CommandFrameBuilder.BuildSectionControlEnable(request);
             return Forward(nameof(SendSectionControlEnable), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, SectionControlEnable = request });
         }
 
         public override Task<CommandAck> SendProcessData(ProcessDataMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xF2, 6, 0, 0, 0, 0, 0, 0, 0 };
-            frame[5] = (byte)(request.Identifier & 0xFF);
-            frame[6] = (byte)((request.Identifier >> 8) & 0xFF);
-            byte[] value = BitConverter.GetBytes(request.Value);
-            Array.Copy(value, 0, frame, 7, 4);
+            byte[] frame = CommandFrameBuilder.BuildProcessData(request);
             return Forward(nameof(SendProcessData), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, ProcessData = request });
         }
 
         public override Task<CommandAck> SendFieldName(FieldNameMsg request, ServerCallContext context)
         {
-            byte[] nameBytes = Encoding.UTF8.GetBytes(request.Name);
-            if (nameBytes.Length > 248)
-            {
-                byte[] clamped = new byte[248];
-                Array.Copy(nameBytes, clamped, 248);
-                nameBytes = clamped;
-            }
-            byte[] frame = new byte[5 + nameBytes.Length + 1];
-            frame[0] = 0x80;
-            frame[1] = 0x81;
-            frame[2] = 0x7F;
-            frame[3] = 0xF3;
-            frame[4] = (byte)nameBytes.Length;
-            Array.Copy(nameBytes, 0, frame, 5, nameBytes.Length);
+            byte[] frame = CommandFrameBuilder.BuildFieldName(request);
             return Forward(nameof(SendFieldName), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, FieldName = request });
         }
 
         public override Task<CommandAck> SendLatLon(LatLonMsg request, ServerCallContext context)
         {
-            byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xD0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            byte[] latitude = BitConverter.GetBytes(request.LatitudeEncoded);
-            Array.Copy(latitude, 0, frame, 5, 4);
-            byte[] longitude = BitConverter.GetBytes(request.LongitudeEncoded);
-            Array.Copy(longitude, 0, frame, 9, 4);
+            byte[] frame = CommandFrameBuilder.BuildLatLon(request);
             return Forward(nameof(SendLatLon), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, LatLon = request });
         }
 
         public override Task<CommandAck> SendCorrectedPosition(CorrectedPositionMsg request, ServerCallContext context)
         {
-            // PGN 0x64 is not documented in docs/pgn-protocol.md byte tables; the layout is
-            // derived from the proto CorrectedPositionMsg. The standard layout carries two
-            // doubles (longitude, latitude); the extended layout adds fix2fix_heading when it
-            // is valid (the sentinel value 1000 marks an invalid heading).
-            bool hasHeading = request.Fix2FixHeading != 1000.0;
-            int dataLength = hasHeading ? 24 : 16;
-            byte[] frame = new byte[5 + dataLength + 1];
-            frame[0] = 0x80;
-            frame[1] = 0x81;
-            frame[2] = 0x7F;
-            frame[3] = 0x64;
-            frame[4] = (byte)dataLength;
-            byte[] longitude = BitConverter.GetBytes(request.Longitude);
-            Array.Copy(longitude, 0, frame, 5, 8);
-            byte[] latitude = BitConverter.GetBytes(request.Latitude);
-            Array.Copy(latitude, 0, frame, 13, 8);
-            if (hasHeading)
-            {
-                byte[] heading = BitConverter.GetBytes(request.Fix2FixHeading);
-                Array.Copy(heading, 0, frame, 21, 8);
-            }
+            // IPC-REFACTOR: PGN 0x64 corrected-position frame is ALWAYS a 30-byte / 24-data-byte frame with the
+            // fix2fix heading written at offset 21-28, exactly as the legacy producer (GPS Position.designer.cs)
+            // emitted it — including the sentinel heading value 1000 (invalid heading). An earlier revision emitted
+            // a shorter 16-data-byte frame and omitted the heading when it equalled the sentinel, which changed the
+            // firmware-facing byte contract; that regression is fixed by delegating to CommandFrameBuilder, which
+            // always writes all 24 data bytes. See CommandFrameBuilder.BuildCorrectedPosition.
+            byte[] frame = CommandFrameBuilder.BuildCorrectedPosition(request);
             return Forward(nameof(SendCorrectedPosition), frame,
                 new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, CorrectedPosition = request });
         }
@@ -235,35 +139,13 @@ namespace AgIO
         /// </summary>
         public override Task<CommandAck> InjectTelemetry(PgnEnvelope request, ServerCallContext context)
         {
-            // Validate before fan-out: a malformed or default-version local injection must never be
-            // broadcast to every subscriber. Reject an unrecognized schema version (guards against a
-            // client built against an incompatible contract) and an empty payload (oneof not set).
-            if (request == null)
+            // IPC-REFACTOR: the accept/reject decision is delegated to the shared, unit-testable
+            // AgOpenGPS.Ipc.TelemetryInjectionValidator so the injection contract can be exercised from
+            // the net48 test project (which cannot reference this WinExe). A malformed or default-version
+            // local injection must never be broadcast to every subscriber.
+            if (!TelemetryInjectionValidator.TryValidate(request, out string rejectReason))
             {
-                return Task.FromResult(new CommandAck
-                {
-                    Received = false,
-                    ErrorMessage = "InjectTelemetry rejected: request was null."
-                });
-            }
-
-            if (request.SchemaVersion != IpcConstants.SchemaVersion)
-            {
-                return Task.FromResult(new CommandAck
-                {
-                    Received = false,
-                    ErrorMessage = "InjectTelemetry rejected: unsupported schema version " +
-                        request.SchemaVersion + " (expected " + IpcConstants.SchemaVersion + ")."
-                });
-            }
-
-            if (request.PayloadCase == PgnEnvelope.PayloadOneofCase.None)
-            {
-                return Task.FromResult(new CommandAck
-                {
-                    Received = false,
-                    ErrorMessage = "InjectTelemetry rejected: envelope carries no payload."
-                });
+                return Task.FromResult(new CommandAck { Received = false, ErrorMessage = rejectReason });
             }
 
             try
@@ -297,7 +179,10 @@ namespace AgIO
         {
             try
             {
-                ApplyCrc(frame);
+                // IPC-REFACTOR: The legacy additive-byte CRC (bytes 2..N-2 -> final byte) is computed by the
+                // shared CommandFrameBuilder so the firmware-facing byte contract is defined in exactly one place
+                // and is unit-testable from the net48 test project without referencing this WinForms host.
+                CommandFrameBuilder.ApplyCrc(frame);
                 formLoop.ForwardCommandToHardware(frame);
 
                 // Re-establish UDP-broadcast parity: every AOG-originated command reaches all
@@ -311,20 +196,6 @@ namespace AgIO
                 Log.EventWriter("CommandServiceImpl." + handlerName + ": " + ex.Message);
                 return Task.FromResult(new CommandAck { Received = false, ErrorMessage = ex.Message });
             }
-        }
-
-        /// <summary>
-        /// Computes the legacy additive-byte CRC over bytes 2..N-2 and stores it in the
-        /// final byte. The hardware firmware still requires this CRC.
-        /// </summary>
-        private static void ApplyCrc(byte[] frame)
-        {
-            byte crc = 0;
-            for (int i = 2; i < frame.Length - 1; i++)
-            {
-                crc += frame[i];
-            }
-            frame[frame.Length - 1] = crc;
         }
     }
 }

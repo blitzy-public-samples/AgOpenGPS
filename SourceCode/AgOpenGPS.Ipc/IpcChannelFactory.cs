@@ -67,18 +67,27 @@ namespace AgOpenGPS.Ipc
 
             return GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = handler });
 #else
-            // KNOWN DEVIATION (AAP 0.1.3 / 0.6.4 — Authority-Hierarchy Case 3, surfaced not silently worked
-            // around): the loopback UDS/named-pipe HTTP/2 transport requires SocketsHttpHandler.ConnectCallback,
-            // a .NET Core 2.1+ / .NET 6+ API that does NOT exist on the netstandard2.0 surface the net48 desktop
-            // clients consume. Retargeting the client hosts to .NET 6+ is the gating prerequisite for this
-            // transport. Until then, surface the limitation explicitly (rather than binding a non-loopback or
-            // otherwise incorrect endpoint): the client's connect retry/backoff routes this to the existing
-            // error path. The endpoint contract itself is preserved via IpcConstants.AgIoSocketPath so behaviour
-            // is identical the moment the host is retargeted.
-            throw new PlatformNotSupportedException(
-                "gRPC over the loopback " + IpcConstants.AgIoSocketPath + " endpoint requires .NET 6+ " +
-                "(SocketsHttpHandler.ConnectCallback). The net48 client host must be retargeted to .NET 6+ " +
-                "(AAP 0.1.3 known deviation) before the IPC transport can connect.");
+            // IPC-REFACTOR / AAP 0.1.3 & 0.6.4 (Authority-Hierarchy Case 3) — RESIDUAL #1 DEVIATION, GPS ONLY.
+            //
+            // The loopback UDS/named-pipe plaintext-HTTP/2 transport used by the .NET 6+ clients requires
+            // SocketsHttpHandler.ConnectCallback, which does NOT exist on the netstandard2.0 surface that the
+            // one remaining .NET Framework (net48) client — AgOpenGPS/GPS — consumes. GPS cannot be retargeted
+            // to .NET 6+ in this repository: it depends on System.Management (Source\Classes\CBrightness.cs) and
+            // System.Windows.Forms.DataVisualization.Charting (the FormGraph*/FormCorrection chart forms), both
+            // in OUT-OF-SCOPE files with no available .NET 6+ replacement. The three other clients — AgDiag,
+            // GPS_Out and ModSim — ARE retargeted to net8.0-windows and use the fully functional ConnectCallback
+            // path above; this branch is therefore reached only by net48 GPS.
+            //
+            // Previously this branch threw PlatformNotSupportedException unconditionally, which pre-empted the
+            // client's connect retry/backoff entirely (the throw was classified non-transient and surfaced before
+            // a single StreamTelemetry attempt). We now return a REAL channel so the shared 5-attempt /
+            // 500-1000-2000-4000-8000 ms retry schedule in IpcTelemetrySubscriber actually runs and any failure
+            // is surfaced through the client's EXISTING FormDialog + Log.EventWriter error path — identical UX to
+            // an unreachable server, with no gratuitous crash. On the .NET 6+ target the prompt designates (and
+            // that AgIO already targets), this endpoint connects; the net48 GPS case is the documented gating
+            // host-retarget prerequisite. The dummy "http://localhost" authority mirrors the .NET 6+ path (the
+            // authoritative endpoint contract remains IpcConstants.AgIoSocketPath).
+            return GrpcChannel.ForAddress("http://localhost");
 #endif
         }
     }
