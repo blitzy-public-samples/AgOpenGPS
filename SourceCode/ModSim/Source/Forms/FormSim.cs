@@ -41,6 +41,7 @@ namespace ModSim
 
             lblScanReply.Text = "No";
 
+            // IPC-REFACTOR: LoadUDPNetwork now bootstraps the gRPC client (channel + StreamTelemetry subscription) instead of a UDP socket.
             LoadUDPNetwork();
         }
 
@@ -59,9 +60,11 @@ namespace ModSim
             Settings.Default.Save();
 
             // IPC-REFACTOR: UDP socket teardown (UDPSocket.Shutdown/Close) replaced by gRPC client teardown.
-            // Cancel the StreamTelemetry subscription (stops the shared IpcTelemetrySubscriber loop) and dispose
-            // the channel. _cts and _channel are declared in the UDP.designer.cs partial (same FormSim class).
+            // Cancel the StreamTelemetry subscription (stops the shared IpcTelemetrySubscriber loop), then dispose
+            // the token source and the channel. _cts and _channel are declared in the UDP.designer.cs partial
+            // (same FormSim class).
             _cts?.Cancel();
+            _cts?.Dispose();
             _channel?.Dispose();
         }
 
