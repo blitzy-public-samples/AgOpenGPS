@@ -1,6 +1,9 @@
 ﻿using System.Drawing;
 using System;
 
+// IPC-REFACTOR: consume generated proto messages from the AgOpenGPS.Ipc contract.
+using AgOpenGPS.Ipc;
+
 namespace AgDiag.Protocol
 {
     public abstract class PgnBase
@@ -22,6 +25,7 @@ namespace AgDiag.Protocol
             return (Bytes[byteIndex] & (1 << bit)) != 0;
         }
 
+        // IPC-REFACTOR: legacy byte[] frame copy retained for transitional compatibility; the typed SetFromMessage overloads below are the gRPC PgnEnvelope entry points.
         public void SetBytesFromMessage(byte[] data)
         {
             Buffer.BlockCopy(data, 5, Bytes, 5, data.Length - 5);
@@ -64,6 +68,17 @@ namespace AgDiag.Protocol
 
                 return IsBitOn(sc1to8, section - 1);
             }
+
+            // IPC-REFACTOR: populate the frame buffer from the typed AutoSteerDataMsg (offsets match the getters; display parity preserved).
+            public void SetFromMessage(AutoSteerDataMsg msg)
+            {
+                Bytes[speedLo] = (byte)(msg.Speed & 0xFF);
+                Bytes[speedHi] = (byte)((msg.Speed >> 8) & 0xFF);
+                Bytes[status] = (byte)msg.Status;
+                Bytes[steerAngleLo] = (byte)(msg.CommandedSteerAngle & 0xFF);
+                Bytes[steerAngleHi] = (byte)((msg.CommandedSteerAngle >> 8) & 0xFF);
+                Bytes[sc1to8] = (byte)msg.SectionControl18;
+            }
         }
 
         //From steer module
@@ -89,6 +104,19 @@ namespace AgDiag.Protocol
             public byte PWM => GetByte(pwm);
             public bool IsWorkSwitchOn => IsBitOn(switchStatus, 0);
             public bool IsSteerSwitchOn => IsBitOn(switchStatus, 1);
+
+            // IPC-REFACTOR: populate the frame buffer from the typed SteerModuleResponseMsg (offsets match the getters; display parity preserved).
+            public void SetFromMessage(SteerModuleResponseMsg msg)
+            {
+                Bytes[actualLo] = (byte)(msg.ActualSteerAngle & 0xFF);
+                Bytes[actualHi] = (byte)((msg.ActualSteerAngle >> 8) & 0xFF);
+                Bytes[headLo] = (byte)(msg.Heading & 0xFF);
+                Bytes[headHi] = (byte)((msg.Heading >> 8) & 0xFF);
+                Bytes[rollLo] = (byte)(msg.Roll & 0xFF);
+                Bytes[rollHi] = (byte)((msg.Roll >> 8) & 0xFF);
+                Bytes[switchStatus] = (byte)msg.SwitchStatus;
+                Bytes[pwm] = (byte)msg.Pwm;
+            }
         }
 
         //AutoSteer Settings
@@ -119,6 +147,19 @@ namespace AgDiag.Protocol
             public byte CountsPerDegree => GetByte(countsPerDegree);
             public int SteerOffset => GetInt(wasOffsetLo, wasOffsetHi);
             public byte Ackerman => GetByte(ackerman);
+
+            // IPC-REFACTOR: populate the frame buffer from the typed AutoSteerSettingsMsg (offsets match the getters; display parity preserved).
+            public void SetFromMessage(AutoSteerSettingsMsg msg)
+            {
+                Bytes[gainProportional] = (byte)msg.GainProportionalKp;
+                Bytes[highPWM] = (byte)msg.HighPwm;
+                Bytes[lowPWM] = (byte)msg.LowPwm;
+                Bytes[minPWM] = (byte)msg.MinPwm;
+                Bytes[countsPerDegree] = (byte)msg.CountsPerDegree;
+                Bytes[wasOffsetLo] = (byte)(msg.WasOffset & 0xFF);
+                Bytes[wasOffsetHi] = (byte)((msg.WasOffset >> 8) & 0xFF);
+                Bytes[ackerman] = (byte)msg.Ackerman;
+            }
         }
 
         //Autosteer Board Config
@@ -140,6 +181,14 @@ namespace AgDiag.Protocol
             public byte Set0 => GetByte(set0);
             public byte MaxPulse => GetByte(maxPulse);
             public byte MinSpeed => GetByte(minSpeed);
+
+            // IPC-REFACTOR: populate the frame buffer from the typed AutoSteerConfigMsg (offsets match the getters; display parity preserved).
+            public void SetFromMessage(AutoSteerConfigMsg msg)
+            {
+                Bytes[set0] = (byte)msg.Set0;
+                Bytes[maxPulse] = (byte)msg.MaxPulse;
+                Bytes[minSpeed] = (byte)msg.MinSpeed;
+            }
         }
 
         //Machine Data
@@ -157,6 +206,12 @@ namespace AgDiag.Protocol
             }
 
             public byte Speed => GetByte(speed);
+
+            // IPC-REFACTOR: populate the frame buffer from the typed MachineDataMsg (Speed backs the UI getter; offset matches).
+            public void SetFromMessage(MachineDataMsg msg)
+            {
+                Bytes[speed] = (byte)msg.Speed;
+            }
         }
 
         //Machine Config

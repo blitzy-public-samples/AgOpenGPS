@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Text;
+// IPC-REFACTOR: typed outbound message builders for CommandService (replaces raw UDP byte frames).
+using AgOpenGPS.Ipc;
 
 namespace AgOpenGPS
 {
@@ -495,5 +498,187 @@ namespace AgOpenGPS
         /// </summary>
         //public CPGN_D0 p_208 = new CPGN_D0();
 
+        // IPC-REFACTOR: byte[] -> typed CommandService message builders; consumed by SendPgnToLoop hub in UDPComm.Designer.cs.
+        // Each builder reads the fully-populated legacy frame `d` (the same array formerly handed to the UDP send path)
+        // at the documented byte offsets and returns the strongly-typed AgOpenGPS.Ipc message. Byte offsets and scaling
+        // are the contract source of truth in docs/pgn-protocol.md; the // PGN 0xNN comments preserve byte-table traceability.
+        // Nested + private keeps these helpers off the public surface (existing CPGN_* public API is unchanged).
+        private static class OutboundPgn
+        {
+            // PGN 0xFE (254) - AutoSteer Data, 14 bytes. speedLo@5/speedHi@6, status@7,
+            // steerAngleLo@8/steerAngleHi@9 (signed Int16), lineDistance@10 (offset-encoded 0..255, unsigned),
+            // section control 1-8 @11, 9-16 @12.
+            internal static AutoSteerDataMsg BuildAutoSteerData(byte[] d)
+            {
+                return new AutoSteerDataMsg
+                {
+                    Speed = (uint)(d[5] | (d[6] << 8)),
+                    Status = d[7],
+                    CommandedSteerAngle = (int)(short)(d[8] | (d[9] << 8)),
+                    LineDistance = d[10],
+                    SectionControl18 = d[11],
+                    SectionControl916 = d[12]
+                };
+            }
+
+            // PGN 0xFC (252) - AutoSteer Settings, 14 bytes. wasOffset is lo@10/hi@11 combined.
+            internal static AutoSteerSettingsMsg BuildAutoSteerSettings(byte[] d)
+            {
+                return new AutoSteerSettingsMsg
+                {
+                    GainProportionalKp = d[5],
+                    HighPwm = d[6],
+                    LowPwm = d[7],
+                    MinPwm = d[8],
+                    CountsPerDegree = d[9],
+                    WasOffset = (uint)(d[10] | (d[11] << 8)),
+                    Ackerman = d[12]
+                };
+            }
+
+            // PGN 0xFB (251) - AutoSteer Config, 14 bytes.
+            internal static AutoSteerConfigMsg BuildAutoSteerConfig(byte[] d)
+            {
+                return new AutoSteerConfigMsg
+                {
+                    Set0 = d[5],
+                    MaxPulse = d[6],
+                    MinSpeed = d[7],
+                    AckermanFix = d[8],
+                    AngularVelocity = d[9]
+                };
+            }
+
+            // PGN 0xEF (239) - Machine Data, 14 bytes. Byte 10 is reserved (not mapped).
+            internal static MachineDataMsg BuildMachineData(byte[] d)
+            {
+                return new MachineDataMsg
+                {
+                    UTurn = d[5],
+                    Speed = d[6],
+                    HydLift = d[7],
+                    Tram = d[8],
+                    GeoStop = d[9],
+                    SectionControl18 = d[11],
+                    SectionControl916 = d[12]
+                };
+            }
+
+            // PGN 0xEE (238) - Machine Config, 14 bytes.
+            internal static MachineConfigMsg BuildMachineConfig(byte[] d)
+            {
+                return new MachineConfigMsg
+                {
+                    RaiseTime = d[5],
+                    LowerTime = d[6],
+                    EnableHyd = d[7],
+                    Set0 = d[8],
+                    User1 = d[9],
+                    User2 = d[10],
+                    User3 = d[11],
+                    User4 = d[12]
+                };
+            }
+
+            // PGN 0xEC (236) - Relay Config, 29 bytes. 24 relay pin values @5..28 (order preserved).
+            internal static RelayConfigMsg BuildRelayConfig(byte[] d)
+            {
+                RelayConfigMsg m = new RelayConfigMsg();
+                for (int i = 0; i < 24; i++)
+                {
+                    m.PinConfig.Add(d[5 + i]);
+                }
+                return m;
+            }
+
+            // PGN 0xEB (235) - Section Dimensions, 38 bytes. 16 lo/hi width pairs @5..36, numSections@37.
+            internal static SectionDimensionsMsg BuildSectionDimensions(byte[] d)
+            {
+                SectionDimensionsMsg m = new SectionDimensionsMsg
+                {
+                    NumSections = d[37]
+                };
+                for (int i = 0; i < 16; i++)
+                {
+                    m.SectionWidths.Add((uint)(d[5 + (i * 2)] | (d[6 + (i * 2)] << 8)));
+                }
+                return m;
+            }
+
+            // PGN 0xE5 (229) - Section Control (Extended), 16 bytes. 8 bitmask bytes @5..12 = up to 64 sections.
+            internal static ExtendedSectionControlMsg BuildExtendedSectionControl(byte[] d)
+            {
+                return new ExtendedSectionControlMsg
+                {
+                    Sections = (ulong)d[5] | ((ulong)d[6] << 8) | ((ulong)d[7] << 16) | ((ulong)d[8] << 24) | ((ulong)d[9] << 32) | ((ulong)d[10] << 40) | ((ulong)d[11] << 48) | ((ulong)d[12] << 56),
+                    ToolLeftSpeed = d[13],
+                    ToolRightSpeed = d[14]
+                };
+            }
+
+            // PGN 0xE4 (228) - Rate Control, 14 bytes.
+            internal static RateControlMsg BuildRateControl(byte[] d)
+            {
+                return new RateControlMsg
+                {
+                    Rate0 = d[5],
+                    Rate1 = d[6],
+                    Rate2 = d[7]
+                };
+            }
+
+            // PGN 0xF1 (241) - Section Control Enable Request (AOG -> TC), 7 bytes.
+            internal static SectionControlEnableMsg BuildSectionControlEnable(byte[] d)
+            {
+                return new SectionControlEnableMsg
+                {
+                    Enabled = d[5] != 0
+                };
+            }
+
+            // PGN 0xF2 (242) - Process Data (AOG -> TC), 12 bytes. identifier@5-6, value@7-10 (Int32).
+            internal static ProcessDataMsg BuildProcessData(byte[] d)
+            {
+                return new ProcessDataMsg
+                {
+                    Identifier = (uint)(d[5] | (d[6] << 8)),
+                    Value = d[7] | (d[8] << 8) | (d[9] << 16) | (d[10] << 24)
+                };
+            }
+
+            // PGN 0xF3 (243) - Field Name (AOG -> TC), variable length. len@4, UTF-8 name @5.., empty = field closed, max 248.
+            internal static FieldNameMsg BuildFieldName(byte[] d)
+            {
+                int available = Math.Max(0, d.Length - 5);
+                int len = Math.Min(d[4], available);
+                return new FieldNameMsg
+                {
+                    Name = len > 0 ? Encoding.UTF8.GetString(d, 5, len) : string.Empty
+                };
+            }
+
+            // PGN 0xD0 (208) - Latitude/Longitude, 14 bytes. Encoded Int32 lat@5..8, lon@9..12.
+            internal static LatLonMsg BuildLatLon(byte[] d)
+            {
+                return new LatLonMsg
+                {
+                    LatitudeEncoded = d[5] | (d[6] << 8) | (d[7] << 16) | (d[8] << 24),
+                    LongitudeEncoded = d[9] | (d[10] << 8) | (d[11] << 16) | (d[12] << 24)
+                };
+            }
+
+            // PGN 0x64 (100) - Corrected Position (AOG -> AgIO), byte[30]. double longitude@5, latitude@13, fix2fixHeading@21.
+            // Built by Position.designer.cs via BitConverter.GetBytes(double); read back symmetrically here.
+            // Sentinel Fix2FixHeading == 1000 marks an invalid heading; it is passed through unchanged for the consumer to interpret.
+            internal static CorrectedPositionMsg BuildCorrectedPosition(byte[] d)
+            {
+                return new CorrectedPositionMsg
+                {
+                    Longitude = BitConverter.ToDouble(d, 5),
+                    Latitude = BitConverter.ToDouble(d, 13),
+                    Fix2FixHeading = BitConverter.ToDouble(d, 21)
+                };
+            }
+        }
     }
 }

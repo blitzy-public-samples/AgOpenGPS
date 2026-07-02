@@ -1,27 +1,39 @@
 ﻿using System;
+using System.IO;
+using System.IO.Pipes;
 using System.Net;
+using System.Net.Http;
+// IPC-REFACTOR: System.Net.Sockets retained ONLY for the Unix-domain-socket connect callback (legacy UDP receive/send sockets removed).
 using System.Net.Sockets;
-// IPC-REFACTOR: consume the generated GpsPositionMsg/CorrectedPositionMsg types from the AgOpenGPS.Ipc contract.
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+// IPC-REFACTOR: gRPC client + proto contract usings replace the UDP transport.
 using AgOpenGPS.Ipc;
+using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
+using Grpc.Net.Client;
 
 namespace GPS_Out
 {
     public class UDPComm
     {
         private readonly frmStart mf;
-        private byte[] buffer = new byte[1024];
+
+        // IPC-REFACTOR: 1024-byte UDP receive buffer removed — gRPC HTTP/2 framing owns buffering now.
         private string cConnectionName;
         private bool cIsUDPSendConnected;
         private string cLog;
         private IPAddress cNetworkEP;
-        private int cReceivePort;   // local ports must be unique for each app on same pc and each class instance
-        private int cSendFromPort;
-        private int cSendToPort;
-        private IPAddress cSourceIP;
+        private int cReceivePort;   // IPC-REFACTOR: retained for API compatibility with Form1 (no longer used for UDP binding).
+        private int cSendFromPort;  // IPC-REFACTOR: retained for API compatibility with Form1 (no longer used for UDP binding).
+        private int cSendToPort;    // IPC-REFACTOR: retained for API compatibility with Form1 (no longer used for UDP binding).
+        private IPAddress cSourceIP; // IPC-REFACTOR: still assigned by SetSourceIP; no longer used for UDP binding.
         private string cSubNet;
-        private HandleDataDelegateObj HandleDataDelegate = null;
-        private Socket recvSocket;
-        private Socket sendSocket;
+
+        // IPC-REFACTOR: gRPC channel + cancellation for the background StreamTelemetry subscriber (replaces recvSocket/sendSocket).
+        private GrpcChannel _channel;
+        private CancellationTokenSource _cts;
 
         public UDPComm(frmStart CallingForm, int ReceivePort, int SendToPort, int SendFromPort,
             string ConnectionName, string SourceIPaddress, string DestinationEndPoint = "")
@@ -35,8 +47,7 @@ namespace GPS_Out
             SetSourceIP(SourceIPaddress);
         }
 
-        // Status delegate
-        private delegate void HandleDataDelegateObj(int port, byte[] msg);
+        // IPC-REFACTOR: HandleDataDelegate field and its HandleDataDelegateObj delegate type removed — the stream-reader task calls HandleData directly (no UI marshaling needed).
 
         public bool IsUDPSendConnected { get => cIsUDPSendConnected; set => cIsUDPSendConnected = value; }
 
@@ -60,31 +71,23 @@ namespace GPS_Out
         {
             try
             {
-                // initialize the delegate which updates the message received
-                HandleDataDelegate = HandleData;
-
-                // initialize the receive socket
-                recvSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                recvSocket.Bind(new IPEndPoint(cSourceIP, cReceivePort));
-
-                // initialize the send socket
-                sendSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-
-                // Initialise the IPEndPoint for the server to send on port
-                IPEndPoint server = new IPEndPoint(IPAddress.Any, cSendFromPort);
-                sendSocket.Bind(server);
-
-                // Initialise the IPEndPoint for the client - async listner client only!
-                EndPoint client = new IPEndPoint(IPAddress.Any, 0);
-
-                // Start listening for incoming data
-                recvSocket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref client, new AsyncCallback(ReceiveData), recvSocket);
-                IsUDPSendConnected = true;
+                // IPC-REFACTOR: UDP loopback receive socket + BeginReceiveFrom replaced by a background TelemetryService.StreamTelemetry gRPC subscriber.
+                _cts = new CancellationTokenSource();
+                Task.Factory.StartNew(() => SubscribeLoopAsync(_cts.Token),
+                    _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
             catch (Exception e)
             {
                 mf.Tls.WriteErrorLog("UDPcomm/StartUDPServer: \n" + e.Message);
             }
+        }
+
+        // IPC-REFACTOR: cancellation-based teardown replaces implicit socket disposal (additive public method; not part of the legacy contract).
+        public void Stop()
+        {
+            _cts?.Cancel();
+            _channel?.Dispose();
+            _channel = null;
         }
 
         private void AddToLog(string NewData)
@@ -97,120 +100,114 @@ namespace GPS_Out
             cLog = cLog.Replace("\0", string.Empty);
         }
 
-        private void HandleData(int Port, byte[] Data)
+        // IPC-REFACTOR: GrpcChannel over the loopback UDS/named-pipe at IpcConstants.AgIoSocketPath; OS-branched connect callback. Loopback-only, no TLS, no auth (parity with the legacy UDP loopback posture).
+        // FEASIBILITY DEVIATION (AAP 0.1.3/0.6.4): SocketsHttpHandler.ConnectCallback / UnixDomainSocketEndPoint target the .NET 6+ host the prompt designates; GPS_Out stays net48 pending the AgIO host retarget (do not work around).
+        private static GrpcChannel CreateChannel()
+        {
+            var handler = new SocketsHttpHandler
+            {
+                ConnectCallback = async (context, cancellationToken) =>
+                {
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {
+                        // IPC-REFACTOR: Windows loopback transport = named pipe (matches the tail of IpcConstants.AgIoSocketPath and the AgIO server pipe).
+                        var pipe = new NamedPipeClientStream(".", "agopengps_ipc", PipeDirection.InOut, PipeOptions.Asynchronous);
+                        await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                        return pipe;
+                    }
+
+                    // IPC-REFACTOR: Linux/macOS loopback transport = Unix domain socket at IpcConstants.AgIoSocketPath.
+                    var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                    await socket.ConnectAsync(new UnixDomainSocketEndPoint(IpcConstants.AgIoSocketPath)).ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+            };
+
+            return GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = handler });
+        }
+
+        // IPC-REFACTOR: replaces ReceiveData/BeginReceiveFrom with a resilient StreamTelemetry subscriber; handles the AgIO auto-start race via connect retry/backoff.
+        private async Task SubscribeLoopAsync(CancellationToken token)
+        {
+            // IPC-REFACTOR: bind-failure log replaced by connect retry/backoff (5 attempts, 500..8000 ms) before surfacing via mf.Tls.WriteErrorLog.
+            const int maxAttempts = 5;
+            for (int attempt = 1; attempt <= maxAttempts && !token.IsCancellationRequested; attempt++)
+            {
+                try
+                {
+                    _channel = CreateChannel();
+                    var client = new TelemetryService.TelemetryServiceClient(_channel);
+                    using (var call = client.StreamTelemetry(new Empty(), cancellationToken: token))
+                    {
+                        IsUDPSendConnected = true; // IPC-REFACTOR: flag now means "IPC connected".
+
+                        // IPC-REFACTOR: gRPC server-stream read replaces the UDP BeginReceiveFrom/ReceiveData callback loop; typed envelopes dispatched below.
+                        await foreach (var envelope in call.ResponseStream.ReadAllAsync(token).ConfigureAwait(false))
+                        {
+                            // IPC-REFACTOR: direct call from the stream-reader task; typed-ingest (PGN54908/PGN100.ParseMessage) sets fields + timestamp only (no UI), so mf.Invoke UI marshaling is unnecessary.
+                            HandleData(envelope);
+                        }
+                    }
+
+                    return; // IPC-REFACTOR: stream completed (server closed) — normal termination.
+                }
+                catch (OperationCanceledException)
+                {
+                    return; // IPC-REFACTOR: cancellation is normal shutdown.
+                }
+                catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && token.IsCancellationRequested)
+                {
+                    return; // IPC-REFACTOR: stream cancelled by our own Stop()/teardown.
+                }
+                catch (Exception ex) when (ex is RpcException || ex is SocketException || ex is IOException)
+                {
+                    // IPC-REFACTOR: transient connect/stream failure (e.g. server not yet listening during AgIO auto-start) — back off and retry.
+                    IsUDPSendConnected = false;
+                    _channel?.Dispose();
+                    _channel = null;
+
+                    if (attempt >= maxAttempts)
+                    {
+                        mf.Tls.WriteErrorLog("UDPcomm/SubscribeLoop: " + ex.Message); // IPC-REFACTOR: preserved bind-failure UX via the existing error log (was the legacy StartUDPServer catch).
+                        return;
+                    }
+
+                    try
+                    {
+                        await Task.Delay(500 << (attempt - 1), token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return; // IPC-REFACTOR: cancelled while backing off — normal shutdown.
+                    }
+                }
+            }
+        }
+
+        // IPC-REFACTOR: byte-keyed switch(PGN)/switch(SubPGN) dispatch replaced by typed switch(envelope.PayloadCase); observes exactly the two payloads the legacy listener handled.
+        private void HandleData(PgnEnvelope envelope)
         {
             try
             {
-                if (Data.Length > 1)
+                switch (envelope.PayloadCase)
                 {
-                    int PGN = Data[1] << 8 | Data[0];
-                    AddToLog("< " + PGN.ToString());
+                    case PgnEnvelope.PayloadOneofCase.GpsPosition:       // IPC-REFACTOR: was SubPGN 54908 / 0xD67C -> mf.AGIOdata.ParseByteData(Data).
+                        AddToLog("< " + envelope.PayloadCase);
+                        mf.AGIOdata.ParseMessage(envelope.GpsPosition);
+                        break;
 
-                    switch (PGN)
-                    {
-                        case 33152: // AOG, 0x8180
-                            int SubPGN = Data[3] << 8 | Data[2];
-                            switch (SubPGN)
-                            {
-                                case 54908: // 0xD67C, AGIO NEMA translation
-                                    // IPC-REFACTOR: adapt the received byte frame into the typed GpsPositionMsg and
-                                    // dispatch to the migrated typed parser (PGN54908.ParseMessage). The AgIO->AOG
-                                    // telemetry transport is still UDP at this milestone (no gRPC server host exists yet,
-                                    // and net48 has no native Unix-domain-socket gRPC transport per the #1 host-retarget
-                                    // deviation), so this transport-side byte->typed bridge preserves the exact 0xD67C
-                                    // field layout; the full StreamTelemetry subscriber can replace it post-retarget
-                                    // without changing PGN54908.
-                                    if (Data.Length >= 56)
-                                    {
-                                        mf.AGIOdata.ParseMessage(new GpsPositionMsg
-                                        {
-                                            Longitude = BitConverter.ToDouble(Data, 5),
-                                            Latitude = BitConverter.ToDouble(Data, 13),
-                                            HeadingDual = BitConverter.ToSingle(Data, 21),
-                                            HeadingTrue = BitConverter.ToSingle(Data, 25),
-                                            Speed = BitConverter.ToSingle(Data, 29),
-                                            Roll = BitConverter.ToSingle(Data, 33),
-                                            Altitude = BitConverter.ToSingle(Data, 37),
-                                            Satellites = BitConverter.ToUInt16(Data, 41),
-                                            FixQuality = Data[43],
-                                            Hdop = BitConverter.ToUInt16(Data, 44),
-                                            Age = BitConverter.ToUInt16(Data, 46),
-                                            ImuHeading = BitConverter.ToUInt16(Data, 48),
-                                            ImuRoll = BitConverter.ToInt16(Data, 50),
-                                            ImuPitch = BitConverter.ToInt16(Data, 52),
-                                            ImuYawRate = BitConverter.ToUInt16(Data, 54),
-                                        });
-                                    }
-                                    break;
+                    case PgnEnvelope.PayloadOneofCase.CorrectedPosition: // IPC-REFACTOR: was SubPGN 25727 / 0x647F -> mf.AOGdata.ParseByteData(Data).
+                        AddToLog("< " + envelope.PayloadCase);
+                        mf.AOGdata.ParseMessage(envelope.CorrectedPosition);
+                        break;
 
-                                case 25727: // 0x647F, AOG roll corrected lat,lon
-                                    // IPC-REFACTOR: adapt the received byte frame into the typed CorrectedPositionMsg and
-                                    // dispatch to the migrated typed parser (PGN100.ParseMessage); same transport-side
-                                    // byte->typed bridge rationale as case 54908. Data[4] is the payload length; 24 selects
-                                    // the extended layout carrying fix2fix heading, otherwise the sentinel 1000 (invalid) is
-                                    // preserved exactly as the legacy parser did.
-                                    if (Data.Length >= 21)
-                                    {
-                                        bool extended = (Data[4] == 24) && (Data.Length >= 29);
-                                        mf.AOGdata.ParseMessage(new CorrectedPositionMsg
-                                        {
-                                            Longitude = BitConverter.ToDouble(Data, 5),
-                                            Latitude = BitConverter.ToDouble(Data, 13),
-                                            Fix2FixHeading = extended ? BitConverter.ToDouble(Data, 21) : 1000.0,
-                                        });
-                                    }
-                                    break;
-                            }
-                            break;
-                    }
+                    default:
+                        break; // IPC-REFACTOR: ignore all other payloads (parity with the legacy two-SubPGN behavior); tolerate PayloadOneofCase.None gracefully.
                 }
             }
             catch (Exception ex)
             {
                 mf.Tls.WriteErrorLog("UDPcomm/HandleData " + ex.Message);
-            }
-        }
-
-        private void ReceiveData(IAsyncResult asyncResult)
-        {
-            try
-            {
-                // Initialise the IPEndPoint for the client
-                EndPoint epSender = new IPEndPoint(IPAddress.Any, 0);
-
-                // Receive all data
-                int msgLen = recvSocket.EndReceiveFrom(asyncResult, ref epSender);
-
-                byte[] localMsg = new byte[msgLen];
-                Array.Copy(buffer, localMsg, msgLen);
-
-                // Listen for more connections again...
-                recvSocket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref epSender, new AsyncCallback(ReceiveData), epSender);
-
-                int port = ((IPEndPoint)epSender).Port;
-                // Update status through a delegate
-                mf.Invoke(HandleDataDelegate, new object[] { port, localMsg });
-            }
-            catch (ObjectDisposedException)
-            {
-                // do nothing
-            }
-            catch (Exception ex)
-            {
-                //mf.Tls.ShowHelp("ReceiveData Error \n" + e.Message, "Comm", 3000, true);
-                mf.Tls.WriteErrorLog("UDPcomm/ReceiveData " + ex.Message);
-            }
-        }
-
-        private void SendData(IAsyncResult asyncResult)
-        {
-            try
-            {
-                sendSocket.EndSend(asyncResult);
-            }
-            catch (Exception ex)
-            {
-                mf.Tls.WriteErrorLog(" UDP Send Data" + ex.ToString());
             }
         }
 
