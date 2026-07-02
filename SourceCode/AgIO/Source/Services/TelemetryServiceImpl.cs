@@ -35,8 +35,20 @@ namespace AgIO
         public override async Task StreamTelemetry(Empty request,
             IServerStreamWriter<PgnEnvelope> responseStream, ServerCallContext context)
         {
-            Channel<PgnEnvelope> channel = Channel.CreateUnbounded<PgnEnvelope>(
-                new UnboundedChannelOptions { SingleWriter = true, SingleReader = true });
+            // IPC-REFACTOR: per-subscriber fan-out channel is BOUNDED with FullMode=DropOldest — the
+            // fallback the AAP (§0.3.4) documents "should a permanently wedged reader be observed". This
+            // keeps the hardware-ingestion writer fully non-blocking (DropOldest makes TryWrite always
+            // succeed, never back-pressuring the producer or other subscribers) AND caps memory at
+            // IpcConstants.TelemetrySubscriberChannelCapacity envelopes even under an indefinitely stalled
+            // subscriber. When full, the oldest (already-superseded) telemetry is discarded first, matching
+            // the legacy UDP best-effort, self-superseding semantics (a new GPS fix arrives within ~70 ms).
+            Channel<PgnEnvelope> channel = Channel.CreateBounded<PgnEnvelope>(
+                new BoundedChannelOptions(IpcConstants.TelemetrySubscriberChannelCapacity)
+                {
+                    FullMode = BoundedChannelFullMode.DropOldest,
+                    SingleWriter = true,
+                    SingleReader = true
+                });
 
             Guid id = Subscribe(channel);
 
@@ -60,9 +72,12 @@ namespace AgIO
         /// <summary>
         /// Broadcasts one envelope to every subscriber. Non-blocking: a slow or stalled
         /// subscriber never back-pressures the hardware ingestion thread or the other
-        /// subscribers, because each channel is unbounded and TryWrite never blocks.
-        /// Called by the hardware bridge (Forms/UDP.designer.cs SendToLoopBackMessageAOG)
-        /// and by CommandServiceImpl.InjectTelemetry.
+        /// subscribers, because each channel is bounded with <c>FullMode = DropOldest</c>,
+        /// so <see cref="ChannelWriter{T}.TryWrite"/> always succeeds without blocking and a
+        /// stalled subscriber's backlog is capped at
+        /// <see cref="IpcConstants.TelemetrySubscriberChannelCapacity"/> envelopes (oldest,
+        /// already-superseded telemetry dropped first). Called by the hardware bridge
+        /// (Forms/UDP.designer.cs SendToLoopBackMessageAOG) and by CommandServiceImpl.InjectTelemetry.
         /// </summary>
         public static void Broadcast(PgnEnvelope envelope)
         {

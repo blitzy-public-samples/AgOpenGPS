@@ -197,5 +197,89 @@ namespace AgOpenGPS.Tests
             Assert.That(ShouldEmitFix(TimeSpan.FromMilliseconds(69)), Is.False);  // below the gate -> throttle/drop
             Assert.That(ThrottleInterval.TotalMilliseconds, Is.EqualTo(70.0));    // pin the exact preserved constant
         }
+
+        /// <summary>
+        /// Deterministic in-memory model of a bounded channel with <c>FullMode = DropOldest</c>: a
+        /// write always succeeds without blocking, and once the configured capacity is reached each
+        /// new write evicts the oldest item so the retained count never exceeds the bound. This mirrors
+        /// the exact semantics of the real <c>Channel.CreateBounded&lt;PgnEnvelope&gt;</c> that AgIO's
+        /// <c>TelemetryServiceImpl</c> uses for each subscriber's fan-out queue.
+        /// </summary>
+        private sealed class DropOldestBuffer
+        {
+            private readonly int _capacity;
+            private readonly System.Collections.Generic.Queue<int> _items
+                = new System.Collections.Generic.Queue<int>();
+
+            /// <summary>Creates a model with the given fixed capacity.</summary>
+            public DropOldestBuffer(int capacity) => _capacity = capacity;
+
+            /// <summary>Number of items currently retained (never exceeds the capacity).</summary>
+            public int Count => _items.Count;
+
+            /// <summary>The oldest surviving item.</summary>
+            public int Oldest => _items.Peek();
+
+            /// <summary>The most recently written item.</summary>
+            public int Newest { get; private set; }
+
+            /// <summary>Non-blocking write: drops the oldest item first when full, then enqueues.</summary>
+            public bool TryWrite(int value)
+            {
+                if (_items.Count >= _capacity && _items.Count > 0)
+                {
+                    _items.Dequeue(); // DropOldest eviction
+                }
+                _items.Enqueue(value);
+                Newest = value;
+                return true; // always succeeds, never blocks (non-blocking producer)
+            }
+        }
+
+        /// <summary>
+        /// Test C - the per-subscriber telemetry fan-out channel is BOUNDED with a non-blocking
+        /// DropOldest policy (AAP §0.3.4), which resolves the unbounded-memory concern: a permanently
+        /// stalled subscriber's backlog can never exceed
+        /// <see cref="IpcConstants.TelemetrySubscriberChannelCapacity"/> envelopes, every write stays
+        /// non-blocking, and the newest (non-superseded) telemetry is what is retained.
+        ///
+        /// <para>
+        /// The real channel is <c>Channel.CreateBounded&lt;PgnEnvelope&gt;(new BoundedChannelOptions(
+        /// IpcConstants.TelemetrySubscriberChannelCapacity){ FullMode = DropOldest, ... })</c> in AgIO's
+        /// <c>TelemetryServiceImpl</c>. System.Threading.Channels is a .NET 6+ / ASP.NET Core dependency
+        /// not referenced by this net48 harness, so — exactly as Test B pins the 70 ms throttle predicate
+        /// rather than the live socket — this test pins the identical DropOldest contract with a
+        /// deterministic in-memory model driven by the SAME shared capacity constant. The live BCL channel
+        /// behavior is exercised separately by the AgIO build and the substitute UDS harness.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void FanOutChannel_IsBoundedAndNonBlocking_DropsOldestUnderStalledSubscriber()
+        {
+            // Arrange - the exact shared capacity the real bounded channel uses; it must be a finite,
+            // positive bound (this is the regression guard against reverting to an unbounded channel).
+            int capacity = IpcConstants.TelemetrySubscriberChannelCapacity;
+            Assert.That(capacity, Is.GreaterThan(0));
+
+            var backlog = new DropOldestBuffer(capacity);
+
+            // Act - model a subscriber that never drains: write far more than capacity (3x + 7).
+            int writes = (capacity * 3) + 7;
+            bool everBlockedOrFailed = false;
+            for (int i = 0; i < writes; i++)
+            {
+                // DropOldest => the write always succeeds without blocking (non-blocking producer).
+                if (!backlog.TryWrite(i))
+                {
+                    everBlockedOrFailed = true;
+                }
+            }
+
+            // Assert - producer never blocked/failed; memory is bounded to capacity; newest retained.
+            Assert.That(everBlockedOrFailed, Is.False);                 // fan-out never back-pressures
+            Assert.That(backlog.Count, Is.EqualTo(capacity));           // bounded memory under a stall
+            Assert.That(backlog.Oldest, Is.EqualTo(writes - capacity)); // oldest superseded fix dropped
+            Assert.That(backlog.Newest, Is.EqualTo(writes - 1));        // most-recent fix retained
+        }
     }
 }

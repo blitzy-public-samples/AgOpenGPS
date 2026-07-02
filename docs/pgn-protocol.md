@@ -47,11 +47,21 @@ pgn[pgn.Length - 1] = (byte)crc;
 | **AgIO Endpoint** | 127.255.255.255:17777 |
 | **Protocol** | UDP |
 | **Subnet** | 127.x.x.x (loopback) |
+| **Receive Buffer Size** | 1024 bytes |
+
+The AOG loopback receive buffer is **1024 bytes**, which comfortably accommodates the largest
+PGN frame (the variable-length `0xF3` field-name and `0xDD` display messages remain well under
+this size). This buffer size is a legacy property of the UDP loopback transport and is preserved
+here for reference; it does not apply to the gRPC / Protocol Buffers transport described in the
+migration note at the top of this document (HTTP/2 handles framing and flow control natively).
 
 **Connection setup:**
 ```csharp
 // AOG binds to loopback port 15555
 loopBackSocket.Bind(new IPEndPoint(IPAddress.Loopback, 15555));
+
+// AOG loopback receive buffer size (bytes)
+byte[] buffer = new byte[1024];
 
 // Send to AgIO on 127.255.255.255:17777
 EndPoint epAgIO = new IPEndPoint(IPAddress.Parse("127.255.255.255"), 17777);

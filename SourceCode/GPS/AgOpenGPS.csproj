@@ -40,6 +40,14 @@
   <ItemGroup>
     <PackageReference Include="Dev4Agriculture.ISO11783.ISOXML" Version="0.23.1.1" />
     <PackageReference Include="GMap.NET.WinForms" Version="2.1.7" />
+    <!-- IPC-REFACTOR (final-QA security remediation): transitive-override pin of System.Data.SqlClient to the
+         fixed 4.8.6. GMap.NET.WinForms 2.1.7 -> GMap.NET.Core 2.1.7 pulls System.Data.SqlClient 4.8.3 transitively,
+         which carries GHSA-8g2p-5pqh-5jmc (Moderate) and GHSA-98g6-xh36-x2p7 (High). Declaring it directly here
+         elevates the resolved version to the patched 4.8.6 without touching the pinned GMap.NET.WinForms. This is
+         defect remediation, explicitly sanctioned by ADR-006 ("upgrade only to remediate defects") — NOT a feature
+         addition; the pinned dependency set is otherwise unchanged. System.Data.SqlClient is not in the AAP 0.5.2
+         "must not update" list (it is an unlisted transitive), so pinning it introduces no drift of the governed pins. -->
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
     <!-- IPC-REFACTOR: gRPC client runtime for AgOpenGPS TelemetryService subscription + unary CommandService calls. -->
     <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
     <PackageReference Include="MechanikaDesign.WinForms.UI.ColorPicker" Version="2.0.0" />

@@ -158,6 +158,16 @@ namespace AgIO
                 // reach ForwardCommandToHardware (defined in UDP.designer.cs) for outbound command frames.
                 builder.Services.AddSingleton(this);
 
+                // IPC-REFACTOR: on Windows, EXPLICITLY restrict the loopback named pipe to the current user
+                // only (local-user ACL) — explicit hardening of the loopback-only / no-external-bind / no-TLS /
+                // no-auth security posture (AAP §0.6.2 "local pipe ACL on Windows"; §5.3.5), instead of relying
+                // on transport defaults. No-op on Linux/macOS, where a Unix domain socket is used and its
+                // owner-only 0600 file mode is set right after the host starts (see below).
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    builder.WebHost.UseNamedPipes(options => options.CurrentUserOnly = true);
+                }
+
                 builder.WebHost.ConfigureKestrel(options =>
                 {
                     // IPC-REFACTOR: loopback-only bind (parity with the legacy UDP loopback posture) - Unix
@@ -191,6 +201,19 @@ namespace AgIO
                     try
                     {
                         await _grpcHost.StartAsync();
+
+                        // IPC-REFACTOR: harden the loopback Unix domain socket to owner-only (0600) so no
+                        // other local user can connect — explicit parity with the loopback-only, local-user
+                        // security posture (AAP §0.6.2 "Unix-domain-socket file permissions"; §5.3.5). The
+                        // socket file exists only after StartAsync has bound it. No-op on Windows, where the
+                        // named-pipe ACL is applied at host-build time via UseNamedPipes CurrentUserOnly=true.
+                        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                            && File.Exists(IpcConstants.AgIoSocketPath))
+                        {
+                            File.SetUnixFileMode(
+                                IpcConstants.AgIoSocketPath,
+                                UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                        }
                     }
                     catch (Exception ex)
                     {

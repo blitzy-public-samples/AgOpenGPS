@@ -14,6 +14,13 @@
     </PackageReference>
     <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
     <PackageReference Include="System.Memory" Version="4.6.0" />
+    <!-- IPC-REFACTOR (final-QA security remediation): transitive-override pin of System.Data.SqlClient to the
+         fixed 4.8.6. This test project pulls System.Data.SqlClient 4.8.3 transitively through
+         AgOpenGPS -> GMap.NET.WinForms/GMap.NET.Core 2.1.7 (advisories GHSA-8g2p-5pqh-5jmc Moderate,
+         GHSA-98g6-xh36-x2p7 High). Declaring it directly elevates the resolved version to the patched 4.8.6.
+         Defect remediation explicitly sanctioned by ADR-006 ("upgrade only to remediate defects"); the governed
+         pinned set (§0.5) is otherwise unchanged, and System.Data.SqlClient is not in the "must not update" list. -->
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
   </ItemGroup>
 
   <ItemGroup>
