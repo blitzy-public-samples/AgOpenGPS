@@ -410,7 +410,13 @@ namespace AgIO
                     }).Wait(TimeSpan.FromSeconds(3));
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // IPC-REFACTOR: log (never swallow) gRPC host StopAsync/DisposeAsync failures. Report the
+                // innermost cause with a sanitized message only (no full stack trace to the UI-facing log).
+                Exception root = (ex as AggregateException)?.Flatten().InnerException ?? ex;
+                Log.EventWriter("AgIO gRPC host shutdown failed: " + root.Message);
+            }
 
             if (UDPSocket != null)
             {

@@ -7,19 +7,17 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 using AgOpenGPS.Helpers;
-// IPC-REFACTOR: gRPC client transport (replaces System.Net UDP loopback).
-// System.Net and System.Net.Sockets usings removed; the single retained socket field and the
-// few socket types used by the Unix-domain-socket connect callback are fully-qualified below so
-// this file stays warning-clean (no unused usings) per the UDPComm.Designer.cs analyzer gate.
-using AgOpenGPS.Ipc;                 // PgnEnvelope, IpcConstants, all *Msg types, Telemetry/CommandService clients, CommandAck
-using Google.Protobuf.WellKnownTypes; // Empty (StreamTelemetry request)
-using Grpc.Core;                     // RpcException, StatusCode, AsyncUnaryCall<T> (ack helper)
-using Grpc.Net.Client;               // GrpcChannel, GrpcChannelOptions
-using System.IO.Pipes;               // NamedPipeClientStream, PipeDirection, PipeOptions (Windows transport)
-using System.Net.Http;               // SocketsHttpHandler (gRPC HTTP/2 over UDS/named-pipe)
-using System.Runtime.InteropServices; // RuntimeInformation, OSPlatform (OS-branched endpoint)
+// IPC-REFACTOR: gRPC client transport (replaces System.Net UDP loopback). The loopback channel build and the
+// connect retry/backoff now live in the shared AgOpenGPS.Ipc helpers (IpcChannelFactory + IpcTelemetrySubscriber),
+// so the net48-incompatible SocketsHttpHandler / named-pipe / Unix-domain-socket types are no longer referenced
+// here and their usings (System.Net.Http, System.IO.Pipes, System.Runtime.InteropServices, Google.Protobuf.
+// WellKnownTypes) are removed. The single retained socket field (loopBackSocket, kept null for shutdown-path
+// compatibility) is fully-qualified below so this file stays warning-clean (no unused usings).
+using AgOpenGPS.Ipc;                 // PgnEnvelope, IpcConstants, IpcTelemetrySubscriber, all *Msg types, Command client, CommandAck
+using Grpc.Core;                     // RpcException, AsyncUnaryCall<T> (SendCommandAckAsync helper)
+using Grpc.Net.Client;               // GrpcChannel (retained channel field type / RunAsync onChannel callback)
 using System.Threading;              // CancellationTokenSource
-using System.Threading.Tasks;        // Task (async connect/subscribe + fire-and-forget ack)
+using System.Threading.Tasks;        // Task (subscribe task + fire-and-forget ack)
 
 namespace AgOpenGPS
 {
@@ -344,99 +342,33 @@ namespace AgOpenGPS
             }
         }
 
-        // IPC-REFACTOR: builds the loopback-only gRPC channel (no TLS, no auth — security parity with the legacy UDP
-        // loopback posture, §5.3.5). "http://localhost" is a placeholder plaintext HTTP/2 authority; the ACTUAL
-        // endpoint is dialed by the SocketsHttpHandler.ConnectCallback to IpcConstants.AgIoSocketPath (Windows named
-        // pipe / Unix domain socket). Static: no instance state (CA1822).
-        private static GrpcChannel CreateIpcChannel()
+        // IPC-REFACTOR: connect + subscribe delegated to the shared AgOpenGPS.Ipc.IpcTelemetrySubscriber so the
+        // net48-incompatible SocketsHttpHandler channel build (now guarded in IpcChannelFactory) is no longer
+        // referenced here, and the canonical 5-attempt / 500-1000-2000-4000-8000 ms (total 15500 ms) retry-backoff
+        // schedule is identical across every IPC client. The local CreateIpcChannel/IsTransientConnect helpers and the
+        // hand-rolled retry loop are removed in favour of the shared helper. Returns the subscriber Task directly; the
+        // fire-and-forget discard in StartLoopbackServer still observes no unhandled exception because RunAsync owns
+        // its own try/catch on every path.
+        private Task ConnectAndSubscribeAsync()
         {
-            SocketsHttpHandler handler = new SocketsHttpHandler
-            {
-                ConnectCallback = async (context, cancellationToken) =>
+            return IpcTelemetrySubscriber.RunAsync(
+                onChannel: channel =>
                 {
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    {
-                        // Windows loopback transport: named pipe. Strip the @"\\.\pipe\" prefix to get the pipe name.
-                        string socketPath = IpcConstants.AgIoSocketPath;
-                        string pipeName = socketPath.StartsWith(@"\\.\pipe\", StringComparison.Ordinal)
-                            ? socketPath.Substring(@"\\.\pipe\".Length)
-                            : socketPath;
-                        NamedPipeClientStream pipe = new NamedPipeClientStream(
-                            ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                        await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
-                        return pipe;
-                    }
-
-                    // Unix/macOS loopback transport: Unix domain socket.
-                    System.Net.Sockets.Socket socket = new System.Net.Sockets.Socket(
-                        System.Net.Sockets.AddressFamily.Unix,
-                        System.Net.Sockets.SocketType.Stream,
-                        System.Net.Sockets.ProtocolType.Unspecified);
-                    await socket.ConnectAsync(
-                        new System.Net.Sockets.UnixDomainSocketEndPoint(IpcConstants.AgIoSocketPath),
-                        cancellationToken).ConfigureAwait(false);
-                    return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
-                }
-            };
-
-            return GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = handler });
-        }
-
-        // IPC-REFACTOR: connects to the AgIO gRPC host and drains the TelemetryService server-stream. Instance method
-        // (touches _ipcChannel/_commandClient/_ipcCts + BeginInvoke + ReceiveFromAgIO). Retry/backoff per AAP §0.3.5:
-        // max 5 attempts; delay before retry = 500 * 2^attempt ms => 500 / 1000 / 2000 / 4000 / 8000. AgIO is
-        // auto-started by AOG, so a startup race (server not yet listening) is expected and retried. This task owns
-        // its own try/catch on every path, so the fire-and-forget discard in StartLoopbackServer never observes an
-        // unhandled exception.
-        private async Task ConnectAndSubscribeAsync()
-        {
-            for (int attempt = 0; attempt < 5; attempt++)
-            {
-                int delayMs = 500 * (1 << attempt);
-                try
+                    _ipcChannel = channel;
+                    _commandClient = new CommandService.CommandServiceClient(channel);
+                },
+                onConnected: () => Log.EventWriter("gRPC telemetry stream connected: " + IpcConstants.AgIoSocketPath),
+                onEnvelope: envelope =>
                 {
-                    // Dispose any channel left over from a prior failed attempt before recreating.
-                    _ipcChannel?.Dispose();
-                    _ipcChannel = CreateIpcChannel();
-                    _commandClient = new CommandService.CommandServiceClient(_ipcChannel);
-                    TelemetryService.TelemetryServiceClient telemetryClient =
-                        new TelemetryService.TelemetryServiceClient(_ipcChannel);
-
-                    // MoveNext loop (more portable than ReadAllAsync on net48 — no IAsyncEnumerable dependency).
-                    using (var call = telemetryClient.StreamTelemetry(new Empty(), cancellationToken: _ipcCts.Token))
-                    {
-                        Log.EventWriter("gRPC telemetry stream connected: " + IpcConstants.AgIoSocketPath);
-                        while (await call.ResponseStream.MoveNext(_ipcCts.Token).ConfigureAwait(false))
-                        {
-                            PgnEnvelope envelope = call.ResponseStream.Current;
-
-                            // IPC-REFACTOR: marshal each envelope to the UI thread exactly as legacy ReceiveAppData did
-                            // (only the SOURCE changed: UDP datagram -> telemetry stream item).
-                            try { BeginInvoke((MethodInvoker)(() => ReceiveFromAgIO(envelope))); }
-                            catch { /* handle not yet created / form disposing; ignore — parity with legacy empty catch */ }
-                        }
-                    }
-
-                    // Stream ended (server closed it cleanly) — exit the retry loop.
-                    return;
-                }
-                catch (Exception ex) when (attempt < 4 && IsTransientConnect(ex))
+                    // IPC-REFACTOR: marshal each envelope to the UI thread exactly as legacy ReceiveAppData did
+                    // (only the SOURCE changed: UDP datagram -> telemetry stream item).
+                    try { BeginInvoke((MethodInvoker)(() => ReceiveFromAgIO(envelope))); }
+                    catch { /* handle not yet created / form disposing; ignore - parity with legacy empty catch */ }
+                },
+                onError: ex =>
                 {
-                    Log.EventWriter("gRPC connect attempt " + (attempt + 1) + " failed: " + ex.Message
-                        + "; retrying in " + delayMs + "ms");
-                    await Task.Delay(delayMs).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    // Cooperative shutdown (CancellationTokenSource cancelled/disposed) is not an error — exit quietly.
-                    if (_ipcCts != null && _ipcCts.IsCancellationRequested)
-                    {
-                        return;
-                    }
-
-                    // IPC-REFACTOR: UDP bind-failure dialog replaced by gRPC connect retry/backoff (5x, 500ms base x2) -> existing FormDialog + Log.EventWriter on exhaustion.
-                    // Non-transient failure or the final attempt failed: route to the SAME error surface the legacy
-                    // bind-failure used, marshalled to the UI thread.
+                    // IPC-REFACTOR: UDP bind-failure dialog replaced by gRPC connect retry/backoff (5x, 500ms base x2)
+                    // -> existing FormDialog + Log.EventWriter on exhaustion, marshalled to the UI thread.
                     try
                     {
                         BeginInvoke((MethodInvoker)(() => FormDialog.Show(
@@ -447,18 +379,8 @@ namespace AgOpenGPS
                     catch { /* form may be closing; ignore */ }
                     Log.EventWriter("Catch -> gRPC IPC connect exhausted after 5 attempts to "
                         + IpcConstants.AgIoSocketPath + ": " + ex.Message);
-                    return;
-                }
-            }
-        }
-
-        // IPC-REFACTOR: a connect/stream failure is transient (retryable) when the server is not yet listening — AgIO
-        // is auto-started by AOG so a startup race is expected. Static: no instance state (CA1822).
-        private static bool IsTransientConnect(Exception ex)
-        {
-            return (ex is RpcException rpc && rpc.StatusCode == StatusCode.Unavailable)
-                || ex is System.Net.Sockets.SocketException
-                || ex is System.IO.IOException;
+                },
+                token: _ipcCts.Token);
         }
 
         private void DisableSim()

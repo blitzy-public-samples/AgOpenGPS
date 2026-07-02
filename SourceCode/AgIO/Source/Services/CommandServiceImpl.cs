@@ -35,7 +35,8 @@ namespace AgIO
             frame[10] = (byte)request.LineDistance;
             frame[11] = (byte)request.SectionControl18;
             frame[12] = (byte)request.SectionControl916;
-            return Forward(nameof(SendAutoSteerData), frame);
+            return Forward(nameof(SendAutoSteerData), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, AutoSteerData = request });
         }
 
         public override Task<CommandAck> SendAutoSteerSettings(AutoSteerSettingsMsg request, ServerCallContext context)
@@ -49,7 +50,8 @@ namespace AgIO
             frame[10] = (byte)(request.WasOffset & 0xFF);
             frame[11] = (byte)((request.WasOffset >> 8) & 0xFF);
             frame[12] = (byte)request.Ackerman;
-            return Forward(nameof(SendAutoSteerSettings), frame);
+            return Forward(nameof(SendAutoSteerSettings), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, AutoSteerSettings = request });
         }
 
         public override Task<CommandAck> SendAutoSteerConfig(AutoSteerConfigMsg request, ServerCallContext context)
@@ -60,7 +62,8 @@ namespace AgIO
             frame[7] = (byte)request.MinSpeed;
             frame[8] = (byte)request.AckermanFix;
             frame[9] = (byte)request.AngularVelocity;
-            return Forward(nameof(SendAutoSteerConfig), frame);
+            return Forward(nameof(SendAutoSteerConfig), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, AutoSteerConfig = request });
         }
 
         public override Task<CommandAck> SendMachineData(MachineDataMsg request, ServerCallContext context)
@@ -73,7 +76,8 @@ namespace AgIO
             frame[9] = (byte)request.GeoStop;
             frame[11] = (byte)request.SectionControl18;
             frame[12] = (byte)request.SectionControl916;
-            return Forward(nameof(SendMachineData), frame);
+            return Forward(nameof(SendMachineData), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, MachineData = request });
         }
 
         public override Task<CommandAck> SendMachineConfig(MachineConfigMsg request, ServerCallContext context)
@@ -87,7 +91,8 @@ namespace AgIO
             frame[10] = (byte)request.User2;
             frame[11] = (byte)request.User3;
             frame[12] = (byte)request.User4;
-            return Forward(nameof(SendMachineConfig), frame);
+            return Forward(nameof(SendMachineConfig), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, MachineConfig = request });
         }
 
         public override Task<CommandAck> SendRelayConfig(RelayConfigMsg request, ServerCallContext context)
@@ -102,7 +107,8 @@ namespace AgIO
             {
                 frame[5 + i] = (byte)request.PinConfig[i];
             }
-            return Forward(nameof(SendRelayConfig), frame);
+            return Forward(nameof(SendRelayConfig), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, RelayConfig = request });
         }
 
         public override Task<CommandAck> SendSectionDimensions(SectionDimensionsMsg request, ServerCallContext context)
@@ -120,7 +126,8 @@ namespace AgIO
                 frame[6 + (i * 2)] = (byte)((width >> 8) & 0xFF);
             }
             frame[37] = (byte)request.NumSections;
-            return Forward(nameof(SendSectionDimensions), frame);
+            return Forward(nameof(SendSectionDimensions), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, SectionDimensions = request });
         }
 
         public override Task<CommandAck> SendExtendedSectionControl(ExtendedSectionControlMsg request, ServerCallContext context)
@@ -130,7 +137,8 @@ namespace AgIO
             Array.Copy(sections, 0, frame, 5, 8);
             frame[13] = (byte)request.ToolLeftSpeed;
             frame[14] = (byte)request.ToolRightSpeed;
-            return Forward(nameof(SendExtendedSectionControl), frame);
+            return Forward(nameof(SendExtendedSectionControl), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, ExtendedSectionControl = request });
         }
 
         public override Task<CommandAck> SendRateControl(RateControlMsg request, ServerCallContext context)
@@ -139,14 +147,16 @@ namespace AgIO
             frame[5] = (byte)request.Rate0;
             frame[6] = (byte)request.Rate1;
             frame[7] = (byte)request.Rate2;
-            return Forward(nameof(SendRateControl), frame);
+            return Forward(nameof(SendRateControl), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, RateControl = request });
         }
 
         public override Task<CommandAck> SendSectionControlEnable(SectionControlEnableMsg request, ServerCallContext context)
         {
             byte[] frame = new byte[] { 0x80, 0x81, 0x7F, 0xF1, 1, 0, 0 };
             frame[5] = (byte)(request.Enabled ? 1 : 0);
-            return Forward(nameof(SendSectionControlEnable), frame);
+            return Forward(nameof(SendSectionControlEnable), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, SectionControlEnable = request });
         }
 
         public override Task<CommandAck> SendProcessData(ProcessDataMsg request, ServerCallContext context)
@@ -156,7 +166,8 @@ namespace AgIO
             frame[6] = (byte)((request.Identifier >> 8) & 0xFF);
             byte[] value = BitConverter.GetBytes(request.Value);
             Array.Copy(value, 0, frame, 7, 4);
-            return Forward(nameof(SendProcessData), frame);
+            return Forward(nameof(SendProcessData), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, ProcessData = request });
         }
 
         public override Task<CommandAck> SendFieldName(FieldNameMsg request, ServerCallContext context)
@@ -175,7 +186,8 @@ namespace AgIO
             frame[3] = 0xF3;
             frame[4] = (byte)nameBytes.Length;
             Array.Copy(nameBytes, 0, frame, 5, nameBytes.Length);
-            return Forward(nameof(SendFieldName), frame);
+            return Forward(nameof(SendFieldName), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, FieldName = request });
         }
 
         public override Task<CommandAck> SendLatLon(LatLonMsg request, ServerCallContext context)
@@ -185,7 +197,8 @@ namespace AgIO
             Array.Copy(latitude, 0, frame, 5, 4);
             byte[] longitude = BitConverter.GetBytes(request.LongitudeEncoded);
             Array.Copy(longitude, 0, frame, 9, 4);
-            return Forward(nameof(SendLatLon), frame);
+            return Forward(nameof(SendLatLon), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, LatLon = request });
         }
 
         public override Task<CommandAck> SendCorrectedPosition(CorrectedPositionMsg request, ServerCallContext context)
@@ -211,7 +224,8 @@ namespace AgIO
                 byte[] heading = BitConverter.GetBytes(request.Fix2FixHeading);
                 Array.Copy(heading, 0, frame, 21, 8);
             }
-            return Forward(nameof(SendCorrectedPosition), frame);
+            return Forward(nameof(SendCorrectedPosition), frame,
+                new PgnEnvelope { SchemaVersion = IpcConstants.SchemaVersion, CorrectedPosition = request });
         }
 
         /// <summary>
@@ -221,6 +235,37 @@ namespace AgIO
         /// </summary>
         public override Task<CommandAck> InjectTelemetry(PgnEnvelope request, ServerCallContext context)
         {
+            // Validate before fan-out: a malformed or default-version local injection must never be
+            // broadcast to every subscriber. Reject an unrecognized schema version (guards against a
+            // client built against an incompatible contract) and an empty payload (oneof not set).
+            if (request == null)
+            {
+                return Task.FromResult(new CommandAck
+                {
+                    Received = false,
+                    ErrorMessage = "InjectTelemetry rejected: request was null."
+                });
+            }
+
+            if (request.SchemaVersion != IpcConstants.SchemaVersion)
+            {
+                return Task.FromResult(new CommandAck
+                {
+                    Received = false,
+                    ErrorMessage = "InjectTelemetry rejected: unsupported schema version " +
+                        request.SchemaVersion + " (expected " + IpcConstants.SchemaVersion + ")."
+                });
+            }
+
+            if (request.PayloadCase == PgnEnvelope.PayloadOneofCase.None)
+            {
+                return Task.FromResult(new CommandAck
+                {
+                    Received = false,
+                    ErrorMessage = "InjectTelemetry rejected: envelope carries no payload."
+                });
+            }
+
             try
             {
                 TelemetryServiceImpl.Broadcast(request);
@@ -234,16 +279,31 @@ namespace AgIO
         }
 
         /// <summary>
-        /// Applies the additive-byte CRC, forwards the frame to the hardware bridge, and
+        /// Applies the additive-byte CRC, forwards the frame to the hardware bridge, then
+        /// fans the typed <paramref name="envelope"/> out to every telemetry subscriber, and
         /// returns an acknowledgement. Any failure is logged and returned as a negative
         /// acknowledgement rather than thrown back to the gRPC caller.
+        ///
+        /// <para>
+        /// The <see cref="TelemetryServiceImpl.Broadcast(PgnEnvelope)"/> call preserves the
+        /// legacy UDP loopback broadcast semantics: AOG-originated command / configuration /
+        /// corrected-position frames were previously observed by every loopback listener
+        /// (AgDiag, GPS_Out, ModSim). Rebuilding the hardware byte frame and computing its CRC
+        /// keeps the firmware-facing contract intact; the additional broadcast re-establishes
+        /// the observer parity that the fire-and-forget UDP path provided.
+        /// </para>
         /// </summary>
-        private Task<CommandAck> Forward(string handlerName, byte[] frame)
+        private Task<CommandAck> Forward(string handlerName, byte[] frame, PgnEnvelope envelope)
         {
             try
             {
                 ApplyCrc(frame);
                 formLoop.ForwardCommandToHardware(frame);
+
+                // Re-establish UDP-broadcast parity: every AOG-originated command reaches all
+                // telemetry subscribers, exactly as the legacy loopback broadcast did.
+                TelemetryServiceImpl.Broadcast(envelope);
+
                 return Task.FromResult(new CommandAck { Received = true });
             }
             catch (Exception ex)

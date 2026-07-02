@@ -1,17 +1,12 @@
 ﻿using System;
-using System.IO;
-using System.IO.Pipes;
-using System.Net;
-using System.Net.Http;
-// IPC-REFACTOR: System.Net.Sockets retained ONLY for the Unix-domain-socket connect callback (legacy UDP receive/send sockets removed).
-using System.Net.Sockets;
-using System.Runtime.InteropServices;
+using System.Net; // IPAddress — retained for NetworkEP / SetEP / SetSourceIP (endpoint config surface kept for Form1 API compatibility).
+// IPC-REFACTOR: the gRPC loopback channel build + connect retry/backoff now live in the shared AgOpenGPS.Ipc helpers
+// (IpcChannelFactory + IpcTelemetrySubscriber), so the net48-incompatible transport usings (System.IO, System.IO.Pipes,
+// System.Net.Http, System.Net.Sockets, System.Runtime.InteropServices) and Google.Protobuf.WellKnownTypes / Grpc.Core
+// are no longer referenced in this file and have been removed.
 using System.Threading;
 using System.Threading.Tasks;
-// IPC-REFACTOR: gRPC client + proto contract usings replace the UDP transport.
 using AgOpenGPS.Ipc;
-using Google.Protobuf.WellKnownTypes;
-using Grpc.Core;
 using Grpc.Net.Client;
 
 namespace GPS_Out
@@ -100,88 +95,21 @@ namespace GPS_Out
             cLog = cLog.Replace("\0", string.Empty);
         }
 
-        // IPC-REFACTOR: GrpcChannel over the loopback UDS/named-pipe at IpcConstants.AgIoSocketPath; OS-branched connect callback. Loopback-only, no TLS, no auth (parity with the legacy UDP loopback posture).
-        // FEASIBILITY DEVIATION (AAP 0.1.3/0.6.4): SocketsHttpHandler.ConnectCallback / UnixDomainSocketEndPoint target the .NET 6+ host the prompt designates; GPS_Out stays net48 pending the AgIO host retarget (do not work around).
-        private static GrpcChannel CreateChannel()
+        // IPC-REFACTOR: connect + subscribe delegated to the shared AgOpenGPS.Ipc.IpcTelemetrySubscriber. This removes
+        // the net48-incompatible SocketsHttpHandler channel build (now guarded in IpcChannelFactory) and the C# 7.3-
+        // incompatible async-stream (await foreach / ReadAllAsync) loop, and makes the canonical 5-attempt /
+        // 500-1000-2000-4000-8000 ms (total 15500 ms) connect retry-backoff identical across every IPC client. The
+        // endpoint is derived from IpcConstants.AgIoSocketPath inside the shared factory (no hard-coded pipe name here).
+        // IsUDPSendConnected still means "IPC connected": set true when the stream opens, false on any disconnect.
+        private Task SubscribeLoopAsync(CancellationToken token)
         {
-            var handler = new SocketsHttpHandler
-            {
-                ConnectCallback = async (context, cancellationToken) =>
-                {
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    {
-                        // IPC-REFACTOR: Windows loopback transport = named pipe (matches the tail of IpcConstants.AgIoSocketPath and the AgIO server pipe).
-                        var pipe = new NamedPipeClientStream(".", "agopengps_ipc", PipeDirection.InOut, PipeOptions.Asynchronous);
-                        await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
-                        return pipe;
-                    }
-
-                    // IPC-REFACTOR: Linux/macOS loopback transport = Unix domain socket at IpcConstants.AgIoSocketPath.
-                    var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                    await socket.ConnectAsync(new UnixDomainSocketEndPoint(IpcConstants.AgIoSocketPath)).ConfigureAwait(false);
-                    return new NetworkStream(socket, ownsSocket: true);
-                }
-            };
-
-            return GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = handler });
-        }
-
-        // IPC-REFACTOR: replaces ReceiveData/BeginReceiveFrom with a resilient StreamTelemetry subscriber; handles the AgIO auto-start race via connect retry/backoff.
-        private async Task SubscribeLoopAsync(CancellationToken token)
-        {
-            // IPC-REFACTOR: bind-failure log replaced by connect retry/backoff (5 attempts, 500..8000 ms) before surfacing via mf.Tls.WriteErrorLog.
-            const int maxAttempts = 5;
-            for (int attempt = 1; attempt <= maxAttempts && !token.IsCancellationRequested; attempt++)
-            {
-                try
-                {
-                    _channel = CreateChannel();
-                    var client = new TelemetryService.TelemetryServiceClient(_channel);
-                    using (var call = client.StreamTelemetry(new Empty(), cancellationToken: token))
-                    {
-                        IsUDPSendConnected = true; // IPC-REFACTOR: flag now means "IPC connected".
-
-                        // IPC-REFACTOR: gRPC server-stream read replaces the UDP BeginReceiveFrom/ReceiveData callback loop; typed envelopes dispatched below.
-                        await foreach (var envelope in call.ResponseStream.ReadAllAsync(token).ConfigureAwait(false))
-                        {
-                            // IPC-REFACTOR: direct call from the stream-reader task; typed-ingest (PGN54908/PGN100.ParseMessage) sets fields + timestamp only (no UI), so mf.Invoke UI marshaling is unnecessary.
-                            HandleData(envelope);
-                        }
-                    }
-
-                    return; // IPC-REFACTOR: stream completed (server closed) — normal termination.
-                }
-                catch (OperationCanceledException)
-                {
-                    return; // IPC-REFACTOR: cancellation is normal shutdown.
-                }
-                catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && token.IsCancellationRequested)
-                {
-                    return; // IPC-REFACTOR: stream cancelled by our own Stop()/teardown.
-                }
-                catch (Exception ex) when (ex is RpcException || ex is SocketException || ex is IOException)
-                {
-                    // IPC-REFACTOR: transient connect/stream failure (e.g. server not yet listening during AgIO auto-start) — back off and retry.
-                    IsUDPSendConnected = false;
-                    _channel?.Dispose();
-                    _channel = null;
-
-                    if (attempt >= maxAttempts)
-                    {
-                        mf.Tls.WriteErrorLog("UDPcomm/SubscribeLoop: " + ex.Message); // IPC-REFACTOR: preserved bind-failure UX via the existing error log (was the legacy StartUDPServer catch).
-                        return;
-                    }
-
-                    try
-                    {
-                        await Task.Delay(500 << (attempt - 1), token).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        return; // IPC-REFACTOR: cancelled while backing off — normal shutdown.
-                    }
-                }
-            }
+            return IpcTelemetrySubscriber.RunAsync(
+                onChannel: channel => _channel = channel,
+                onConnected: () => IsUDPSendConnected = true,
+                onEnvelope: HandleData,
+                onError: ex => mf.Tls.WriteErrorLog("UDPcomm/SubscribeLoop: " + ex.Message),
+                token: token,
+                onDisconnected: () => IsUDPSendConnected = false);
         }
 
         // IPC-REFACTOR: byte-keyed switch(PGN)/switch(SubPGN) dispatch replaced by typed switch(envelope.PayloadCase); observes exactly the two payloads the legacy listener handled.

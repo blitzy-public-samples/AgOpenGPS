@@ -1,28 +1,22 @@
 ﻿using System;
 using System.Drawing;
-// IPC-REFACTOR: UDP socket usings replaced by gRPC client + Protobuf usings.
-// Removed: System.Net + System.Net.Sockets (UDP loopback transport) and System.Text
-// (Encoding.ASCII no longer used after SendUDPMessage was re-routed to typed injection).
-// The few socket types still required by the Unix-domain-socket connect callback are
-// fully-qualified as System.Net.Sockets.* (CreateIpcChannel / IsTransientConnect) so this
-// file stays warning-clean (no unused usings / IDE0005) under the Release
-// TreatWarningsAsErrors gate.
-// net48 DEVIATION (Authority-Hierarchy Case 3 — surfaced, NOT resolved): SocketsHttpHandler
-// and its ConnectCallback are .NET Core 2.1+ / .NET 6+ only and do NOT exist on net48. ModSim
-// currently inherits net48 while AgOpenGPS.Ipc multi-targets net8.0/netstandard2.0; the ModSim
-// host retarget to net6.0+ is the gating prerequisite for an actual build. This client is
-// implemented exactly as the .NET 6+ design the prompt designates (mirrors the GPS sibling).
+// IPC-REFACTOR: UDP socket usings replaced by gRPC client usings. The loopback channel build and the connect
+// retry/backoff now live in the shared AgOpenGPS.Ipc helpers (IpcChannelFactory + IpcTelemetrySubscriber), so the
+// net48-incompatible transport usings (System.IO, System.IO.Pipes, System.Net.Http, System.Net.Sockets,
+// System.Runtime.InteropServices) and Google.Protobuf.WellKnownTypes are no longer referenced here and are removed.
+// Removed earlier: System.Net + System.Net.Sockets (UDP loopback transport) and System.Text (Encoding.ASCII no
+// longer used after SendUDPMessage was re-routed to typed injection).
+// net48 DEVIATION (Authority-Hierarchy Case 3 — surfaced, NOT resolved): full HTTP/2 gRPC (the shared
+// IpcChannelFactory's SocketsHttpHandler.ConnectCallback transport) is .NET Core 2.1+ / .NET 6+ only and does NOT
+// exist on net48. ModSim currently inherits net48 while AgOpenGPS.Ipc multi-targets net8.0/netstandard2.0; the
+// ModSim host retarget to net6.0+ is the gating prerequisite for an actual build. This client is implemented
+// exactly as the .NET 6+ design the prompt designates (mirrors the GPS sibling).
 using System.Windows.Forms;
-using AgOpenGPS.Ipc;                    // IpcConstants, PgnEnvelope, TelemetryService, CommandService, all *Msg types
-using Google.Protobuf.WellKnownTypes;   // Empty (StreamTelemetry request)
-using Grpc.Core;                        // RpcException, StatusCode, AsyncServerStreamingCall<T>, MoveNext
-using Grpc.Net.Client;                  // GrpcChannel, GrpcChannelOptions
-using System.IO;                        // IOException (transient-connect classification)
-using System.IO.Pipes;                  // NamedPipeClientStream, PipeDirection, PipeOptions (Windows transport)
-using System.Net.Http;                  // SocketsHttpHandler (gRPC HTTP/2 over UDS / named pipe)
-using System.Runtime.InteropServices;   // RuntimeInformation, OSPlatform (OS-branched endpoint)
+using AgOpenGPS.Ipc;                    // IpcConstants, PgnEnvelope, IpcTelemetrySubscriber, CommandService, all *Msg types
+using Grpc.Core;                        // RpcException (InjectEnvelopeAsync swallow)
+using Grpc.Net.Client;                  // GrpcChannel (retained _channel field / RunAsync onChannel callback)
 using System.Threading;                 // CancellationTokenSource, CancellationToken
-using System.Threading.Tasks;           // Task (async connect/subscribe + fire-and-forget inject)
+using System.Threading.Tasks;           // Task (subscribe task + fire-and-forget inject)
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace ModSim
@@ -36,11 +30,12 @@ namespace ModSim
         // IPC-REFACTOR: isUDPNetworkConnected renamed to isIpcConnected; gates outbound injection.
         private bool isIpcConnected;
 
-        // IPC-REFACTOR: UDP socket fields replaced by a gRPC channel, the Telemetry (observe) and Command
-        // (inject) service clients, and a subscription CancellationTokenSource. Also referenced by the
-        // FormSim.cs FormClosing teardown (same partial class, so private is fine).
+        // IPC-REFACTOR: UDP socket fields replaced by a gRPC channel, the Command (inject) service client, and a
+        // subscription CancellationTokenSource. The channel + the telemetry StreamTelemetry subscription are now
+        // owned by the shared IpcTelemetrySubscriber, so no TelemetryServiceClient field is retained here (the
+        // shared helper builds its own). _channel and _cts are also referenced by the FormSim.cs FormClosing
+        // teardown (same partial class, so private is fine).
         private GrpcChannel _channel;
-        private TelemetryService.TelemetryServiceClient _telemetryClient;
         private CommandService.CommandServiceClient _commandClient;
         private CancellationTokenSource _cts;
 
@@ -60,109 +55,41 @@ namespace ModSim
             _ = ConnectAndSubscribeAsync(_cts.Token);
         }
 
-        // IPC-REFACTOR: builds the loopback-only gRPC channel (no TLS, no auth — security parity with the
-        // legacy UDP loopback posture). "http://localhost" is a placeholder plaintext HTTP/2 authority; the
-        // ACTUAL endpoint is dialed by the SocketsHttpHandler.ConnectCallback to IpcConstants.AgIoSocketPath
-        // (Windows named pipe / Unix domain socket). Static: no instance state. Mirrors the GPS sibling.
-        private static GrpcChannel CreateIpcChannel()
+        // IPC-REFACTOR: connect + subscribe delegated to the shared AgOpenGPS.Ipc.IpcTelemetrySubscriber so the
+        // net48-incompatible SocketsHttpHandler channel build (now guarded in IpcChannelFactory) is no longer
+        // referenced here, and the canonical 5-attempt / 500-1000-2000-4000-8000 ms (total 15500 ms) connect
+        // retry-backoff schedule is identical across every IPC client. The local CreateIpcChannel / IsTransientConnect
+        // helpers and the hand-rolled retry loop are removed in favour of the shared helper. The error path keeps
+        // ModSim's legacy MessageBox UX (ModSim has no FormDialog/Log.EventWriter). Returns the subscriber Task
+        // directly; the fire-and-forget discard in LoadUDPNetwork still observes no unhandled exception because
+        // RunAsync owns its own try/catch on every path.
+        private Task ConnectAndSubscribeAsync(CancellationToken token)
         {
-            SocketsHttpHandler handler = new SocketsHttpHandler
-            {
-                ConnectCallback = async (context, cancellationToken) =>
+            return IpcTelemetrySubscriber.RunAsync(
+                onChannel: channel =>
                 {
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    {
-                        // Windows loopback transport: named pipe. Strip the @"\\.\pipe\" prefix to get the name.
-                        string socketPath = IpcConstants.AgIoSocketPath;
-                        string pipeName = socketPath.StartsWith(@"\\.\pipe\", StringComparison.Ordinal)
-                            ? socketPath.Substring(@"\\.\pipe\".Length)
-                            : socketPath;
-                        NamedPipeClientStream pipe = new NamedPipeClientStream(
-                            ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                        await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
-                        return pipe;
-                    }
-
-                    // Unix/macOS loopback transport: Unix domain socket. Socket types are fully-qualified so
-                    // this file no longer needs `using System.Net.Sockets;`.
-                    System.Net.Sockets.Socket socket = new System.Net.Sockets.Socket(
-                        System.Net.Sockets.AddressFamily.Unix,
-                        System.Net.Sockets.SocketType.Stream,
-                        System.Net.Sockets.ProtocolType.Unspecified);
-                    await socket.ConnectAsync(
-                        new System.Net.Sockets.UnixDomainSocketEndPoint(IpcConstants.AgIoSocketPath),
-                        cancellationToken).ConfigureAwait(false);
-                    return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
-                }
-            };
-
-            return GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = handler });
-        }
-
-        // IPC-REFACTOR: UDP receive socket + switch(data[3]) replaced by a TelemetryService.StreamTelemetry
-        // subscription with typed PayloadCase dispatch.
-        // IPC-REFACTOR: bind-failure MessageBox replaced by connect retry/backoff (5x: 500/1000/2000/4000/8000 ms)
-        // before surfacing the SAME error dialog. AgIO is auto-started by AOG, so a startup race (server not yet
-        // listening) is expected and retried. Mirrors the GPS sibling; the error path uses MessageBox because
-        // ModSim has no FormDialog/Log.EventWriter. This task owns its try/catch on every path (never unobserved).
-        private async Task ConnectAndSubscribeAsync(CancellationToken token)
-        {
-            for (int attempt = 0; attempt < 5; attempt++)
-            {
-                int delayMs = 500 * (1 << attempt); // 500 / 1000 / 2000 / 4000 / 8000 ms
-                try
+                    _channel = channel;
+                    _commandClient = new CommandService.CommandServiceClient(channel);
+                },
+                onConnected: () =>
                 {
-                    // Dispose any channel left over from a prior failed attempt before recreating.
-                    _channel?.Dispose();
-                    _channel = CreateIpcChannel();
-                    _telemetryClient = new TelemetryService.TelemetryServiceClient(_channel);
-                    _commandClient = new CommandService.CommandServiceClient(_channel);
-
-                    // MoveNext loop (more portable than ReadAllAsync — no IAsyncEnumerable dependency).
-                    using (var call = _telemetryClient.StreamTelemetry(new Empty(), cancellationToken: token))
-                    {
-                        isIpcConnected = true;
-                        try { BeginInvoke((MethodInvoker)(() => lblIP.Text = "Connected")); }
-                        catch { /* handle not yet created / form disposing; ignore */ }
-
-                        while (await call.ResponseStream.MoveNext(token).ConfigureAwait(false))
-                        {
-                            PgnEnvelope envelope = call.ResponseStream.Current;
-
-                            // Marshal each envelope to the UI thread exactly as the legacy UDP callback did
-                            // (only the SOURCE changed: UDP datagram -> telemetry stream item).
-                            try { BeginInvoke((MethodInvoker)(() => ReceiveFromUDP(envelope))); }
-                            catch { /* form disposing; ignore — parity with the legacy empty catch */ }
-                        }
-                    }
-
-                    // Stream ended (server closed it cleanly) — graceful stop, mirrors GPS.
-                    return;
-                }
-                catch (OperationCanceledException)
+                    isIpcConnected = true;
+                    // Marshal the status update to the UI thread (the subscriber loop runs on a background task).
+                    try { BeginInvoke((MethodInvoker)(() => lblIP.Text = "Connected")); }
+                    catch { /* handle not yet created / form disposing; ignore */ }
+                },
+                onEnvelope: envelope =>
                 {
-                    // Cooperative shutdown requested; no error dialog on cancellation.
-                    return;
-                }
-                catch (Exception ex) when (attempt < 4 && IsTransientConnect(ex))
+                    // Marshal each envelope to the UI thread exactly as the legacy UDP callback did
+                    // (only the SOURCE changed: UDP datagram -> telemetry stream item).
+                    try { BeginInvoke((MethodInvoker)(() => ReceiveFromUDP(envelope))); }
+                    catch { /* form disposing; ignore - parity with the legacy empty catch */ }
+                },
+                onError: ex =>
                 {
-                    isIpcConnected = false;
-                    try { await Task.Delay(delayMs, token).ConfigureAwait(false); }
-                    catch (OperationCanceledException) { return; }
-                }
-                catch (Exception ex)
-                {
-                    isIpcConnected = false;
-
-                    // Cancellation surfacing as a non-OperationCanceled exception (e.g. RpcException/Cancelled)
-                    // during shutdown is not an error — exit quietly.
-                    if (token.IsCancellationRequested)
-                    {
-                        return;
-                    }
-
                     // IPC-REFACTOR: preserve ModSim's legacy MessageBox error path (no FormDialog/Log.EventWriter
-                    // exists here). Reached only on a non-transient failure or after the 5th attempt failed.
+                    // exists here). Reached only after the 5 attempts (500/1000/2000/4000/8000 ms) are exhausted
+                    // or on a non-transient failure.
                     try
                     {
                         BeginInvoke((MethodInvoker)(() =>
@@ -173,18 +100,9 @@ namespace ModSim
                         }));
                     }
                     catch { /* form may be closing; ignore */ }
-                    return;
-                }
-            }
-        }
-
-        // IPC-REFACTOR: a connect/stream failure is transient (retryable) when the server is not yet listening
-        // — AgIO is auto-started by AOG so a startup race is expected. Static: no instance state.
-        private static bool IsTransientConnect(Exception ex)
-        {
-            return (ex is RpcException rpc && rpc.StatusCode == StatusCode.Unavailable)
-                || ex is System.Net.Sockets.SocketException
-                || ex is IOException;
+                },
+                token: token,
+                onDisconnected: () => isIpcConnected = false);
         }
 
         #region Send UDP
@@ -229,21 +147,37 @@ namespace ModSim
         // Controls.Designer.cs but are members of the SAME partial class FormSim, so they are accessible here.
         public void SendUDPMessage(string message)
         {
+            // IPC-REFACTOR: the `message` NMEA string is intentionally unused. The legacy path sent the NMEA
+            // text over UDP for AgIO's CNMEA parser to decode into a 0xD6 GpsPositionMsg; here ModSim injects
+            // the already-computed simulator GPS state directly as a typed GpsPositionMsg, so the parser is
+            // bypassed and the raw sentence is not needed. To preserve exact GPS/GPS_Out semantics, every field
+            // is encoded with the SAME scale factors and sentinel defaults the GPS consumer decodes with
+            // (verified against SourceCode/GPS/Forms/UDPComm.Designer.cs, the 0xD6 GpsPosition case):
+            //   * Hdop: GPS reads `pn.hdop = hdop * 0.01`, so the raw value is HDOP x 100 (NOT x 10 — the x10
+            //     encoding produced hdop*0.01 = 0.09 for a simulated 0.9, an order-of-magnitude error).
+            //   * ImuHeading / ImuRoll are already x10-scaled by the simulator (headingIMU = degrees*10,
+            //     rollIMU = roll*10), matching the GPS `* 0.1` decode — injected verbatim.
+            //   * HeadingDual, Age, ImuPitch and ImuYawRate are NOT produced by the simulator. They MUST carry
+            //     the legacy "N/A" sentinels the GPS consumer tests for (float.MaxValue / ushort.MaxValue /
+            //     short.MaxValue); leaving them at the proto3 zero default would be decoded as VALID zero data
+            //     (e.g. a bogus 0 degree dual heading / 0 s age / 0 pitch / 0 yaw-rate) by GPS and GPS_Out.
             GpsPositionMsg msg = new GpsPositionMsg
             {
                 Latitude = latitude,
                 Longitude = longitude,
+                HeadingDual = float.MaxValue,            // sentinel: no dual-antenna heading in the simulator (GPS: != float.MaxValue)
                 HeadingTrue = (float)degrees,            // degrees == ToDegrees * headingTrue
                 Speed = (float)speed,
                 Roll = (float)roll,
                 Altitude = (float)altitude,
                 Satellites = (uint)sats,                 // simulator constant (12)
                 FixQuality = (uint)fixQuality,           // simulator constant (8)
-                Hdop = (uint)Math.Round(HDOP * 10.0),    // TODO: confirm HDOP scaling vs the 0xD6 byte table
-                ImuHeading = (uint)headingIMU,
-                ImuRoll = rollIMU
-                // TODO: confirm GpsPositionMsg field mapping vs NMEA sentence content (HeadingDual/Age/ImuPitch/
-                // ImuYawRate left default; the `message` NMEA string is intentionally unused after the re-route).
+                Hdop = (uint)Math.Round(HDOP * 100.0),   // GPS decodes hdop * 0.01 -> raw = HDOP x 100 (0.9 -> 90 -> 0.9)
+                Age = ushort.MaxValue,                   // sentinel: differential age not simulated (GPS: != ushort.MaxValue)
+                ImuHeading = (uint)headingIMU,           // simulator already scales headingIMU = degrees * 10 (GPS: * 0.1)
+                ImuRoll = rollIMU,                       // simulator already scales rollIMU = roll * 10 (GPS: * 0.1)
+                ImuPitch = short.MaxValue,               // sentinel: pitch not simulated (GPS: != short.MaxValue)
+                ImuYawRate = short.MaxValue              // sentinel: yaw rate not simulated (GPS: != short.MaxValue)
             };
 
             InjectEnvelope(new PgnEnvelope
@@ -482,7 +416,13 @@ namespace ModSim
                             //was speed
                             //data[7];
 
-                            // TODO: proto field 'ackerman_fix' occupies AutoSteerConfig byte 8, which ModSim decodes as setting1 (Danfoss/pressure/current/Y-axis bits); confirm semantic alignment against docs/pgn-protocol.md byte tables.
+                            // IPC-REFACTOR: byte-8 alignment verified. In the AutoSteerConfig (PGN 0xFB) frame byte 8 is
+                            // the "setting1" bitfield (Danfoss / pressure / current / Y-axis). The proto schema names the
+                            // byte-8 field 'ackerman_fix' (docs/proto/agopengps_ipc.proto: "byte 8"), and the AOG producer
+                            // maps it by the same byte position: CPGN_FB declares `set1 = 8` and
+                            // OutboundPgn.BuildAutoSteerConfig sets `AckermanFix = d[8]`
+                            // (SourceCode/GPS/Forms/PGN.Designer.cs). Reading msg.AckermanFix as setting1 therefore
+                            // reproduces legacy byte 8 exactly; the proto field name is a schema label, not a scale change.
                             sett = (int)msg.AckermanFix; //setting1 - Danfoss valve etc (byte 8)
 
                             if ((sett & (1 << 0)) != 0) steerConfig.IsDanfoss = 1; else steerConfig.IsDanfoss = 0;
@@ -533,8 +473,11 @@ namespace ModSim
                             ExtendedSectionControlMsg msg = envelope.ExtendedSectionControl;
 
                             // IPC-REFACTOR: legacy read 8 individual bytes data[5..12]; proto packs them as a single
-                            // uint64 (8 bitmask bytes, LSB-first). Unpack LSB-first to reproduce bytes 5..12 exactly.
-                            // TODO: confirm ExtendedSectionControl section byte order matches the AOG producer packing in SourceCode/GPS/Forms/PGN.Designer.cs.
+                            // uint64 (8 bitmask bytes, LSB-first). LSB-first order verified against the AOG producer:
+                            // OutboundPgn.BuildExtendedSectionControl (SourceCode/GPS/Forms/PGN.Designer.cs) packs
+                            // `Sections = (ulong)d[5] | ((ulong)d[6] << 8) | ... | ((ulong)d[12] << 56)`, i.e. byte 5 in
+                            // the low byte through byte 12 in the high byte. Unpacking LSB-first below (b5 = sections &
+                            // 0xFF ... b12 = sections >> 56) therefore reproduces legacy bytes 5..12 exactly.
                             ulong sections = msg.Sections;
                             byte b5 = (byte)(sections & 0xFF);
                             byte b6 = (byte)((sections >> 8) & 0xFF);
