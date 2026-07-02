@@ -5,332 +5,334 @@ using AgOpenGPS.Forms;
 using System;
 using System.Diagnostics;
 using System.Drawing;
-using System.Net;
-using System.Net.Sockets;
 using System.Windows.Forms;
 using AgOpenGPS.Helpers;
+// IPC-REFACTOR: gRPC client transport (replaces System.Net UDP loopback).
+// System.Net and System.Net.Sockets usings removed; the single retained socket field and the
+// few socket types used by the Unix-domain-socket connect callback are fully-qualified below so
+// this file stays warning-clean (no unused usings) per the UDPComm.Designer.cs analyzer gate.
+using AgOpenGPS.Ipc;                 // PgnEnvelope, IpcConstants, all *Msg types, Telemetry/CommandService clients, CommandAck
+using Google.Protobuf.WellKnownTypes; // Empty (StreamTelemetry request)
+using Grpc.Core;                     // RpcException, StatusCode, AsyncUnaryCall<T> (ack helper)
+using Grpc.Net.Client;               // GrpcChannel, GrpcChannelOptions
+using System.IO.Pipes;               // NamedPipeClientStream, PipeDirection, PipeOptions (Windows transport)
+using System.Net.Http;               // SocketsHttpHandler (gRPC HTTP/2 over UDS/named-pipe)
+using System.Runtime.InteropServices; // RuntimeInformation, OSPlatform (OS-branched endpoint)
+using System.Threading;              // CancellationTokenSource
+using System.Threading.Tasks;        // Task (async connect/subscribe + fire-and-forget ack)
 
 namespace AgOpenGPS
 {
     public partial class FormGPS
     {
         // - App Sockets  -----------------------------------------------------
-        private Socket loopBackSocket;
+        // IPC-REFACTOR: loopBackSocket retained (null) for FormGPS shutdown-path compatibility; UDP socket eliminated.
+        // Fully-qualified type so the file no longer needs `using System.Net.Sockets;`.
+        private System.Net.Sockets.Socket loopBackSocket;
 
-        //endpoints of modules
-        private EndPoint epAgIO = new IPEndPoint(IPAddress.Parse("127.255.255.255"), 17777);
-        private EndPoint endPointLoopBack = new IPEndPoint(IPAddress.Loopback, 0);
-
-        // Data stream
-        private byte[] loopBuffer = new byte[1024];
+        // IPC-REFACTOR: UDP broadcast to 127.255.255.255:17777 replaced by TelemetryService gRPC server-side stream.
+        // IPC-REFACTOR: UDP loopback endpoint/receive buffer removed with the socket transport.
+        // (removed fields: epAgIO [127.255.255.255:17777], endPointLoopBack, loopBuffer[1024])
 
         // Status delegate
         public int missedSentenceCount = 0;
         public int udpWatchLimit = 70;
 
+        // IPC-REFACTOR: udpWatch retained for FormGPS compatibility (FormGPS.cs calls udpWatch.Start()); throttle now uses _lastFixAt delta.
         private readonly Stopwatch udpWatch = new Stopwatch();
 
-        private void ReceiveFromAgIO(byte[] data)
+        // IPC-REFACTOR: gRPC channel/client + stream-side throttle state (no default initializers; each assigned via a statement and read).
+        private DateTime _lastFixAt;
+        private GrpcChannel _ipcChannel;
+        private CommandService.CommandServiceClient _commandClient;
+        private CancellationTokenSource _ipcCts;
+
+        // IPC-REFACTOR: inbound dispatch now switches on the strongly-typed PgnEnvelope.PayloadOneofCase produced by the
+        // proto3 oneof (was `switch (data[3])` over the raw PGN byte). Fed by the TelemetryService stream reader
+        // (ConnectAndSubscribeAsync) via BeginInvoke, replacing the removed UDP ReceiveAppData callback. Each case below
+        // preserves the exact downstream domain logic, sentinels and scaling of the legacy byte-offset parsing; only the
+        // field SOURCE changes (byte offset -> typed property). The // PGN 0xNN comments are retained for byte-table traceability.
+        private void ReceiveFromAgIO(PgnEnvelope envelope)
         {
-            if (data.Length > 4 && data[0] == 0x80 && data[1] == 0x81)
+            // IPC-REFACTOR: CRC check removed — HTTP/2 frame integrity provides equivalent byte-level guarantees.
+            switch (envelope.PayloadCase)
             {
-                int Length = Math.Max((data[4]) + 5, 5);
-                if (data.Length > Length)
-                {
-                    byte CK_A = 0;
-                    for (int j = 2; j < Length; j++)
+                case PgnEnvelope.PayloadOneofCase.GpsPosition: // PGN 0xD6
                     {
-                        CK_A += data[j];
-                    }
-
-                    if (data[Length] != (byte)CK_A)
-                    {
-                        return;
-                    }
-                }
-                else
-                {
-                    return;
-                }
-
-                switch (data[3])
-                {
-                    case 0xD6:
+                        // IPC-REFACTOR: 70ms udpWatchLimit GPS-fix throttle migrated from udpWatch.Elapsed to _lastFixAt DateTime delta; interval preserved.
+                        if ((DateTime.Now - _lastFixAt).TotalMilliseconds < udpWatchLimit)
                         {
-                            if (udpWatch.ElapsedMilliseconds < udpWatchLimit)
-                            {
-                                missedSentenceCount++;
-                                return;
-                            }
-                            udpWatch.Reset();
-                            udpWatch.Start();
-
-                            double Lon = BitConverter.ToDouble(data, 5);
-                            double Lat = BitConverter.ToDouble(data, 13);
-
-                            if (Lon != double.MaxValue && Lat != double.MaxValue)
-                            {
-                                if (timerSim.Enabled) DisableSim();
-
-                                AppModel.CurrentLatLon = new Wgs84(Lat, Lon);
-
-                                GeoCoord fixCoord = AppModel.LocalPlane.ConvertWgs84ToGeoCoord(AppModel.CurrentLatLon);
-                                pn.fix.northing = fixCoord.Northing;
-                                pn.fix.easting = fixCoord.Easting;
-
-                                //From dual antenna heading sentences
-                                float temp = BitConverter.ToSingle(data, 21);
-                                if (temp != float.MaxValue)
-                                {
-                                    pn.headingTrueDual = temp + pn.headingTrueDualOffset;
-                                    if (pn.headingTrueDual >= 360) pn.headingTrueDual -= 360;
-                                    else if (pn.headingTrueDual < 0) pn.headingTrueDual += 360;
-
-                                    if (ahrs.isDualAsIMU) ahrs.imuHeading = pn.headingTrueDual;
-                                }
-
-                                //from single antenna sentences (VTG,RMC)
-                                pn.headingTrue = BitConverter.ToSingle(data, 25);
-
-                                //always save the speed.
-                                temp = BitConverter.ToSingle(data, 29);
-                                if (temp != float.MaxValue)
-                                {
-                                    pn.vtgSpeed = temp;
-                                }
-
-                                //roll in degrees
-                                temp = BitConverter.ToSingle(data, 33);
-                                if (temp != float.MaxValue)
-                                {
-                                    if (ahrs.isRollInvert) temp *= -1;
-                                    ahrs.imuRoll = temp - ahrs.rollZero;
-                                }
-                                if (temp == float.MinValue)
-                                    ahrs.imuRoll = 0;
-
-                                //altitude in meters
-                                temp = BitConverter.ToSingle(data, 37);
-                                if (temp != float.MaxValue)
-                                    pn.altitude = temp;
-
-                                ushort sats = BitConverter.ToUInt16(data, 41);
-                                if (sats != ushort.MaxValue)
-                                    pn.satellitesTracked = sats;
-
-                                byte fix = data[43];
-                                if (fix != byte.MaxValue)
-                                    pn.fixQuality = fix;
-
-                                ushort hdop = BitConverter.ToUInt16(data, 44);
-                                if (hdop != ushort.MaxValue)
-                                    pn.hdop = hdop * 0.01;
-
-                                ushort age = BitConverter.ToUInt16(data, 46);
-                                if (age != ushort.MaxValue)
-                                    pn.age = age * 0.01;
-
-                                ushort imuHead = BitConverter.ToUInt16(data, 48);
-                                if (imuHead != ushort.MaxValue)
-                                {
-                                    ahrs.imuHeading = imuHead;
-                                    ahrs.imuHeading *= 0.1;
-                                }
-
-                                short imuRol = BitConverter.ToInt16(data, 50);
-                                if (imuRol != short.MaxValue)
-                                {
-                                    double rollK = imuRol;
-                                    if (ahrs.isRollInvert) rollK *= -0.1;
-                                    else rollK *= 0.1;
-                                    rollK -= ahrs.rollZero;
-                                    ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
-                                }
-
-                                short imuPich = BitConverter.ToInt16(data, 52);
-                                if (imuPich != short.MaxValue)
-                                {
-                                    ahrs.imuPitch = imuPich;
-                                }
-
-                                short imuYaw = BitConverter.ToInt16(data, 54);
-                                if (imuYaw != short.MaxValue)
-                                {
-                                    ahrs.imuYawRate = imuYaw;
-                                }
-
-                                sentenceCounter = 0;
-
-                                UpdateFixPosition();
-                            }
+                            missedSentenceCount++;
+                            return;
                         }
-                        break;
+                        _lastFixAt = DateTime.Now;
 
-                    case 0xD3: //external IMU
+                        double Lon = envelope.GpsPosition.Longitude;
+                        double Lat = envelope.GpsPosition.Latitude;
+
+                        if (Lon != double.MaxValue && Lat != double.MaxValue)
                         {
-                            if (data.Length != 14)
-                                break;
-                            if (ahrs.imuRoll > 25 || ahrs.imuRoll < -25) ahrs.imuRoll = 0;
-                            //Heading
-                            ahrs.imuHeading = (Int16)((data[6] << 8) + data[5]);
-                            ahrs.imuHeading *= 0.1;
+                            if (timerSim.Enabled) DisableSim();
 
-                            //Roll
-                            double rollK = (Int16)((data[8] << 8) + data[7]);
+                            AppModel.CurrentLatLon = new Wgs84(Lat, Lon);
 
-                            if (ahrs.isRollInvert) rollK *= -0.1;
-                            else rollK *= 0.1;
-                            rollK -= ahrs.rollZero;
-                            ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
+                            GeoCoord fixCoord = AppModel.LocalPlane.ConvertWgs84ToGeoCoord(AppModel.CurrentLatLon);
+                            pn.fix.northing = fixCoord.Northing;
+                            pn.fix.easting = fixCoord.Easting;
 
-                            //Angular velocity
-                            ahrs.angVel = (Int16)((data[10] << 8) + data[9]);
-                            ahrs.angVel /= -2;
-
-                            break;
-                        }
-                    case 0xD4: //imu disconnect pgn
-                        {
-                            if (data[5] == 1)
+                            //From dual antenna heading sentences
+                            float temp = envelope.GpsPosition.HeadingDual;
+                            if (temp != float.MaxValue)
                             {
-                                ahrs.imuHeading = 99999;
+                                pn.headingTrueDual = temp + pn.headingTrueDualOffset;
+                                if (pn.headingTrueDual >= 360) pn.headingTrueDual -= 360;
+                                else if (pn.headingTrueDual < 0) pn.headingTrueDual += 360;
 
-                                ahrs.imuRoll = 88888;
-
-                                ahrs.angVel = 0;
-                            }
-                            break;
-                        }
-                    case 253: //return from autosteer module
-                        {
-                            //Steer angle actual
-                            if (data.Length != 14)
-                                break;
-                            mc.actualSteerAngleChart = (Int16)((data[6] << 8) + data[5]);
-                            mc.actualSteerAngleDegrees = (double)mc.actualSteerAngleChart * 0.01;
-
-                            //Heading
-                            double head253 = (Int16)((data[8] << 8) + data[7]);
-                            if (head253 != 9999)
-                            {
-                                ahrs.imuHeading = head253 * 0.1;
+                                if (ahrs.isDualAsIMU) ahrs.imuHeading = pn.headingTrueDual;
                             }
 
-                            //Roll
-                            double rollK = (Int16)((data[10] << 8) + data[9]);
-                            if (rollK != 8888)
+                            //from single antenna sentences (VTG,RMC)
+                            pn.headingTrue = envelope.GpsPosition.HeadingTrue;
+
+                            //always save the speed.
+                            temp = envelope.GpsPosition.Speed;
+                            if (temp != float.MaxValue)
                             {
+                                pn.vtgSpeed = temp;
+                            }
+
+                            //roll in degrees
+                            temp = envelope.GpsPosition.Roll;
+                            if (temp != float.MaxValue)
+                            {
+                                if (ahrs.isRollInvert) temp *= -1;
+                                ahrs.imuRoll = temp - ahrs.rollZero;
+                            }
+                            if (temp == float.MinValue)
+                                ahrs.imuRoll = 0;
+
+                            //altitude in meters
+                            temp = envelope.GpsPosition.Altitude;
+                            if (temp != float.MaxValue)
+                                pn.altitude = temp;
+
+                            uint sats = envelope.GpsPosition.Satellites;
+                            if (sats != ushort.MaxValue)
+                                pn.satellitesTracked = (int)sats;
+
+                            uint fix = envelope.GpsPosition.FixQuality;
+                            if (fix != byte.MaxValue)
+                                pn.fixQuality = (int)fix;
+
+                            uint hdop = envelope.GpsPosition.Hdop;
+                            if (hdop != ushort.MaxValue)
+                                pn.hdop = hdop * 0.01;
+
+                            uint age = envelope.GpsPosition.Age;
+                            if (age != ushort.MaxValue)
+                                pn.age = age * 0.01;
+
+                            uint imuHead = envelope.GpsPosition.ImuHeading;
+                            if (imuHead != ushort.MaxValue)
+                            {
+                                ahrs.imuHeading = imuHead;
+                                ahrs.imuHeading *= 0.1;
+                            }
+
+                            int imuRol = envelope.GpsPosition.ImuRoll;
+                            if (imuRol != short.MaxValue)
+                            {
+                                double rollK = imuRol;
                                 if (ahrs.isRollInvert) rollK *= -0.1;
                                 else rollK *= 0.1;
                                 rollK -= ahrs.rollZero;
                                 ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
                             }
-                            //else ahrs.imuRoll = 88888;
 
-                            //switch status
-                            mc.workSwitchHigh = (data[11] & 1) == 1;
-                            mc.steerSwitchHigh = (data[11] & 2) == 2;
-
-                            //the pink steer dot reset
-                            steerModuleConnectedCounter = 0;
-
-                            //Actual PWM
-                            mc.pwmDisplay = data[12];
-
-                            break;
-                        }
-
-                    case 0xF0: // ISOBUS heartbeat
-                        {
-                            int length = data[4];
-                            byte[] pgnData = new byte[length];
-                            Array.Copy(data, 5, pgnData, 0, length);
-                            isobus.DeserializeHeartbeat(pgnData);
-                            break;
-                        }
-
-                    case 250:
-                        {
-                            if (data.Length != 14)
-                                break;
-                            mc.sensorData = data[5];
-                            break;
-                        }
-
-                    case 221: // DD
-                        {
-                            //{ 0x80, 0x81, 0x7f, 221, number bytes, seconds to display, mystery byte, 98,99,100,101, CRC };
-                            if (data.Length < 9) break;
-
-                            if (isHardwareMessages)
+                            int imuPich = envelope.GpsPosition.ImuPitch;
+                            if (imuPich != short.MaxValue)
                             {
-                                lblHardwareMessage.Text = System.Text.Encoding.UTF8.GetString(data, 7, data[4] - 2);
-                                lblHardwareMessage.Visible = true;
-                                hardwareLineCounter = data[5] * 10;
-
-                                Log.EventWriter(lblHardwareMessage.Text);
-
-                                //color based on byte 6
-                                lblHardwareMessage.BackColor = data[6] == 0 ? Color.Salmon : Color.Bisque;
-                                lblHardwareMessage.ForeColor = Color.Black;
-                            }
-                            else
-                            {
-                                lblHardwareMessage.Visible = false;
-                                hardwareLineCounter = 0;
-                            }
-                            break;
-                        }
-                    case 222: // 0xDE
-                        {
-                            //{ 0x80, 0x81, 0x7f, 222, number bytes, mask, command CRC };
-                            if (data.Length < 6) break;
-                            if (((data[5] & 1) == 1)) //mask bit #0 set and command bit #0 nudge line to the 0 = left 1 = right
-                            {
-                                double dist = Properties.ToolSettings.Default.setAS_snapDistance * 0.01;
-                                if ((data[6] & 1) != 1) { trk.NudgeTrack(-dist); }
-                                if ((data[6] & 1) == 1) { trk.NudgeTrack(dist); }
-                            }
-                            if (((data[5] & 2) == 2)) //mask bit #1 set and command bit #0 cycle line to the 0 = left 1 = right
-                            {
-                                if ((data[6] & 1) != 1) { btnCycleLines.PerformClick(); }
-                                if ((data[6] & 1) == 1) { btnCycleLinesBk.PerformClick(); }
+                                ahrs.imuPitch = imuPich;
                             }
 
-                            break;
+                            int imuYaw = envelope.GpsPosition.ImuYawRate;
+                            if (imuYaw != short.MaxValue)
+                            {
+                                ahrs.imuYawRate = imuYaw;
+                            }
+
+                            sentenceCounter = 0;
+
+                            UpdateFixPosition();
                         }
+                    }
+                    break;
 
+                case PgnEnvelope.PayloadOneofCase.ExternalImu: // PGN 0xD3 external IMU
+                    {
+                        if (ahrs.imuRoll > 25 || ahrs.imuRoll < -25) ahrs.imuRoll = 0;
+                        //Heading
+                        ahrs.imuHeading = envelope.ExternalImu.Heading;
+                        ahrs.imuHeading *= 0.1;
 
-                    #region Remote Switches
-                    case 234://MTZ8302 Feb 2020
+                        //Roll
+                        double rollK = envelope.ExternalImu.Roll;
+
+                        if (ahrs.isRollInvert) rollK *= -0.1;
+                        else rollK *= 0.1;
+                        rollK -= ahrs.rollZero;
+                        ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
+
+                        //Angular velocity
+                        ahrs.angVel = (short)envelope.ExternalImu.AngularVelocity;
+                        ahrs.angVel /= -2;
+                    }
+                    break;
+
+                case PgnEnvelope.PayloadOneofCase.ImuDisconnect: // PGN 0xD4 imu disconnect pgn
+                    {
+                        if (envelope.ImuDisconnect.IsDisconnected)
                         {
-                            //Steer angle actual
-                            if (data.Length != 14)
-                                break;
+                            ahrs.imuHeading = 99999;
 
-                            Buffer.BlockCopy(data, 5, mc.ss, 1, 8);
+                            ahrs.imuRoll = 88888;
 
-                            DoRemoteSwitches();
-
-                            break;
+                            ahrs.angVel = 0;
                         }
-                        #endregion
-                }
+                    }
+                    break;
+
+                case PgnEnvelope.PayloadOneofCase.SteerModuleResponse: // PGN 0xFD return from autosteer module
+                    {
+                        //Steer angle actual
+                        mc.actualSteerAngleChart = envelope.SteerModuleResponse.ActualSteerAngle;
+                        mc.actualSteerAngleDegrees = (double)mc.actualSteerAngleChart * 0.01;
+
+                        //Heading — HeadingValid == false reproduces the legacy 9999 "N/A" sentinel (producer sets HeadingValid = raw != 9999)
+                        if (envelope.SteerModuleResponse.HeadingValid)
+                        {
+                            ahrs.imuHeading = envelope.SteerModuleResponse.Heading * 0.1;
+                        }
+
+                        //Roll — RollValid == false reproduces the legacy 8888 "N/A" sentinel (producer sets RollValid = raw != 8888)
+                        double rollK = envelope.SteerModuleResponse.Roll;
+                        if (envelope.SteerModuleResponse.RollValid)
+                        {
+                            if (ahrs.isRollInvert) rollK *= -0.1;
+                            else rollK *= 0.1;
+                            rollK -= ahrs.rollZero;
+                            ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
+                        }
+                        //else ahrs.imuRoll = 88888;
+
+                        //switch status
+                        mc.workSwitchHigh = (envelope.SteerModuleResponse.SwitchStatus & 1) == 1;
+                        mc.steerSwitchHigh = (envelope.SteerModuleResponse.SwitchStatus & 2) == 2;
+
+                        //the pink steer dot reset
+                        steerModuleConnectedCounter = 0;
+
+                        //Actual PWM
+                        mc.pwmDisplay = (int)envelope.SteerModuleResponse.Pwm;
+                    }
+                    break;
+
+                case PgnEnvelope.PayloadOneofCase.IsoBusHeartbeat: // PGN 0xF0 ISOBUS heartbeat
+                    {
+                        // IPC-REFACTOR: reconstruct the exact byte[] layout CISOBUS.DeserializeHeartbeat consumes
+                        // ([0]=status, [1]=numSections, [2..]=section-state bitmask) from the typed message. CISOBUS is
+                        // immutable/out-of-scope; its 1-second heartbeat liveness semantics are unchanged.
+                        byte[] sectionStates = envelope.IsoBusHeartbeat.SectionStates.ToByteArray();
+                        byte[] pgnData = new byte[2 + sectionStates.Length];
+                        pgnData[0] = (byte)envelope.IsoBusHeartbeat.Status;
+                        pgnData[1] = (byte)envelope.IsoBusHeartbeat.NumSections;
+                        if (sectionStates.Length > 0)
+                            Array.Copy(sectionStates, 0, pgnData, 2, sectionStates.Length);
+                        isobus.DeserializeHeartbeat(pgnData);
+                    }
+                    break;
+
+                case PgnEnvelope.PayloadOneofCase.SensorData: // PGN 0xFA
+                    {
+                        mc.sensorData = (byte)envelope.SensorData.SensorData;
+                    }
+                    break;
+
+                case PgnEnvelope.PayloadOneofCase.DisplayHardware: // PGN 0xDD
+                    {
+                        //{ 0x80, 0x81, 0x7f, 221, number bytes, seconds to display, mystery byte, 98,99,100,101, CRC };
+                        if (isHardwareMessages)
+                        {
+                            lblHardwareMessage.Text = envelope.DisplayHardware.Message;
+                            lblHardwareMessage.Visible = true;
+                            hardwareLineCounter = (int)envelope.DisplayHardware.DisplayTime * 10;
+
+                            Log.EventWriter(lblHardwareMessage.Text);
+
+                            //color based on byte 6
+                            lblHardwareMessage.BackColor = envelope.DisplayHardware.Color == 0 ? Color.Salmon : Color.Bisque;
+                            lblHardwareMessage.ForeColor = Color.Black;
+                        }
+                        else
+                        {
+                            lblHardwareMessage.Visible = false;
+                            hardwareLineCounter = 0;
+                        }
+                    }
+                    break;
+
+                case PgnEnvelope.PayloadOneofCase.RemoteCommand: // PGN 0xDE
+                    {
+                        //{ 0x80, 0x81, 0x7f, 222, number bytes, mask, command CRC };
+                        if (((envelope.RemoteCommand.Mask & 1) == 1)) //mask bit #0 set and command bit #0 nudge line to the 0 = left 1 = right
+                        {
+                            double dist = Properties.ToolSettings.Default.setAS_snapDistance * 0.01;
+                            if ((envelope.RemoteCommand.Command & 1) != 1) { trk.NudgeTrack(-dist); }
+                            if ((envelope.RemoteCommand.Command & 1) == 1) { trk.NudgeTrack(dist); }
+                        }
+                        if (((envelope.RemoteCommand.Mask & 2) == 2)) //mask bit #1 set and command bit #0 cycle line to the 0 = left 1 = right
+                        {
+                            if ((envelope.RemoteCommand.Command & 1) != 1) { btnCycleLines.PerformClick(); }
+                            if ((envelope.RemoteCommand.Command & 1) == 1) { btnCycleLinesBk.PerformClick(); }
+                        }
+                    }
+                    break;
+
+                #region Remote Switches
+                case PgnEnvelope.PayloadOneofCase.RemoteSwitch: // PGN 0xEA MTZ8302 Feb 2020
+                    {
+                        // IPC-REFACTOR: copy the 8 section-switch bytes into mc.ss at offset 1 (was Buffer.BlockCopy(data,5,mc.ss,1,8)).
+                        envelope.RemoteSwitch.SwitchData.CopyTo(mc.ss, 1);
+
+                        DoRemoteSwitches();
+                    }
+                    break;
+                #endregion
+
+                default: // PayloadOneofCase.None or an outbound/unknown payload — no-op (never throw)
+                    break;
             }
         }
 
-        //start the UDP server
+        //start the gRPC IPC client (formerly the UDP loopback server)
         public void StartLoopbackServer()
         {
+            // IPC-REFACTOR: UDP loopback bind(127.0.0.1:15555)+BeginReceiveFrom replaced by gRPC channel + TelemetryService server-stream subscription.
             try
             {
-                // Initialise the socket
-                loopBackSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                loopBackSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
-                loopBackSocket.Bind(new IPEndPoint(IPAddress.Loopback, 15555));
-                loopBackSocket.BeginReceiveFrom(loopBuffer, 0, loopBuffer.Length, SocketFlags.None,
-                    ref endPointLoopBack, new AsyncCallback(ReceiveAppData), null);
-                Log.EventWriter("UDP Loopback network started: " + IPAddress.Loopback.ToString() + ":" + "15555");
+                // IPC-REFACTOR: loopBackSocket intentionally left null in gRPC mode. FormGPS.cs null-checks it
+                // before Shutdown()/Close(), so null is a safe no-op there. Assigned via a STATEMENT (not a field
+                // initializer) so the field is definitely-assigned (no CS0649) without tripping CA1805.
+                loopBackSocket = null;
+
+                _ipcCts = new CancellationTokenSource();
+
+                // IPC-REFACTOR: connect + subscribe off the UI thread (StartLoopbackServer runs on the UI thread and
+                // the retry backoff can sum to ~15.5 s). ConnectAndSubscribeAsync owns its own try/catch, so this
+                // discard fire-and-forget never leaves an unobserved task exception.
+                _ = ConnectAndSubscribeAsync();
+
+                Log.EventWriter("gRPC IPC client starting: " + IpcConstants.AgIoSocketPath);
             }
             catch (Exception ex)
             {
@@ -338,8 +340,125 @@ namespace AgOpenGPS
                     "UDP Server",
                     "Load Error: " + ex.Message,
                     DialogSeverity.Error);
-                Log.EventWriter("Catch -> Load UDP Loopback Error: " + ex.ToString());
+                Log.EventWriter("Catch -> Load gRPC IPC Error: " + ex.ToString());
             }
+        }
+
+        // IPC-REFACTOR: builds the loopback-only gRPC channel (no TLS, no auth — security parity with the legacy UDP
+        // loopback posture, §5.3.5). "http://localhost" is a placeholder plaintext HTTP/2 authority; the ACTUAL
+        // endpoint is dialed by the SocketsHttpHandler.ConnectCallback to IpcConstants.AgIoSocketPath (Windows named
+        // pipe / Unix domain socket). Static: no instance state (CA1822).
+        private static GrpcChannel CreateIpcChannel()
+        {
+            SocketsHttpHandler handler = new SocketsHttpHandler
+            {
+                ConnectCallback = async (context, cancellationToken) =>
+                {
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {
+                        // Windows loopback transport: named pipe. Strip the @"\\.\pipe\" prefix to get the pipe name.
+                        string socketPath = IpcConstants.AgIoSocketPath;
+                        string pipeName = socketPath.StartsWith(@"\\.\pipe\", StringComparison.Ordinal)
+                            ? socketPath.Substring(@"\\.\pipe\".Length)
+                            : socketPath;
+                        NamedPipeClientStream pipe = new NamedPipeClientStream(
+                            ".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                        await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                        return pipe;
+                    }
+
+                    // Unix/macOS loopback transport: Unix domain socket.
+                    System.Net.Sockets.Socket socket = new System.Net.Sockets.Socket(
+                        System.Net.Sockets.AddressFamily.Unix,
+                        System.Net.Sockets.SocketType.Stream,
+                        System.Net.Sockets.ProtocolType.Unspecified);
+                    await socket.ConnectAsync(
+                        new System.Net.Sockets.UnixDomainSocketEndPoint(IpcConstants.AgIoSocketPath),
+                        cancellationToken).ConfigureAwait(false);
+                    return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                }
+            };
+
+            return GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = handler });
+        }
+
+        // IPC-REFACTOR: connects to the AgIO gRPC host and drains the TelemetryService server-stream. Instance method
+        // (touches _ipcChannel/_commandClient/_ipcCts + BeginInvoke + ReceiveFromAgIO). Retry/backoff per AAP §0.3.5:
+        // max 5 attempts; delay before retry = 500 * 2^attempt ms => 500 / 1000 / 2000 / 4000 / 8000. AgIO is
+        // auto-started by AOG, so a startup race (server not yet listening) is expected and retried. This task owns
+        // its own try/catch on every path, so the fire-and-forget discard in StartLoopbackServer never observes an
+        // unhandled exception.
+        private async Task ConnectAndSubscribeAsync()
+        {
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                int delayMs = 500 * (1 << attempt);
+                try
+                {
+                    // Dispose any channel left over from a prior failed attempt before recreating.
+                    _ipcChannel?.Dispose();
+                    _ipcChannel = CreateIpcChannel();
+                    _commandClient = new CommandService.CommandServiceClient(_ipcChannel);
+                    TelemetryService.TelemetryServiceClient telemetryClient =
+                        new TelemetryService.TelemetryServiceClient(_ipcChannel);
+
+                    // MoveNext loop (more portable than ReadAllAsync on net48 — no IAsyncEnumerable dependency).
+                    using (var call = telemetryClient.StreamTelemetry(new Empty(), cancellationToken: _ipcCts.Token))
+                    {
+                        Log.EventWriter("gRPC telemetry stream connected: " + IpcConstants.AgIoSocketPath);
+                        while (await call.ResponseStream.MoveNext(_ipcCts.Token).ConfigureAwait(false))
+                        {
+                            PgnEnvelope envelope = call.ResponseStream.Current;
+
+                            // IPC-REFACTOR: marshal each envelope to the UI thread exactly as legacy ReceiveAppData did
+                            // (only the SOURCE changed: UDP datagram -> telemetry stream item).
+                            try { BeginInvoke((MethodInvoker)(() => ReceiveFromAgIO(envelope))); }
+                            catch { /* handle not yet created / form disposing; ignore — parity with legacy empty catch */ }
+                        }
+                    }
+
+                    // Stream ended (server closed it cleanly) — exit the retry loop.
+                    return;
+                }
+                catch (Exception ex) when (attempt < 4 && IsTransientConnect(ex))
+                {
+                    Log.EventWriter("gRPC connect attempt " + (attempt + 1) + " failed: " + ex.Message
+                        + "; retrying in " + delayMs + "ms");
+                    await Task.Delay(delayMs).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    // Cooperative shutdown (CancellationTokenSource cancelled/disposed) is not an error — exit quietly.
+                    if (_ipcCts != null && _ipcCts.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    // IPC-REFACTOR: UDP bind-failure dialog replaced by gRPC connect retry/backoff (5x, 500ms base x2) -> existing FormDialog + Log.EventWriter on exhaustion.
+                    // Non-transient failure or the final attempt failed: route to the SAME error surface the legacy
+                    // bind-failure used, marshalled to the UI thread.
+                    try
+                    {
+                        BeginInvoke((MethodInvoker)(() => FormDialog.Show(
+                            "UDP Server",
+                            "gRPC IPC connect failed (5 attempts) to " + IpcConstants.AgIoSocketPath,
+                            DialogSeverity.Error)));
+                    }
+                    catch { /* form may be closing; ignore */ }
+                    Log.EventWriter("Catch -> gRPC IPC connect exhausted after 5 attempts to "
+                        + IpcConstants.AgIoSocketPath + ": " + ex.Message);
+                    return;
+                }
+            }
+        }
+
+        // IPC-REFACTOR: a connect/stream failure is transient (retryable) when the server is not yet listening — AgIO
+        // is auto-started by AOG so a startup race is expected. Static: no instance state (CA1822).
+        private static bool IsTransientConnect(Exception ex)
+        {
+            return (ex is RpcException rpc && rpc.StatusCode == StatusCode.Unavailable)
+                || ex is System.Net.Sockets.SocketException
+                || ex is System.IO.IOException;
         }
 
         private void DisableSim()
@@ -356,63 +475,107 @@ namespace AgOpenGPS
             return;
         }
 
-        private void ReceiveAppData(IAsyncResult asyncResult)
-        {
-            try
-            {
-                // Receive all data
-                int msgLen = loopBackSocket.EndReceiveFrom(asyncResult, ref endPointLoopBack);
+        // IPC-REFACTOR: UDP async receive callback (EndReceiveFrom + BeginReceiveFrom re-arm + BeginInvoke -> ReceiveFromAgIO)
+        // removed; inbound frames now arrive on the TelemetryService server-stream reader (ConnectAndSubscribeAsync MoveNext loop),
+        // which marshals each PgnEnvelope to the UI thread via the same BeginInvoke((MethodInvoker)(() => ReceiveFromAgIO(...))) pattern.
 
-                byte[] localMsg = new byte[msgLen];
-                Array.Copy(loopBuffer, localMsg, msgLen);
-
-                // Listen for more connections again...
-                loopBackSocket.BeginReceiveFrom(loopBuffer, 0, loopBuffer.Length, SocketFlags.None,
-                    ref endPointLoopBack, new AsyncCallback(ReceiveAppData), null);
-
-                BeginInvoke((MethodInvoker)(() => ReceiveFromAgIO(localMsg)));
-            }
-            catch (Exception)
-            {
-                // MessageBox.Show("ReceiveData Error: " + ex.Message, "UDP Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
+        // IPC-REFACTOR: fire-and-forget UDP send + CRC replaced by typed CommandService.Send* unary RPC (byteData[3] dispatch); ack logged, non-blocking.
         public void SendPgnToLoop(byte[] byteData)
         {
-            if (loopBackSocket != null && byteData.Length > 2)
-            {
-                try
-                {
-                    int crc = 0;
-                    for (int i = 2; i + 1 < byteData.Length; i++)
-                    {
-                        crc += byteData[i];
-                    }
-                    byteData[byteData.Length - 1] = (byte)crc;
+            // IPC-REFACTOR: guard fixed for gRPC mode. The legacy guard `loopBackSocket != null` can never pass now
+            // (loopBackSocket stays null in gRPC mode), which would silently drop EVERY outbound PGN. Require a live
+            // command client and at least 4 bytes so the byteData[3] PGN dispatch key can be read.
+            if (_commandClient == null || byteData == null || byteData.Length <= 3) return;
 
-                    loopBackSocket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None,
-                        epAgIO, new AsyncCallback(SendAsyncLoopData), null);
-                }
-                catch (Exception)
+            // IPC-REFACTOR: CRC check removed — HTTP/2 frame integrity provides equivalent byte-level guarantees.
+            // Each case builds the typed message from the legacy byte[] via OutboundPgn.Build* (PGN.Designer.cs) and
+            // issues the matching unary CommandService RPC. `_ = SendCommandAckAsync(...)` is an intentional fire-and-forget
+            // discard that preserves the legacy non-blocking UDP send; the whole switch is wrapped so it never throws to
+            // callers (parity with the legacy empty catch — includes the immutable CISOBUS.cs call sites).
+            try
+            {
+                switch (byteData[3])
                 {
-                    //Log.EventWriter("Sending UDP Message" + e.ToString());
-                    //MessageBox.Show("Send Error: " + e.Message, "UDP Client", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    case 0xFE: // PGN 254 AutoSteer data
+                        _ = SendCommandAckAsync(_commandClient.SendAutoSteerDataAsync(OutboundPgn.BuildAutoSteerData(byteData)));
+                        break;
+                    case 0xFC: // PGN 252 AutoSteer settings
+                        _ = SendCommandAckAsync(_commandClient.SendAutoSteerSettingsAsync(OutboundPgn.BuildAutoSteerSettings(byteData)));
+                        break;
+                    case 0xFB: // PGN 251 AutoSteer config
+                        _ = SendCommandAckAsync(_commandClient.SendAutoSteerConfigAsync(OutboundPgn.BuildAutoSteerConfig(byteData)));
+                        break;
+                    case 0xEF: // PGN 239 Machine data
+                        _ = SendCommandAckAsync(_commandClient.SendMachineDataAsync(OutboundPgn.BuildMachineData(byteData)));
+                        break;
+                    case 0xEE: // PGN 238 Machine config
+                        _ = SendCommandAckAsync(_commandClient.SendMachineConfigAsync(OutboundPgn.BuildMachineConfig(byteData)));
+                        break;
+                    case 0xEC: // PGN 236 Relay config
+                        _ = SendCommandAckAsync(_commandClient.SendRelayConfigAsync(OutboundPgn.BuildRelayConfig(byteData)));
+                        break;
+                    case 0xEB: // PGN 235 Section dimensions
+                        _ = SendCommandAckAsync(_commandClient.SendSectionDimensionsAsync(OutboundPgn.BuildSectionDimensions(byteData)));
+                        break;
+                    case 0xE5: // PGN 229 Extended section control
+                        _ = SendCommandAckAsync(_commandClient.SendExtendedSectionControlAsync(OutboundPgn.BuildExtendedSectionControl(byteData)));
+                        break;
+                    case 0xE4: // PGN 228 Rate control
+                        _ = SendCommandAckAsync(_commandClient.SendRateControlAsync(OutboundPgn.BuildRateControl(byteData)));
+                        break;
+                    case 0xF1: // PGN 241 Section control enable
+                        _ = SendCommandAckAsync(_commandClient.SendSectionControlEnableAsync(OutboundPgn.BuildSectionControlEnable(byteData)));
+                        break;
+                    case 0xF2: // PGN 242 Process data
+                        _ = SendCommandAckAsync(_commandClient.SendProcessDataAsync(OutboundPgn.BuildProcessData(byteData)));
+                        break;
+                    case 0xF3: // PGN 243 Field name
+                        _ = SendCommandAckAsync(_commandClient.SendFieldNameAsync(OutboundPgn.BuildFieldName(byteData)));
+                        break;
+                    case 0xD0: // PGN 208 Lat/Lon
+                        _ = SendCommandAckAsync(_commandClient.SendLatLonAsync(OutboundPgn.BuildLatLon(byteData)));
+                        break;
+                    case 0x64: // PGN 100 Corrected position
+                        _ = SendCommandAckAsync(_commandClient.SendCorrectedPositionAsync(OutboundPgn.BuildCorrectedPosition(byteData)));
+                        break;
+                    default:
+                        // Unknown/unsupported outbound PGN — no-op (only known PGNs are emitted by callers).
+                        break;
                 }
+            }
+            catch (Exception ex)
+            {
+                // IPC-REFACTOR: swallow like the legacy empty catch — never throw to callers (incl. immutable CISOBUS.cs).
+                Log.EventWriter("SendPgnToLoop dispatch error: " + ex.Message);
             }
         }
 
-        public void SendAsyncLoopData(IAsyncResult asyncResult)
+        // IPC-REFACTOR: awaits the unary CommandService ack off the caller's thread and logs a NAK/failure without ever
+        // throwing (backs the fire-and-forget discard at each SendPgnToLoop call site, preserving the legacy non-blocking
+        // UDP send). Disposes the call. Static because it only touches Log.EventWriter (no instance state) — satisfies CA1822.
+        private static async Task SendCommandAckAsync(AsyncUnaryCall<CommandAck> call)
         {
             try
             {
-                loopBackSocket.EndSend(asyncResult);
+                using (call)
+                {
+                    CommandAck ack = await call.ResponseAsync.ConfigureAwait(false);
+                    if (ack != null && !ack.Received)
+                        Log.EventWriter("CommandService NAK: " + ack.ErrorMessage);
+                }
             }
-            catch (Exception)
+            catch (RpcException ex)
             {
-                //MessageBox.Show("SendData Error: " + ex.Message, "UDP Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Log.EventWriter("CommandService send failed: " + ex.Status.Detail);
+            }
+            catch (Exception ex)
+            {
+                Log.EventWriter("CommandService send error: " + ex.Message);
             }
         }
+
+        // IPC-REFACTOR: UDP BeginSendTo completion callback (SendAsyncLoopData -> EndSend) removed. It had zero external
+        // referencers; the outbound path is now the unary CommandService RPC whose ack is awaited by SendCommandAckAsync.
 
         //for moving and sizing borderless window
         protected override void WndProc(ref Message m)

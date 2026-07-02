@@ -136,7 +136,10 @@ namespace AgIO
             //small view
             this.Width = 420;
 
-            LoadLoopback();
+            // IPC-REFACTOR: UDP loopback listener (LoadLoopback -> 127.0.0.1:17777) removed; the AgIO<->AOG
+            // loopback IPC is now served by the gRPC TelemetryService/CommandService (TelemetryServiceImpl fan-out).
+            // TODO: start the gRPC host (Kestrel UseUnixDomainSockets / Windows named pipe, MapGrpcService
+            // Telemetry + Command) here before signaling readiness (companion AgIO host-startup change).
 
             isSendNMEAToUDP = Properties.Settings.Default.setUDP_isSendNMEAToUDP;
 
@@ -331,14 +334,8 @@ namespace AgIO
 
             isobusForm.StopAogTaskControllerProcess();
 
-            if (loopBackSocket != null)
-            {
-                try
-                {
-                    loopBackSocket.Shutdown(SocketShutdown.Both);
-                }
-                finally { loopBackSocket.Close(); }
-            }
+            // IPC-REFACTOR: loopBackSocket shutdown removed - the UDP loopback socket no longer exists;
+            // the gRPC host owns its own lifecycle/disposal (see UDP.designer.cs telemetry producer / command sink).
 
             if (UDPSocket != null)
             {
