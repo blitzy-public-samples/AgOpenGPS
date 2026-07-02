@@ -30,6 +30,14 @@ namespace GPS_Out
         private GrpcChannel _channel;
         private CancellationTokenSource _cts;
 
+        // IPC-REFACTOR (QA F1 Issue 2): the single telemetry payload this comm instance owns. The
+        // TelemetryService fan-out delivers EVERY envelope to EVERY subscriber, whereas each legacy
+        // per-port UDP listener saw only its own SubPGN. Restricting each of the two instances
+        // (AGIOcomm / AOGcomm) to its owned payload restores the legacy single-parse-per-frame behaviour,
+        // so a frame is no longer parsed once per instance, while preserving the two-instance model
+        // (both instances still subscribe and hold their own channel + connection flag).
+        private readonly PgnEnvelope.PayloadOneofCase _observedPayload;
+
         public UDPComm(frmStart CallingForm, int ReceivePort, int SendToPort, int SendFromPort,
             string ConnectionName, string SourceIPaddress, string DestinationEndPoint = "")
         {
@@ -38,6 +46,13 @@ namespace GPS_Out
             cSendToPort = SendToPort;
             cSendFromPort = SendFromPort;
             cConnectionName = ConnectionName;
+            // IPC-REFACTOR (QA F1 Issue 2): map this instance to the one payload its legacy UDP port received —
+            // AGIOcomm observes GpsPosition (-> AGIOdata / PGN54908); AOGcomm observes CorrectedPosition
+            // (-> AOGdata / PGN100). This is a bijection over the two observed payloads, so each frame the
+            // fan-out broadcasts is parsed by exactly one instance (no double-parse) and both payloads stay covered.
+            _observedPayload = string.Equals(ConnectionName, "AGIO", StringComparison.Ordinal)
+                ? PgnEnvelope.PayloadOneofCase.GpsPosition
+                : PgnEnvelope.PayloadOneofCase.CorrectedPosition;
             SetEP(DestinationEndPoint);
             SetSourceIP(SourceIPaddress);
         }
@@ -117,6 +132,16 @@ namespace GPS_Out
         {
             try
             {
+                // IPC-REFACTOR (QA F1 Issue 2): observe only this instance's owned payload. The TelemetryService
+                // fan-out broadcasts every envelope to every subscriber, so without this guard BOTH the AGIOcomm
+                // and AOGcomm instances would parse BOTH payloads (each frame handled twice). Gating to the owned
+                // payload restores the legacy per-port single-parse semantics; any other payload (including
+                // PayloadOneofCase.None) is ignored here exactly as the legacy per-port listener ignored it.
+                if (envelope.PayloadCase != _observedPayload)
+                {
+                    return;
+                }
+
                 switch (envelope.PayloadCase)
                 {
                     case PgnEnvelope.PayloadOneofCase.GpsPosition:       // IPC-REFACTOR: was SubPGN 54908 / 0xD67C -> mf.AGIOdata.ParseByteData(Data).
