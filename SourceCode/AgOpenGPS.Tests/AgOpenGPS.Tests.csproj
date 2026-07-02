@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GPS\AgOpenGPS.csproj" />
+    <!-- IPC-REFACTOR: shared proto/gRPC contract + generated stubs + IpcConstants for the IPC unit-test fixtures. -->
     <ProjectReference Include="..\AgOpenGPS.Ipc\AgOpenGPS.Ipc.csproj" />
   </ItemGroup>
 

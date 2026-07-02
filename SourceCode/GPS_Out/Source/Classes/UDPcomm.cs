@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+// IPC-REFACTOR: consume the generated GpsPositionMsg/CorrectedPositionMsg types from the AgOpenGPS.Ipc contract.
+using AgOpenGPS.Ipc;
 
 namespace GPS_Out
 {
@@ -111,11 +113,52 @@ namespace GPS_Out
                             switch (SubPGN)
                             {
                                 case 54908: // 0xD67C, AGIO NEMA translation
-                                    mf.AGIOdata.ParseByteData(Data);
+                                    // IPC-REFACTOR: adapt the received byte frame into the typed GpsPositionMsg and
+                                    // dispatch to the migrated typed parser (PGN54908.ParseMessage). The AgIO->AOG
+                                    // telemetry transport is still UDP at this milestone (no gRPC server host exists yet,
+                                    // and net48 has no native Unix-domain-socket gRPC transport per the #1 host-retarget
+                                    // deviation), so this transport-side byte->typed bridge preserves the exact 0xD67C
+                                    // field layout; the full StreamTelemetry subscriber can replace it post-retarget
+                                    // without changing PGN54908.
+                                    if (Data.Length >= 56)
+                                    {
+                                        mf.AGIOdata.ParseMessage(new GpsPositionMsg
+                                        {
+                                            Longitude = BitConverter.ToDouble(Data, 5),
+                                            Latitude = BitConverter.ToDouble(Data, 13),
+                                            HeadingDual = BitConverter.ToSingle(Data, 21),
+                                            HeadingTrue = BitConverter.ToSingle(Data, 25),
+                                            Speed = BitConverter.ToSingle(Data, 29),
+                                            Roll = BitConverter.ToSingle(Data, 33),
+                                            Altitude = BitConverter.ToSingle(Data, 37),
+                                            Satellites = BitConverter.ToUInt16(Data, 41),
+                                            FixQuality = Data[43],
+                                            Hdop = BitConverter.ToUInt16(Data, 44),
+                                            Age = BitConverter.ToUInt16(Data, 46),
+                                            ImuHeading = BitConverter.ToUInt16(Data, 48),
+                                            ImuRoll = BitConverter.ToInt16(Data, 50),
+                                            ImuPitch = BitConverter.ToInt16(Data, 52),
+                                            ImuYawRate = BitConverter.ToUInt16(Data, 54),
+                                        });
+                                    }
                                     break;
 
                                 case 25727: // 0x647F, AOG roll corrected lat,lon
-                                    mf.AOGdata.ParseByteData(Data);
+                                    // IPC-REFACTOR: adapt the received byte frame into the typed CorrectedPositionMsg and
+                                    // dispatch to the migrated typed parser (PGN100.ParseMessage); same transport-side
+                                    // byte->typed bridge rationale as case 54908. Data[4] is the payload length; 24 selects
+                                    // the extended layout carrying fix2fix heading, otherwise the sentinel 1000 (invalid) is
+                                    // preserved exactly as the legacy parser did.
+                                    if (Data.Length >= 21)
+                                    {
+                                        bool extended = (Data[4] == 24) && (Data.Length >= 29);
+                                        mf.AOGdata.ParseMessage(new CorrectedPositionMsg
+                                        {
+                                            Longitude = BitConverter.ToDouble(Data, 5),
+                                            Latitude = BitConverter.ToDouble(Data, 13),
+                                            Fix2FixHeading = extended ? BitConverter.ToDouble(Data, 21) : 1000.0,
+                                        });
+                                    }
                                     break;
                             }
                             break;

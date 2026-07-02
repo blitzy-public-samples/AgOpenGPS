@@ -18,6 +18,13 @@
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.6.0" />
     <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
+    <!-- IPC-REFACTOR: gRPC client runtime for ModSim (simulated-inbound producer + TelemetryService subscriber). -->
+    <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
+  </ItemGroup>
+
+  <!-- IPC-REFACTOR: shared proto/gRPC contract + generated client stubs + IpcConstants. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\AgOpenGPS.Ipc\AgOpenGPS.Ipc.csproj" />
   </ItemGroup>
 
   <ItemGroup>

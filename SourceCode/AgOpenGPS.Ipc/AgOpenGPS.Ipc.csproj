@@ -2,9 +2,26 @@
 
   <PropertyGroup>
     <!-- IMPORTANT: explicitly OVERRIDE the inherited SourceCode/Directory.Build.props default
-         <TargetFramework>net48</TargetFramework>. gRPC/proto3 tooling + Grpc.Net.Client require net6.0+. -->
-    <TargetFramework>net8.0</TargetFramework>
+         <TargetFramework>net48</TargetFramework>. gRPC/proto3 tooling + Grpc.Net.Client require net6.0+.
+
+         This shared contract library MULTI-TARGETS:
+           * net8.0         -> consumed by the AgIO gRPC server host (net8.0-windows) and the
+                               net8.0 IPC unit-test harness.
+           * netstandard2.0 -> consumed by the net48 desktop clients (GPS, GPS_Out, ModSim, AgDiag,
+                               AgOpenGPS.Tests). net48 can reference a netstandard2.0 library, which
+                               resolves the NU1201 "net48 is not compatible with net8.0" restore
+                               failure while keeping the clients on net48 (no client retarget). All
+                               pinned deps support netstandard2.0 (Grpc.Net.Client 2.80.0 -> net462/
+                               netstandard2.0, Google.Protobuf 3.35.1, Grpc.Tools build-time only).
+
+         The inherited singular <TargetFramework> is cleared to empty so that <TargetFrameworks>
+         (plural) takes effect; otherwise MSBuild honours the inherited net48 single-target value. -->
+    <TargetFramework></TargetFramework>
+    <TargetFrameworks>net8.0;netstandard2.0</TargetFrameworks>
     <Nullable>enable</Nullable>
+    <!-- netstandard2.0 defaults to C# 7.3, which rejects <Nullable>enable</Nullable>; pin a modern
+         C# language version so the nullable context compiles on the netstandard2.0 target as well. -->
+    <LangVersion>latest</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
 

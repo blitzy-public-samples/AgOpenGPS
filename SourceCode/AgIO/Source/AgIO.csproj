@@ -1,6 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- IPC-REFACTOR: retargeted net48 -> net8.0-windows (the #1 host-retarget deviation). Required so
+         AgIO can host the Kestrel gRPC server (ASP.NET Core gRPC hosting needs .NET 6+); WinForms UI preserved. -->
     <TargetFramework>net8.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
     <PublishDir>..\..\..\AgOpenGPS\</PublishDir>
@@ -24,12 +26,14 @@
   <ItemGroup>
     <ProjectReference Include="..\..\AgLibrary\AgLibrary.csproj" />
     <ProjectReference Include="..\..\Keypad\Keypad.csproj" />
+    <!-- IPC-REFACTOR: shared proto/gRPC contract + generated client AND server stubs + IpcConstants. -->
     <ProjectReference Include="..\..\AgOpenGPS.Ipc\AgOpenGPS.Ipc.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.6.0" />
     <PackageReference Include="System.Resources.Extensions" Version="9.0.0" />
+    <!-- IPC-REFACTOR: gRPC server-hosting runtime (Grpc.AspNetCore) + build-time proto/gRPC codegen (Grpc.Tools). -->
     <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
     <PackageReference Include="Grpc.Tools" Version="2.81.1">
       <PrivateAssets>all</PrivateAssets>
@@ -37,6 +41,7 @@
     </PackageReference>
   </ItemGroup>
 
+  <!-- IPC-REFACTOR: ASP.NET Core shared framework — provides Kestrel + gRPC server hosting for the AgIO TelemetryService/CommandService. -->
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
